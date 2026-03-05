@@ -195,7 +195,3 @@ Search for "MCP dependencies" in `w-function.zsh` and add read-only volume mount
 | Hook not blocking | Check `settings.json` uses `$HOME/` paths |
 | GitHub MCP failed | Expected — Docker-in-Docker disabled |
 | `gh` commands fail | Check GH_TOKEN extracted from `.claude.json` |
-
-## License
-
-MIT
