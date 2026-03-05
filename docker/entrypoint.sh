@@ -26,6 +26,9 @@ fi
 
 cd /workspace
 
+# Fix Turbo cache path — worktrees resolve to the host's main repo path which isn't writable
+export TURBO_CACHE_DIR=/workspace/.turbo/cache
+
 # Rebuild native binaries for Linux — npm install runs on the host (macOS) during
 # worktree creation, so node_modules contains macOS-specific binaries (rollup, biome,
 # etc.) that don't work inside the Linux container. npm rebuild recompiles them.
