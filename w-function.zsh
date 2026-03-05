@@ -148,7 +148,14 @@ if wt_path in d.get('projects', {}):
         echo "Creating worktree: $worktree (from develop)"
         mkdir -p "$worktrees_dir/$project"
         wt_path="$worktrees_dir/$project/$worktree"
-        (cd "$projects_dir/$project" && git fetch origin develop && git worktree add "$wt_path" -b "$worktree" origin/develop) || {
+        (cd "$projects_dir/$project" && git fetch origin develop && \
+            if git show-ref --verify --quiet "refs/heads/$worktree"; then
+                echo "Using existing branch: $worktree"
+                git worktree add "$wt_path" "$worktree"
+            else
+                git worktree add "$wt_path" -b "$worktree" origin/develop
+            fi
+        ) || {
             echo "Failed to create worktree"
             return 1
         }
