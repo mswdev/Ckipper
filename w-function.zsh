@@ -309,8 +309,11 @@ else:
 }
 
 # -- Tab completion for w --
+# Ensure completions directory is in fpath
+[[ -d ~/.zsh/completions ]] || mkdir -p ~/.zsh/completions
+fpath=(~/.zsh/completions $fpath)
+
 if [[ ! -f ~/.zsh/completions/_w ]] || true; then
-    mkdir -p ~/.zsh/completions
     cat > ~/.zsh/completions/_w << 'COMPEOF'
 #compdef w
 

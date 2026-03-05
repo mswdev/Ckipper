@@ -12,6 +12,8 @@ mkdir -p "$HOME/.claude/docker"
 cp "$REPO_DIR/docker/Dockerfile" "$HOME/.claude/docker/"
 cp "$REPO_DIR/docker/entrypoint.sh" "$HOME/.claude/docker/"
 cp "$REPO_DIR/docker/init-firewall.sh" "$HOME/.claude/docker/"
+chmod +x "$HOME/.claude/docker/entrypoint.sh"
+chmod +x "$HOME/.claude/docker/init-firewall.sh"
 
 # 2. Copy hooks
 echo "Copying hooks to ~/.claude/hooks/..."
