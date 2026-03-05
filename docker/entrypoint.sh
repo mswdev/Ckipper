@@ -26,7 +26,9 @@ fi
 
 cd /workspace
 
-# Rebuild native binaries for Linux (node_modules may have been installed on macOS)
+# Rebuild native binaries for Linux — npm install runs on the host (macOS) during
+# worktree creation, so node_modules contains macOS-specific binaries (rollup, biome,
+# etc.) that don't work inside the Linux container. npm rebuild recompiles them.
 if [ -d node_modules ]; then
     npm rebuild 2>/dev/null || true
 fi
