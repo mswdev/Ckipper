@@ -138,6 +138,12 @@ w --rebuild-image
 w <your-project> test-branch --auto
 ```
 
+### Option 2: Let Claude Do It
+
+Clone the repo, then open Claude Code and paste this prompt:
+
+> Read the README.md and install.sh in this repo. Run the install script, then merge settings-hooks.json into my ~/.claude/settings.json (keep my existing settings, just add the hooks). Append the contents of w-function.zsh to my ~/.zshrc. The MCP mount lines in the w() function should be commented out by default — I'll customize them later. After everything is set up, run `mkdir -p ~/.git-hooks && git config --global core.hooksPath ~/.git-hooks && source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test.
+
 ### What Gets Installed Where
 
 | Source | Destination | Purpose |
