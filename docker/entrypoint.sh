@@ -26,6 +26,12 @@ fi
 
 cd /workspace
 
+# Rebuild native binaries for Linux if node_modules was installed on macOS
+if [ -d node_modules ] && ! node -e "require('@rollup/rollup-linux-arm64-gnu')" 2>/dev/null; then
+    echo "Rebuilding native modules for Linux..."
+    npm rebuild 2>/dev/null || true
+fi
+
 # Clear credentials from environment (consumed above; exec ensures clean /proc/self/environ)
 unset CLAUDE_CREDENTIALS GH_TOKEN
 
