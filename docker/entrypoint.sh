@@ -26,11 +26,9 @@ fi
 
 cd /workspace
 
-# Rebuild native binaries for Linux if node_modules was installed on a different platform
-if [ -d node_modules ] && [ ! -f node_modules/.linux-rebuilt ]; then
-    echo "Rebuilding native modules for Linux..."
+# Rebuild native binaries for Linux (node_modules may have been installed on macOS)
+if [ -d node_modules ]; then
     npm rebuild 2>/dev/null || true
-    touch node_modules/.linux-rebuilt
 fi
 
 # Clear credentials from environment (consumed above; exec ensures clean /proc/self/environ)
