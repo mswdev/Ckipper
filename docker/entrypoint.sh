@@ -17,6 +17,19 @@ if [ -n "$CLAUDE_CREDENTIALS" ]; then
     chmod 600 "$HOME/.claude/.credentials.json"
 fi
 
+# Set git identity from .claude.json account info (needed for commits inside container)
+if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null; then
+    git_name=$(jq -r '.oauthAccount.displayName // empty' "$HOME/.claude.json" 2>/dev/null)
+    git_email=$(jq -r '.oauthAccount.emailAddress // empty' "$HOME/.claude.json" 2>/dev/null)
+    [ -n "$git_name" ] && git config --global user.name "$git_name"
+    [ -n "$git_email" ] && git config --global user.email "$git_email"
+fi
+
+# Persist GitHub token for gh CLI (before we clear env vars)
+if [ -n "$GH_TOKEN" ]; then
+    echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null || true
+fi
+
 # Optionally enable the egress firewall
 if [ "$ENABLE_FIREWALL" = "1" ]; then
     echo "Enabling egress firewall..."
@@ -29,11 +42,13 @@ cd /workspace
 # Fix Turbo cache path — worktrees resolve to the host's main repo path which isn't writable
 export TURBO_CACHE_DIR=/workspace/.turbo/cache
 
-# Rebuild native binaries for Linux — npm install runs on the host (macOS) during
-# worktree creation, so node_modules contains macOS-specific binaries (rollup, biome,
-# etc.) that don't work inside the Linux container. npm rebuild recompiles them.
+# Reinstall native binaries for Linux — npm install on the host (macOS) pulls
+# macOS-specific binaries (rollup, biome, esbuild, swc, etc.) that don't work
+# inside the Linux container. npm rebuild requires gcc which isn't installed,
+# so we run npm install which downloads pre-built Linux binaries instead.
 if [ -d node_modules ]; then
-    npm rebuild 2>/dev/null || true
+    echo "Installing platform-specific binaries for Linux..."
+    npm install --prefer-offline 2>/dev/null || true
 fi
 
 # Clear credentials from environment (consumed above; exec ensures clean /proc/self/environ)
