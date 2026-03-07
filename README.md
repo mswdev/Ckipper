@@ -18,9 +18,10 @@ This creates a git worktree, spins up a Docker container, and runs Claude inside
 
 ## What It Does
 
-- **Creates a git worktree** from `origin/develop` (configurable)
+- **Creates a git worktree** from `origin/develop` (or uses an existing branch)
 - **Installs dependencies** and copies `.env` files from the main project
 - **Launches a Docker container** with the worktree mounted at `/workspace`
+- **Entrypoint sets up the environment**: installs Linux-native binaries, configures git identity, authenticates `gh` CLI, sets Turbo cache path, optionally enables firewall
 - **Runs Claude Code** in autonomous mode inside the container
 - **Destroys the container** on exit (`--rm`) — the worktree persists for review
 - **Warns you** if `.git/config` was modified during the session
@@ -42,11 +43,25 @@ w --rebuild-image                           # rebuild Docker image
 ## What's In the Container
 
 - Node.js 24, git, gh CLI, ripgrep, curl, jq, python3, tmux
-- Chromium headless (Playwright/Puppeteer)
+- Chromium headless (Playwright/Puppeteer) with `--no-sandbox`
 - Claude Code (native installer)
 - `uv`/`uvx` for Python-based MCP servers
 - `iptables-legacy` for optional egress firewall
 - Non-root `claude` user
+
+## What the Entrypoint Does
+
+On every container start, `entrypoint.sh` automatically:
+
+1. **Copies `.claude.json`** from read-only staging mount to writable location (prevents race condition with host)
+2. **Disables Chrome extension checks** via jq (no browser in container)
+3. **Writes OAuth credentials** from `CLAUDE_CREDENTIALS` env var to `.credentials.json`
+4. **Sets git identity** (`user.name` / `user.email`) from `.claude.json` account info
+5. **Authenticates `gh` CLI** via `gh auth login --with-token` using `GH_TOKEN`
+6. **Enables egress firewall** if `ENABLE_FIREWALL=1`
+7. **Sets `TURBO_CACHE_DIR`** to `/workspace/.turbo/cache` (worktree git root points to unwritable host path)
+8. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
+9. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before `exec claude`
 
 ## Security
 
@@ -108,14 +123,14 @@ For MCPs that reference local files, add read-only volume mounts in `w-function.
 - **SSH keys** in `~/.ssh/` with GitHub access
 - **jq** installed (`brew install jq`)
 
-### Install
+### Option 1: Manual Install
 
 ```bash
 # Clone the repo
 git clone https://github.com/whmoro/claude-docker-sandbox.git
 cd claude-docker-sandbox
 
-# Run the installer (copies files, sets up git hooks path)
+# Run the installer (copies files to ~/.claude/, sets up git hooks path)
 ./install.sh
 
 # Add hooks to your ~/.claude/settings.json
@@ -130,7 +145,7 @@ cat w-function.zsh >> ~/.zshrc
 # 2. Search for "ports=" — change to your dev server ports
 # 3. Search for "develop" — change if your default branch is different
 
-# Build the Docker image
+# Build the Docker image (takes a few minutes first time)
 source ~/.zshrc
 w --rebuild-image
 
@@ -149,7 +164,7 @@ Clone the repo, then open Claude Code and paste this prompt:
 | Source | Destination | Purpose |
 |---|---|---|
 | `docker/Dockerfile` | `~/.claude/docker/Dockerfile` | Docker image definition |
-| `docker/entrypoint.sh` | `~/.claude/docker/entrypoint.sh` | Container startup |
+| `docker/entrypoint.sh` | `~/.claude/docker/entrypoint.sh` | Container startup + environment setup |
 | `docker/init-firewall.sh` | `~/.claude/docker/init-firewall.sh` | Egress firewall |
 | `hooks/protect-claude-config.sh` | `~/.claude/hooks/protect-claude-config.sh` | Edit/Write guard |
 | `hooks/bash-guardrails.sh` | `~/.claude/hooks/bash-guardrails.sh` | Bash command guard |
@@ -159,9 +174,32 @@ Clone the repo, then open Claude Code and paste this prompt:
 
 ### macOS Keychain Authentication
 
-On macOS, Claude Code stores OAuth credentials in the macOS Keychain (service: `Claude Code-credentials`) and actively deletes the on-disk credentials file. The `w()` function extracts credentials from Keychain at launch and passes them to the container as an environment variable. The entrypoint writes them to disk inside the container, then clears the env var before starting Claude.
+On macOS, Claude Code stores OAuth credentials in the macOS Keychain (service: `Claude Code-credentials`) and actively deletes the on-disk credentials file. The `w()` function extracts credentials from Keychain at launch and passes them to the container via environment variable. The entrypoint writes them to disk, authenticates `gh` CLI, then clears the env vars before starting Claude.
 
 Tokens are short-lived (~6 hours). If they expire mid-session, exit the container, run any `claude` command on the host (refreshes the token), then restart.
+
+## Testing
+
+After setup, run the comprehensive environment test to verify everything works:
+
+```bash
+w <your-project> test-branch --auto
+```
+
+Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It tests:
+
+- Entrypoint verification (env vars, git identity, Chrome disabled, Turbo cache)
+- File system access (read, write, delete)
+- Code modification round-trip (Edit tool on mounted files)
+- Git operations (status, log, branch, commit, SSH, gh CLI)
+- Build tools (npm, biome, turbo, tmux)
+- Full project build
+- Dev servers
+- Tests and linting
+- MCP and network access
+- Safety hooks (all 4 blocked actions)
+
+See `test-prompt.md` for the full prompt and expected results table.
 
 ## Customization
 
@@ -195,3 +233,8 @@ Search for "MCP dependencies" in `w-function.zsh` and add read-only volume mount
 | Hook not blocking | Check `settings.json` uses `$HOME/` paths |
 | GitHub MCP failed | Expected — Docker-in-Docker disabled |
 | `gh` commands fail | Check GH_TOKEN extracted from `.claude.json` |
+| `git commit` fails (no identity) | Entrypoint should set this automatically; check `.claude.json` has `oauthAccount` |
+| Native binary errors (Exec format) | Run `w --rebuild-image` — entrypoint runs `npm install` to fix platform binaries |
+| Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `w --rebuild-image` if missing |
+| Branch already checked out | Switch main repo to different branch: `cd ~/Developer/<project> && git checkout develop` |
+| Stale worktree directory | Remove manually: `rm -rf ~/Developer/.worktrees/<project>/<branch>` |
