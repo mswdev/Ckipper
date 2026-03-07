@@ -92,7 +92,7 @@ if wt_path in d.get('projects', {}):
     del d['projects'][wt_path]
     with open(claude_config, 'w') as f:
         json.dump(d, f)
-    print('Cleaned up Claude Code settings')
+    print(f'Removed worktree project entry from ~/.claude.json')
 " 2>/dev/null
         return $?
     fi
