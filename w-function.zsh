@@ -156,7 +156,16 @@ if wt_path in d.get('projects', {}):
                 git worktree add "$wt_path" -b "$worktree" origin/develop
             fi
         ) || {
-            echo "Failed to create worktree"
+            # Check if branch is already checked out in main repo
+            local current_branch
+            current_branch=$(cd "$projects_dir/$project" && git branch --show-current 2>/dev/null)
+            if [[ "$current_branch" == "$worktree" ]]; then
+                echo "Failed: branch '$worktree' is currently checked out in the main repo."
+                echo "Switch the main repo to a different branch first:"
+                echo "  cd $projects_dir/$project && git checkout develop"
+            else
+                echo "Failed to create worktree"
+            fi
             return 1
         }
         echo "Installing dependencies..."
