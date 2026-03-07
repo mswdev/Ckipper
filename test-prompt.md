@@ -24,7 +24,7 @@ Run a comprehensive environment test to verify this Docker container has everyth
 **4. Git operations**
 - Run git status and git log --oneline -5
 - Create a test branch, make an empty commit, then delete the branch (this also verifies git identity is configured)
-- Run `ssh -T git@github.com` to verify SSH access (should say "successfully authenticated" even with exit code 1)
+- Run `ssh -T git@github.com` — likely FAIL if SSH keys are managed by an agent (1Password, macOS Keychain) rather than on-disk files. This is expected; use `gh` CLI for git operations instead.
 - Run `gh auth status` to verify GitHub CLI is authenticated
 
 **5. Dependencies and build tools**
@@ -71,9 +71,9 @@ Run a comprehensive environment test to verify this Docker container has everyth
 | 2a-2c | All PASS |
 | 3 | PASS |
 | 4a | PASS |
-| 4b | PASS (git commit should work with entrypoint-configured identity) |
-| 4c | PASS (SSH authenticated) or FAIL with clear "permission denied" |
-| 4d | PASS (gh authenticated via entrypoint) |
+| 4b | PASS (git identity + GPG signing disabled by entrypoint) |
+| 4c | FAIL expected if using SSH agent (1Password, etc.) — no on-disk keys to mount |
+| 4d | PASS (gh authenticated via entrypoint; also configured as git credential helper for HTTPS push) |
 | 5a-5e | All PASS |
 | 6 | PASS (all packages build) |
 | 7 | PARTIAL expected — servers start but may 500 without full .env |
