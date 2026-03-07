@@ -43,8 +43,21 @@ w() {
             find "$worktrees_dir" -name ".git" -type f -not -path "*/node_modules/*" 2>/dev/null | sort | while IFS= read -r gitfile; do
                 local wt_dir="${gitfile:h}"
                 local rel="${wt_dir#$worktrees_dir/}"
-                local branch="${rel##*/}"
-                local project="${rel%/*}"
+                # Extract project (first two path segments) and branch (rest)
+                local project="${rel%%/*}"
+                local after_first="${rel#*/}"
+                if [[ "$after_first" == "$rel" ]]; then
+                    continue  # malformed path
+                fi
+                # Check if second segment is a sub-project (e.g. Whmoro/orderguard)
+                local second="${after_first%%/*}"
+                local rest="${after_first#*/}"
+                if [[ -d "$projects_dir/$project/$second/.git" ]]; then
+                    project="$project/$second"
+                    local branch="$rest"
+                else
+                    local branch="$after_first"
+                fi
                 if [[ "$project" != "$current_project" ]]; then
                     current_project="$project"
                     echo "\n[$project]"
@@ -80,7 +93,10 @@ w() {
             echo "Worktree not found: $wt_path"
             return 1
         fi
-        (cd "$projects_dir/$project" && git worktree remove $force_flag "$wt_path" && git branch -D "$worktree" 2>/dev/null)
+        (cd "$projects_dir/$project" && git worktree remove $force_flag "$wt_path" && git branch -D "$worktree" 2>/dev/null) || {
+            echo "Failed to remove worktree. Use --force if it has uncommitted changes."
+            return 1
+        }
         # Clean up Claude Code settings for removed worktree
         WT_PATH="$wt_path" python3 -c "
 import json, os
@@ -94,7 +110,7 @@ if wt_path in d.get('projects', {}):
         json.dump(d, f)
     print(f'Removed worktree project entry from ~/.claude.json')
 " 2>/dev/null
-        return $?
+        return 0
     fi
 
     # -- Normal usage: w <project> <worktree> [--auto [--firewall]] [command...] --
@@ -140,6 +156,11 @@ if wt_path in d.get('projects', {}):
     # Find existing worktree
     local wt_path=""
     if [[ -d "$worktrees_dir/$project/$worktree" ]]; then
+        if [[ ! -f "$worktrees_dir/$project/$worktree/.git" ]]; then
+            echo "Error: $worktrees_dir/$project/$worktree exists but is not a valid worktree."
+            echo "Remove it manually or use a different branch name."
+            return 1
+        fi
         wt_path="$worktrees_dir/$project/$worktree"
     fi
 
@@ -148,7 +169,13 @@ if wt_path in d.get('projects', {}):
         echo "Creating worktree: $worktree (from develop)"
         mkdir -p "$worktrees_dir/$project"
         wt_path="$worktrees_dir/$project/$worktree"
-        (cd "$projects_dir/$project" && git fetch origin develop && \
+        # Fetch latest develop
+        (cd "$projects_dir/$project" && git fetch origin develop) || {
+            echo "Failed to fetch from origin. Check your network connection and that 'develop' exists on the remote."
+            return 1
+        }
+        # Create the worktree
+        (cd "$projects_dir/$project" && \
             if git show-ref --verify --quiet "refs/heads/$worktree"; then
                 echo "Using existing branch: $worktree"
                 git worktree add "$wt_path" "$worktree"
@@ -156,7 +183,6 @@ if wt_path in d.get('projects', {}):
                 git worktree add "$wt_path" -b "$worktree" origin/develop
             fi
         ) || {
-            # Check if branch is already checked out in main repo
             local current_branch
             current_branch=$(cd "$projects_dir/$project" && git branch --show-current 2>/dev/null)
             if [[ "$current_branch" == "$worktree" ]]; then
@@ -169,7 +195,7 @@ if wt_path in d.get('projects', {}):
             return 1
         }
         echo "Installing dependencies..."
-        (cd "$wt_path" && npm install)
+        (cd "$wt_path" && npm install) || echo "Warning: npm install failed. You may need to run it manually."
 
         # Copy .env files from main project
         for env_file in $(find "$projects_dir/$project" -maxdepth 2 -name ".env" -not -path "*/node_modules/*"); do
