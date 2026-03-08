@@ -96,6 +96,7 @@ Three Claude Code hooks activate inside Docker:
 - Post-session `.git/config` tamper detection
 - Credentials cleared from environment before launching the command (invisible to `env` and `/proc/self/environ`)
 - `.claude.json` mounted read-only as staging copy (prevents race condition with host)
+- `~/.claude` dual-mounted at both `/home/claude/.claude` and the host path (e.g. `/Users/<user>/.claude`) so plugins with hardcoded absolute paths resolve correctly
 - No Docker socket mounted (cannot create sibling containers)
 
 ### Optional Egress Firewall
