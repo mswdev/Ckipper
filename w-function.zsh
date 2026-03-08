@@ -277,6 +277,10 @@ else:
             # Mount Claude auth and config
             -v "$HOME/.claude:/home/claude/.claude:rw"
             -v "$HOME/.claude.json:/home/claude/.claude-host.json:ro"
+            # Mount .claude at host path too — plugins store absolute host paths
+            # (e.g. /Users/<user>/.claude/plugins/...) that don't resolve at
+            # the container's /home/claude/.claude. This dual mount makes both work.
+            -v "$HOME/.claude:$HOME/.claude:rw"
             # Mount SSH keys for git/plugin access (read-only)
             -v "$HOME/.ssh:/home/claude/.ssh:ro"
             # ── Statusline (ccstatusline) ───────────────────────────────
@@ -296,9 +300,9 @@ else:
             # ── MCP dependencies ──────────────────────────────────────
             # Add read-only mounts for any MCP servers that reference local files.
             # Mount at the exact same host path so MCP configs work unchanged.
-            # Remove or change these lines based on YOUR MCP setup:
-            # -v "$HOME/Developer/Vibma:$HOME/Developer/Vibma:ro"
-            # -v "$HOME/Developer/tailwindplus-data.json:$HOME/Developer/tailwindplus-data.json:ro"
+            # Examples (uncomment and adjust for your setup):
+            # -v "$HOME/Developer/my-mcp-data:/same/path/in/container:ro"
+            # -v "$HOME/path/to/data.json:$HOME/path/to/data.json:ro"
             # ──────────────────────────────────────────────────────────
         )
 
