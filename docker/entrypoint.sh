@@ -17,6 +17,35 @@ if [ -n "$CLAUDE_CREDENTIALS" ]; then
     chmod 600 "$HOME/.claude/.credentials.json"
 fi
 
+# Set git identity from .claude.json account info (needed for commits inside container)
+if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null; then
+    git_name=$(jq -r '.oauthAccount.displayName // empty' "$HOME/.claude.json" 2>/dev/null)
+    git_email=$(jq -r '.oauthAccount.emailAddress // empty' "$HOME/.claude.json" 2>/dev/null)
+    [ -n "$git_name" ] && git config --global user.name "$git_name"
+    [ -n "$git_email" ] && git config --global user.email "$git_email"
+fi
+
+# Disable GPG signing via environment (no GPG key in container).
+# Uses GIT_CONFIG_COUNT instead of git config so we never modify the host's
+# .git/config (mounted rw). Env vars take highest priority, overriding both
+# local and global config, and disappear when the container exits.
+export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_KEY_0=commit.gpgsign
+export GIT_CONFIG_VALUE_0=false
+export GIT_CONFIG_KEY_1=tag.gpgsign
+export GIT_CONFIG_VALUE_1=false
+
+# Persist GitHub token for gh CLI — must unset GH_TOKEN first because gh refuses
+# to store credentials while the env var is set (it treats the env var as authoritative)
+if [ -n "$GH_TOKEN" ]; then
+    _gh_token="$GH_TOKEN"
+    unset GH_TOKEN
+    echo "$_gh_token" | gh auth login --with-token 2>/dev/null || true
+    # Configure gh as git credential helper (enables git push over HTTPS)
+    gh auth setup-git 2>/dev/null || true
+    unset _gh_token
+fi
+
 # Optionally enable the egress firewall
 if [ "$ENABLE_FIREWALL" = "1" ]; then
     echo "Enabling egress firewall..."
@@ -26,15 +55,42 @@ fi
 
 cd /workspace
 
-# Rebuild native binaries for Linux — npm install runs on the host (macOS) during
-# worktree creation, so node_modules contains macOS-specific binaries (rollup, biome,
-# etc.) that don't work inside the Linux container. npm rebuild recompiles them.
+# Fix Turbo cache path — worktrees resolve to the host's main repo path which isn't writable
+export TURBO_CACHE_DIR=/workspace/.turbo/cache
+
+# Force truecolor output for statusline — Claude Code may not pass FORCE_COLOR
+# to the statusline subprocess, so we inject it via a bunx wrapper that sits
+# earlier in PATH (~/.local/bin is prepended in Dockerfile). The wrapper also
+# unsets NO_COLOR to prevent chalk from stripping ANSI codes.
+export FORCE_COLOR=3
+export COLORTERM=truecolor
+cat > "$HOME/.local/bin/bunx" << 'WRAPPER'
+#!/bin/bash
+export FORCE_COLOR=3
+export COLORTERM=truecolor
+unset NO_COLOR
+exec /usr/local/bin/bunx "$@"
+WRAPPER
+chmod +x "$HOME/.local/bin/bunx"
+
+# Reinstall native binaries for Linux — npm install on the host (macOS) pulls
+# macOS-specific binaries (rollup, biome, esbuild, swc, etc.) that don't work
+# inside the Linux container. npm rebuild requires gcc which isn't installed,
+# so we run npm install which downloads pre-built Linux binaries instead.
 if [ -d node_modules ]; then
-    npm rebuild 2>/dev/null || true
+    echo "Installing platform-specific binaries for Linux..."
+    npm install --prefer-offline 2>/dev/null || true
 fi
 
 # Clear credentials from environment (consumed above; exec ensures clean /proc/self/environ)
 unset CLAUDE_CREDENTIALS GH_TOKEN
 
-# Start interactive Claude session with skip-permissions
-exec claude --dangerously-skip-permissions
+# Run the provided command, or drop to an interactive shell if none given.
+# When called via `w <project> <branch> --docker claude`, Docker passes
+# "claude --dangerously-skip-permissions" as arguments. Without arguments
+# (just `--docker`), the user gets a fully set-up bash shell.
+if [ $# -gt 0 ]; then
+    exec "$@"
+else
+    exec /bin/bash
+fi

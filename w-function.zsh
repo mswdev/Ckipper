@@ -1,12 +1,13 @@
 # ── Worktree Manager ──────────────────────────────────────────────
 # Usage:
-#   w <project> <branch-name>                   cd to worktree (creates if needed)
-#   w <project> <branch-name> <cmd>             run command in worktree (e.g. claude)
-#   w <project> <branch-name> --auto            run Claude in Docker (skip-permissions)
-#   w <project> <branch-name> --auto --firewall same as above + egress firewall
-#   w --list                                    list all worktrees
-#   w --rm <project> <branch-name>              remove worktree + delete branch
-#   w --rebuild-image                           rebuild claude-dev Docker image
+#   w <project> <branch-name>                     cd to worktree (creates if needed)
+#   w <project> <branch-name> <cmd>               run command in worktree (e.g. claude)
+#   w <project> <branch-name> --docker             shell in Docker container
+#   w <project> <branch-name> --docker claude      Claude in Docker (skip-permissions)
+#   w <project> <branch-name> --docker --firewall  Docker + egress firewall
+#   w --list                                       list all worktrees
+#   w --rm <project> <branch-name>                 remove worktree + delete branch
+#   w --rebuild-image                              rebuild claude-dev Docker image
 #
 # <project> is a path relative to ~/Developer (e.g. "Whmoro/orderguard", "my-app")
 #
@@ -43,8 +44,21 @@ w() {
             find "$worktrees_dir" -name ".git" -type f -not -path "*/node_modules/*" 2>/dev/null | sort | while IFS= read -r gitfile; do
                 local wt_dir="${gitfile:h}"
                 local rel="${wt_dir#$worktrees_dir/}"
-                local branch="${rel##*/}"
-                local project="${rel%/*}"
+                # Extract project (first two path segments) and branch (rest)
+                local project="${rel%%/*}"
+                local after_first="${rel#*/}"
+                if [[ "$after_first" == "$rel" ]]; then
+                    continue  # malformed path
+                fi
+                # Check if second segment is a sub-project (e.g. Whmoro/orderguard)
+                local second="${after_first%%/*}"
+                local rest="${after_first#*/}"
+                if [[ -d "$projects_dir/$project/$second/.git" ]]; then
+                    project="$project/$second"
+                    local branch="$rest"
+                else
+                    local branch="$after_first"
+                fi
                 if [[ "$project" != "$current_project" ]]; then
                     current_project="$project"
                     echo "\n[$project]"
@@ -80,7 +94,10 @@ w() {
             echo "Worktree not found: $wt_path"
             return 1
         fi
-        (cd "$projects_dir/$project" && git worktree remove $force_flag "$wt_path" && git branch -D "$worktree" 2>/dev/null)
+        (cd "$projects_dir/$project" && git worktree remove $force_flag "$wt_path" && git branch -D "$worktree" 2>/dev/null) || {
+            echo "Failed to remove worktree. Use --force if it has uncommitted changes."
+            return 1
+        }
         # Clean up Claude Code settings for removed worktree
         WT_PATH="$wt_path" python3 -c "
 import json, os
@@ -92,43 +109,49 @@ if wt_path in d.get('projects', {}):
     del d['projects'][wt_path]
     with open(claude_config, 'w') as f:
         json.dump(d, f)
-    print('Cleaned up Claude Code settings')
+    print(f'Removed worktree project entry from ~/.claude.json')
 " 2>/dev/null
-        return $?
+        return 0
     fi
 
-    # -- Normal usage: w <project> <worktree> [--auto [--firewall]] [command...] --
+    # -- Normal usage: w <project> <worktree> [--docker [--firewall] [cmd...]] [command...] --
     local project="$1"
     local worktree="$2"
     shift 2 2>/dev/null
 
     # Parse flags
-    local auto_mode=0
+    local docker_mode=0
     local firewall_mode=0
     local command=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --auto) auto_mode=1; shift ;;
+            --docker) docker_mode=1; shift ;;
             --firewall) firewall_mode=1; shift ;;
             *) command+=("$1"); shift ;;
         esac
     done
 
     if [[ -z "$project" || -z "$worktree" ]]; then
-        echo "Usage: w <project> <worktree> [--auto [--firewall]] [command...]"
+        echo "Usage: w <project> <worktree> [--docker [--firewall] [cmd...]]"
+        echo "       w <project> <worktree> [command...]"
         echo "       w --list"
         echo "       w --rm <project> <worktree>"
         echo "       w --rebuild-image"
         echo ""
         echo "Flags:"
-        echo "  --auto       Run Claude in Docker with --dangerously-skip-permissions"
-        echo "  --firewall   Add egress firewall (only with --auto)"
+        echo "  --docker     Run in Docker container (shell by default, or specify command)"
+        echo "  --firewall   Add egress firewall (only with --docker)"
+        echo ""
+        echo "Examples:"
+        echo "  w myorg/app feature --docker              # shell in container"
+        echo "  w myorg/app feature --docker claude        # Claude in container"
+        echo "  w myorg/app feature --docker --firewall    # shell + firewall"
         return 1
     fi
 
     # Validate flag combinations
-    if [[ $firewall_mode -eq 1 && $auto_mode -eq 0 ]]; then
-        echo "Error: --firewall requires --auto"
+    if [[ $firewall_mode -eq 1 && $docker_mode -eq 0 ]]; then
+        echo "Error: --firewall requires --docker"
         return 1
     fi
 
@@ -140,6 +163,11 @@ if wt_path in d.get('projects', {}):
     # Find existing worktree
     local wt_path=""
     if [[ -d "$worktrees_dir/$project/$worktree" ]]; then
+        if [[ ! -f "$worktrees_dir/$project/$worktree/.git" ]]; then
+            echo "Error: $worktrees_dir/$project/$worktree exists but is not a valid worktree."
+            echo "Remove it manually or use a different branch name."
+            return 1
+        fi
         wt_path="$worktrees_dir/$project/$worktree"
     fi
 
@@ -148,7 +176,13 @@ if wt_path in d.get('projects', {}):
         echo "Creating worktree: $worktree (from develop)"
         mkdir -p "$worktrees_dir/$project"
         wt_path="$worktrees_dir/$project/$worktree"
-        (cd "$projects_dir/$project" && git fetch origin develop && \
+        # Fetch latest develop
+        (cd "$projects_dir/$project" && git fetch origin develop) || {
+            echo "Failed to fetch from origin. Check your network connection and that 'develop' exists on the remote."
+            return 1
+        }
+        # Create the worktree
+        (cd "$projects_dir/$project" && \
             if git show-ref --verify --quiet "refs/heads/$worktree"; then
                 echo "Using existing branch: $worktree"
                 git worktree add "$wt_path" "$worktree"
@@ -156,14 +190,22 @@ if wt_path in d.get('projects', {}):
                 git worktree add "$wt_path" -b "$worktree" origin/develop
             fi
         ) || {
-            echo "Failed to create worktree"
+            local current_branch
+            current_branch=$(cd "$projects_dir/$project" && git branch --show-current 2>/dev/null)
+            if [[ "$current_branch" == "$worktree" ]]; then
+                echo "Failed: branch '$worktree' is currently checked out in the main repo."
+                echo "Switch the main repo to a different branch first:"
+                echo "  cd $projects_dir/$project && git checkout develop"
+            else
+                echo "Failed to create worktree"
+            fi
             return 1
         }
         echo "Installing dependencies..."
-        (cd "$wt_path" && npm install)
+        (cd "$wt_path" && npm install) || echo "Warning: npm install failed. You may need to run it manually."
 
-        # Copy .env files from main project
-        for env_file in $(find "$projects_dir/$project" -maxdepth 2 -name ".env" -not -path "*/node_modules/*"); do
+        # Copy .env files from main project (includes .env.local, .env.development, etc. but not .env.example)
+        for env_file in $(find "$projects_dir/$project" -maxdepth 3 -name ".env*" -not -name "*.example" -not -path "*/node_modules/*" -not -path "*/.git/*"); do
             local rel_path="${env_file#$projects_dir/$project/}"
             local dest_dir="$wt_path/$(dirname "$rel_path")"
             mkdir -p "$dest_dir"
@@ -197,8 +239,8 @@ else:
 " 2>/dev/null
     fi
 
-    # -- Auto mode: run Claude in Docker --
-    if [[ $auto_mode -eq 1 ]]; then
+    # -- Docker mode: run in containerized environment --
+    if [[ $docker_mode -eq 1 ]]; then
         # Ensure Docker is available
         if ! command -v docker &>/dev/null; then
             echo "Error: docker is not installed or not in PATH"
@@ -237,6 +279,13 @@ else:
             -v "$HOME/.claude.json:/home/claude/.claude-host.json:ro"
             # Mount SSH keys for git/plugin access (read-only)
             -v "$HOME/.ssh:/home/claude/.ssh:ro"
+            # ── Statusline (ccstatusline) ───────────────────────────────
+            # Config mount: theme, widget layout, powerline settings (read-only)
+            # Cache mount: shares usage API cache with host to avoid 429 rate limits (read-write)
+            # Remove or change if you use a different statusline tool.
+            # -v "$HOME/.config/ccstatusline:/home/claude/.config/ccstatusline:ro"
+            # -v "$HOME/.cache/ccstatusline:/home/claude/.cache/ccstatusline:rw"
+            # ──────────────────────────────────────────────────────────
             # ── MCP dependencies ──────────────────────────────────────
             # Add read-only mounts for any MCP servers that reference local files.
             # Mount at the exact same host path so MCP configs work unchanged.
@@ -275,9 +324,21 @@ else:
         fi
 
         docker_args+=( claude-dev )
-        local mode_label="auto mode"
-        [[ $firewall_mode -eq 1 ]] && mode_label+=", firewall enabled"
-        echo "Starting Claude in Docker ($mode_label)..."
+
+        # If "claude" is the command, expand it to the full skip-permissions invocation
+        if [[ ${#command[@]} -gt 0 && "${command[1]}" == "claude" ]]; then
+            command=(claude --dangerously-skip-permissions)
+        fi
+
+        # Pass command to container (if any)
+        if [[ ${#command[@]} -gt 0 ]]; then
+            docker_args+=( "${command[@]}" )
+        fi
+
+        local mode_label="Docker"
+        [[ ${#command[@]} -gt 0 ]] && mode_label+=": ${command[1]}"
+        [[ $firewall_mode -eq 1 ]] && mode_label+=", firewall"
+        echo "Starting $mode_label..."
         echo "  Worktree: $wt_path"
         echo "  Ports: ${ports[*]}"
 
@@ -320,7 +381,7 @@ else:
 [[ -d ~/.zsh/completions ]] || mkdir -p ~/.zsh/completions
 fpath=(~/.zsh/completions $fpath)
 
-if [[ ! -f ~/.zsh/completions/_w ]] || true; then
+if [[ ! -f ~/.zsh/completions/_w ]]; then
     cat > ~/.zsh/completions/_w << 'COMPEOF'
 #compdef w
 
@@ -367,8 +428,8 @@ _w() {
             local -a common_commands
             common_commands=(
                 'claude:Start Claude Code session'
-                '--auto:Run Claude in Docker (skip-permissions)'
-                '--firewall:Add egress firewall (requires --auto)'
+                '--docker:Run in Docker container (shell or specify command)'
+                '--firewall:Add egress firewall (requires --docker)'
                 'code:Open in VS Code'
                 'npm:Run npm commands'
             )
