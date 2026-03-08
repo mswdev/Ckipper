@@ -48,6 +48,12 @@ fi
 
 cd /workspace
 
+# Disable GPG signing in local project config — the host's .git/config (mounted rw)
+# may have commit.gpgsign=true (possibly with duplicate values from tools like lefthook).
+# Global config alone isn't enough since local config takes precedence.
+git config --replace-all commit.gpgsign false 2>/dev/null || true
+git config --replace-all tag.gpgsign false 2>/dev/null || true
+
 # Fix Turbo cache path — worktrees resolve to the host's main repo path which isn't writable
 export TURBO_CACHE_DIR=/workspace/.turbo/cache
 

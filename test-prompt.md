@@ -32,7 +32,7 @@ Run a comprehensive environment test to verify this Docker container has everyth
 - Run `npx biome --version` — if this fails with "Exec format error", the entrypoint's npm install didn't fix native binaries
 - Run `npx turbo --version`
 - Run node --version, npm --version, python3 --version, git --version
-- Run `tmux new-session -d -s test 'echo hello' && tmux list-sessions && tmux kill-session -t test`
+- Run `tmux new-session -d -s test 'sleep 2' && sleep 1 && tmux list-sessions && tmux kill-session -t test`
 
 **6. Build the project**
 - Run the full build: npm run build
