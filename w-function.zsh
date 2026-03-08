@@ -286,6 +286,13 @@ else:
             # -v "$HOME/.config/ccstatusline:/home/claude/.config/ccstatusline:ro"
             # -v "$HOME/.cache/ccstatusline:/home/claude/.cache/ccstatusline:rw"
             # ──────────────────────────────────────────────────────────
+            # ── uvx/uv cache ─────────────────────────────────────────
+            # Named volume persists Python packages across container restarts.
+            # Without this, uvx-based MCP servers cold-start every launch
+            # (download Python + clone + install), often exceeding Claude's
+            # MCP startup timeout.
+            -v "claude-uv-cache:/home/claude/.cache/uv"
+            # ──────────────────────────────────────────────────────────
             # ── MCP dependencies ──────────────────────────────────────
             # Add read-only mounts for any MCP servers that reference local files.
             # Mount at the exact same host path so MCP configs work unchanged.
