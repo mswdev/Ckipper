@@ -46,6 +46,7 @@ w --rebuild-image                           # rebuild Docker image
 - Chromium headless (Playwright/Puppeteer) with `--no-sandbox`
 - Claude Code (native installer)
 - `uv`/`uvx` for Python-based MCP servers
+- `bun`/`bunx` for fast JS runtime and statusline commands
 - `iptables-legacy` for optional egress firewall
 - Non-root `claude` user
 
@@ -57,11 +58,12 @@ On every container start, `entrypoint.sh` automatically:
 2. **Disables Chrome extension checks** via jq (no browser in container)
 3. **Writes OAuth credentials** from `CLAUDE_CREDENTIALS` env var to `.credentials.json`
 4. **Sets git identity** (`user.name` / `user.email`) from `.claude.json` account info
-5. **Authenticates `gh` CLI** via `gh auth login --with-token` using `GH_TOKEN`
-6. **Enables egress firewall** if `ENABLE_FIREWALL=1`
-7. **Sets `TURBO_CACHE_DIR`** to `/workspace/.turbo/cache` (worktree git root points to unwritable host path)
-8. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
-9. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before `exec claude`
+5. **Disables GPG signing** via `GIT_CONFIG_COUNT` environment variables (no GPG key in container). Uses env vars instead of `git config` so the host's `.git/config` is never modified — the overrides disappear when the container exits
+6. **Authenticates `gh` CLI** — unsets `GH_TOKEN`, runs `gh auth login --with-token`, then `gh auth setup-git` (enables `git push` over HTTPS)
+7. **Enables egress firewall** if `ENABLE_FIREWALL=1`
+8. **Sets `TURBO_CACHE_DIR`** to `/workspace/.turbo/cache` (worktree git root points to unwritable host path)
+9. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
+10. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before `exec claude`
 
 ## Security
 
@@ -87,6 +89,7 @@ Three Claude Code hooks activate inside Docker:
 ### Additional Security
 
 - `core.hooksPath` set globally to `~/.git-hooks` — git ignores `.git/hooks/` so planted hooks can't execute on host
+- GPG signing disabled via `GIT_CONFIG_COUNT` env vars — no file modification, overrides both local and global config, disappears when container exits
 - Post-session `.git/config` tamper detection
 - Credentials cleared from environment before `exec claude` (invisible to `env` and `/proc/self/environ`)
 - `.claude.json` mounted read-only as staging copy (prevents race condition with host)
@@ -144,6 +147,7 @@ cat w-function.zsh >> ~/.zshrc
 # 1. Search for "MCP dependencies" — add your MCP mounts or remove the examples
 # 2. Search for "ports=" — change to your dev server ports
 # 3. Search for "develop" — change if your default branch is different
+# 4. Search for "ccstatusline" — uncomment the mount if you use a custom statusline
 
 # Build the Docker image (takes a few minutes first time)
 source ~/.zshrc
@@ -186,18 +190,19 @@ After setup, run the comprehensive environment test to verify everything works:
 w <your-project> test-branch --auto
 ```
 
-Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It tests:
+Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It covers 11 sections:
 
-- Entrypoint verification (env vars, git identity, Chrome disabled, Turbo cache)
-- File system access (read, write, delete)
+- Entrypoint verification (env vars, git identity, Chrome disabled, Turbo cache, credential clearing from `/proc/self/environ`)
+- File system access (read, write, delete, ownership, SSH read-only mount)
 - Code modification round-trip (Edit tool on mounted files)
-- Git operations (status, log, branch, commit, SSH, gh CLI)
-- Build tools (npm, biome, turbo, tmux)
+- Git operations (status, log, branch, commit, SSH, gh CLI, HTTPS push via credential helper)
+- Build tools (npm, biome, turbo, tmux, Chromium headless, uv/uvx, Python)
 - Full project build
 - Dev servers
 - Tests and linting
 - MCP and network access
-- Safety hooks (all 4 blocked actions)
+- Safety hooks (4 blocked actions + guardrail bypass testing)
+- Container isolation (non-root user, sudo restrictions, no Docker socket, setuid audit)
 
 See `test-prompt.md` for the full prompt and expected results table.
 
@@ -219,6 +224,10 @@ Worktrees are created from `origin/develop`. Search for `develop` in `w-function
 
 Search for "MCP dependencies" in `w-function.zsh` and add read-only volume mounts for any MCP servers that reference local files on your host.
 
+### Statusline
+
+If you use a custom statusline (like [ccstatusline](https://github.com/nicobailon/ccstatusline)), you may need to mount its config directory into the container. In `w-function.zsh`, search for "ccstatusline" and uncomment the mount line. The `bun` runtime is included in the container image for `bunx`-based statusline commands.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -238,3 +247,6 @@ Search for "MCP dependencies" in `w-function.zsh` and add read-only volume mount
 | Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `w --rebuild-image` if missing |
 | Branch already checked out | Switch main repo to different branch: `cd ~/Developer/<project> && git checkout develop` |
 | Stale worktree directory | Remove manually: `rm -rf ~/Developer/.worktrees/<project>/<branch>` |
+| Statusline not rendering correctly | Uncomment the ccstatusline mount in `w-function.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
+| GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
+| `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
