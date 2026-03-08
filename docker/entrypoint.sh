@@ -11,6 +11,15 @@ if [ -f "$HOME/.claude-host.json" ]; then
     fi
 fi
 
+# Symlink host home path so plugin configs with absolute host paths resolve.
+# Plugins store absolute host paths like /Users/<user>/.claude/plugins/... which don't exist
+# in the container where HOME=/home/claude. The symlink bridges the gap.
+if [ -n "$HOST_HOME" ] && [ "$HOST_HOME" != "$HOME" ]; then
+    mkdir -p "$HOST_HOME"
+    ln -sf "$HOME/.claude" "$HOST_HOME/.claude"
+    ln -sf "$HOME/.claude.json" "$HOST_HOME/.claude.json"
+fi
+
 # Write credentials from environment variable (macOS stores in Keychain, not on disk)
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
     echo "$CLAUDE_CREDENTIALS" > "$HOME/.claude/.credentials.json"
@@ -83,7 +92,7 @@ if [ -d node_modules ]; then
 fi
 
 # Clear credentials from environment (consumed above; exec ensures clean /proc/self/environ)
-unset CLAUDE_CREDENTIALS GH_TOKEN
+unset CLAUDE_CREDENTIALS GH_TOKEN HOST_HOME
 
 # Run the provided command, or drop to an interactive shell if none given.
 # When called via `w <project> <branch> --docker claude`, Docker passes

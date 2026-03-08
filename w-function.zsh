@@ -270,6 +270,7 @@ else:
         local docker_args=(
             docker run --rm -it
             -e TERM="${TERM:-xterm-256color}"
+            -e "HOST_HOME=$HOME"
             # Mount worktree as workspace
             -v "$wt_path:/workspace:rw"
             # Mount main repo .git at same absolute path (resolves worktree .git file)
