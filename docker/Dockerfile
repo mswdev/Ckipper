@@ -45,10 +45,10 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 RUN groupadd claude \
     && useradd -g claude -m -s /bin/bash claude \
     && echo "claude ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" >> /etc/sudoers.d/claude \
-    && mkdir -p /home/claude/.local/bin /home/claude/.ssh \
+    && mkdir -p /home/claude/.local/bin /home/claude/.ssh /home/claude/.config \
     && ln -s /usr/local/bin/claude /home/claude/.local/bin/claude \
     && ssh-keyscan -t ed25519,rsa github.com >> /home/claude/.ssh/known_hosts 2>/dev/null || true \
-    && chown -R claude:claude /home/claude/.local /home/claude/.ssh
+    && chown -R claude:claude /home/claude/.local /home/claude/.ssh /home/claude/.config
 
 # Install bun (fast JS runtime — needed for bunx-based statusline commands and general use)
 RUN curl -fsSL https://bun.sh/install | bash \
