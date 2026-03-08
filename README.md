@@ -119,6 +119,8 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 
 For MCPs that reference local files, add read-only volume mounts in `w-function.zsh` (search for "MCP dependencies"). Mount at the exact same host path so MCP configs work unchanged.
 
+A named Docker volume (`claude-uv-cache`) persists the uv/uvx package cache across container restarts. Without it, uvx-based MCP servers cold-start every launch (download Python + clone + install), often exceeding Claude Code's MCP startup timeout.
+
 ## Setup
 
 ### Prerequisites
@@ -257,3 +259,4 @@ The `bun` runtime is included in the container image. The entrypoint creates a `
 | Statusline not rendering correctly | Uncomment the ccstatusline mount in `w-function.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
+| uvx MCP server fails to start | Ensure `claude-uv-cache` volume mount is in `w-function.zsh`; first run populates cache |
