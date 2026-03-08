@@ -49,8 +49,11 @@ RUN groupadd claude \
     && ssh-keyscan -t ed25519,rsa github.com >> /home/claude/.ssh/known_hosts 2>/dev/null || true \
     && chown -R claude:claude /home/claude/.local /home/claude/.ssh
 
-# Create bunx shim (delegates to npx for statusline compatibility when bun isn't installed)
-RUN printf '#!/bin/sh\nnpx "$@"\n' > /usr/local/bin/bunx && chmod +x /usr/local/bin/bunx
+# Install bun (fast JS runtime — needed for bunx-based statusline commands and general use)
+RUN curl -fsSL https://bun.sh/install | bash \
+    && cp /root/.bun/bin/bun /usr/local/bin/bun \
+    && cp /root/.bun/bin/bunx /usr/local/bin/bunx \
+    && chmod +x /usr/local/bin/bun /usr/local/bin/bunx
 
 # Copy scripts
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
