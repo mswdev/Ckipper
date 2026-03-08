@@ -126,7 +126,6 @@ if wt_path in d.get('projects', {}):
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --docker) docker_mode=1; shift ;;
-            --auto) docker_mode=1; command=(claude --dangerously-skip-permissions); shift ;;
             --firewall) firewall_mode=1; shift ;;
             *) command+=("$1"); shift ;;
         esac
