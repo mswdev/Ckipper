@@ -18,15 +18,22 @@ if [ -n "$CLAUDE_CREDENTIALS" ]; then
 fi
 
 # Set git identity from .claude.json account info (needed for commits inside container)
-# Also disable GPG signing (no GPG key in container) and configure gh as git credential helper
 if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null; then
     git_name=$(jq -r '.oauthAccount.displayName // empty' "$HOME/.claude.json" 2>/dev/null)
     git_email=$(jq -r '.oauthAccount.emailAddress // empty' "$HOME/.claude.json" 2>/dev/null)
     [ -n "$git_name" ] && git config --global user.name "$git_name"
     [ -n "$git_email" ] && git config --global user.email "$git_email"
 fi
-git config --global commit.gpgsign false
-git config --global tag.gpgsign false
+
+# Disable GPG signing via environment (no GPG key in container).
+# Uses GIT_CONFIG_COUNT instead of git config so we never modify the host's
+# .git/config (mounted rw). Env vars take highest priority, overriding both
+# local and global config, and disappear when the container exits.
+export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_KEY_0=commit.gpgsign
+export GIT_CONFIG_VALUE_0=false
+export GIT_CONFIG_KEY_1=tag.gpgsign
+export GIT_CONFIG_VALUE_1=false
 
 # Persist GitHub token for gh CLI — must unset GH_TOKEN first because gh refuses
 # to store credentials while the env var is set (it treats the env var as authoritative)
@@ -47,12 +54,6 @@ if [ "$ENABLE_FIREWALL" = "1" ]; then
 fi
 
 cd /workspace
-
-# Disable GPG signing in local project config — the host's .git/config (mounted rw)
-# may have commit.gpgsign=true (possibly with duplicate values from tools like lefthook).
-# Global config alone isn't enough since local config takes precedence.
-git config --replace-all commit.gpgsign false 2>/dev/null || true
-git config --replace-all tag.gpgsign false 2>/dev/null || true
 
 # Fix Turbo cache path — worktrees resolve to the host's main repo path which isn't writable
 export TURBO_CACHE_DIR=/workspace/.turbo/cache

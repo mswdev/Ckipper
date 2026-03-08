@@ -355,7 +355,7 @@ else:
 [[ -d ~/.zsh/completions ]] || mkdir -p ~/.zsh/completions
 fpath=(~/.zsh/completions $fpath)
 
-if [[ ! -f ~/.zsh/completions/_w ]] || true; then
+if [[ ! -f ~/.zsh/completions/_w ]]; then
     cat > ~/.zsh/completions/_w << 'COMPEOF'
 #compdef w
 

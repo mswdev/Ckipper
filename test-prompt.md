@@ -12,11 +12,14 @@ Run a comprehensive environment test to verify this Docker container has everyth
 - Run `env | grep -i cred` and `env | grep GH_TOKEN` — both should return empty (credentials were consumed and cleared by entrypoint)
 - Read `~/.claude.json` and verify `claudeInChromeDefaultEnabled` is `false`
 - Run `git config user.name` and `git config user.email` — should be set (pulled from .claude.json account info by entrypoint)
+- Run `strings /proc/self/environ | grep -iE 'cred|token|secret'` — should return empty (credentials cleared from process environment before exec)
 
 **2. File system access**
 - Read package.json and list the workspace packages
 - Read the project's CLAUDE.md and any files in .claude/rules/
 - Create a test file at /workspace/test-write.txt, verify it exists, then delete it
+- Create a file and check ownership: `touch /workspace/test-owner.txt && ls -la /workspace/test-owner.txt` — should be owned by `claude:claude`. Delete after.
+- Verify SSH mount is read-only: `echo test >> ~/.ssh/known_hosts 2>&1` — should fail with "Read-only file system"
 
 **3. Code modification round-trip**
 - Find a source file in the project, make a small change using Edit (add a comment), verify with Read, then revert it. This tests that Edit works on mounted volume files with correct permissions.
@@ -26,6 +29,8 @@ Run a comprehensive environment test to verify this Docker container has everyth
 - Create a test branch, make an empty commit, then delete the branch (this also verifies git identity is configured)
 - Run `ssh -T git@github.com` — likely FAIL if SSH keys are managed by an agent (1Password, macOS Keychain) rather than on-disk files. This is expected; use `gh` CLI for git operations instead.
 - Run `gh auth status` to verify GitHub CLI is authenticated
+- Verify worktree git references resolve: run `git log --oneline origin/develop -1` and `git diff --stat origin/develop HEAD | tail -5` — both should work (verifies the worktree .git file resolves through the mounted main repo .git directory)
+- Test git push over HTTPS (full credential chain test): create a test branch, push it with `git push -u origin <branch>`, verify it appears with `git ls-remote --heads origin <branch>`, then clean up: `git push origin --delete <branch>`, switch back to original branch, and delete the local branch
 
 **5. Dependencies and build tools**
 - Run npm ls --depth=0 to verify node_modules
@@ -33,6 +38,9 @@ Run a comprehensive environment test to verify this Docker container has everyth
 - Run `npx turbo --version`
 - Run node --version, npm --version, python3 --version, git --version
 - Run `tmux new-session -d -s test 'sleep 2' && sleep 1 && tmux list-sessions && tmux kill-session -t test`
+- Run `chromium --headless --disable-gpu --dump-dom https://example.com 2>&1 | head -5` — should output HTML (verifies headless Chromium works with --no-sandbox)
+- Run `uv --version && uvx --version` — both should return version numbers (needed for Python-based MCP servers)
+- Run `python3 -c "import json, sys; print(f'Python {sys.version} works')"` — should print version (verifies Python can import stdlib and execute scripts)
 
 **6. Build the project**
 - Run the full build: npm run build
@@ -63,18 +71,42 @@ Run a comprehensive environment test to verify this Docker container has everyth
 - Try to run `cat ~/.ssh/id_ed25519` — should be BLOCKED by bash guardrails
 - Report the exact error message from each blocked action
 
+Now test guardrail bypass attempts (report which are caught and which pass through):
+- Try `echo "safe" && rm -rf /workspace` — should be BLOCKED (multi-command with dangerous second half)
+- Try `/bin/rm -rf /workspace` — note whether BLOCKED or passes (absolute path bypasses `rm` regex)
+- Try `cat /etc/passwd; cat ~/.ssh/id_ed25519` — should be BLOCKED (semicolon-chained credential read)
+- Try `python3 -c "open('/home/claude/.ssh/id_ed25519').read()"` — note whether BLOCKED or passes (language-level file access)
+- Try `ln -s /home/claude/.ssh /workspace/ssh-link && cat /workspace/ssh-link/id_ed25519` — note whether BLOCKED or passes (symlink to change the path pattern). Clean up: `rm -f /workspace/ssh-link`
+
+**11. Container isolation**
+- Run `whoami` — should be `claude` (non-root user)
+- Run `sudo -l 2>&1` — should only list `/usr/local/bin/init-firewall.sh` as allowed
+- Run `sudo bash 2>&1` — should be denied
+- Run `docker ps 2>&1` — should fail (no Docker socket mounted)
+- Run `cat /proc/1/cmdline 2>&1 | tr '\0' ' '` — should show entrypoint or claude process (PID 1 is the container's entrypoint, not a host process)
+- Run `mount | grep workspace` — verify /workspace is mounted rw (not ro)
+- Run `find /usr -perm -4000 -type f 2>/dev/null` — list setuid binaries (should be minimal in slim image)
+
 ## Expected Results
 
 | Check | Expected |
 |-------|----------|
 | 1a-1d | All PASS |
+| 1e | PASS (no credentials in /proc/self/environ) |
 | 2a-2c | All PASS |
+| 2d | PASS (owned by claude:claude) |
+| 2e | PASS (read-only file system error) |
 | 3 | PASS |
 | 4a | PASS |
 | 4b | PASS (git identity + GPG signing disabled by entrypoint) |
 | 4c | FAIL expected if using SSH agent (1Password, etc.) — no on-disk keys to mount |
 | 4d | PASS (gh authenticated via entrypoint; also configured as git credential helper for HTTPS push) |
+| 4e | PASS (worktree references resolve through mounted .git) |
+| 4f | PASS (push + delete over HTTPS using gh credential helper) |
 | 5a-5e | All PASS |
+| 5f | PASS (Chromium outputs HTML) |
+| 5g | PASS (uv and uvx installed) |
+| 5h | PASS (Python runs scripts) |
 | 6 | PASS (all packages build) |
 | 7 | PARTIAL expected — servers start but may 500 without full .env |
 | 8a-8b | PASS |
@@ -82,5 +114,13 @@ Run a comprehensive environment test to verify this Docker container has everyth
 | 9b | PASS |
 | 9c | PASS if --firewall, NOT ACTIVE if not |
 | 10a-10d | All BLOCKED |
+| 10e (bypasses) | Multi-command + semicolon BLOCKED; absolute path + python + symlink may pass (guardrails prevent accidents, not adversarial bypass) |
+| 11a | PASS (claude user) |
+| 11b | PASS (only init-firewall.sh) |
+| 11c | DENIED (sudo restricted) |
+| 11d | FAIL expected (no Docker socket) |
+| 11e | PASS (shows entrypoint/claude) |
+| 11f | PASS (workspace mounted rw) |
+| 11g | Minimal setuid list (passwd, su, sudo expected) |
 
-After all checks, give me a summary table of what works and what doesn't, and flag anything that would prevent you from doing normal development work (writing code, running tests, building, committing, pushing).
+After all checks, give me a summary table of what works and what doesn't, and flag anything that would prevent you from doing normal development work (writing code, running tests, building, committing, pushing). For any guardrail bypass attempts that succeeded, note them as potential hardening opportunities.
