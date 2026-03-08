@@ -197,8 +197,8 @@ if wt_path in d.get('projects', {}):
         echo "Installing dependencies..."
         (cd "$wt_path" && npm install) || echo "Warning: npm install failed. You may need to run it manually."
 
-        # Copy .env files from main project
-        for env_file in $(find "$projects_dir/$project" -maxdepth 2 -name ".env" -not -path "*/node_modules/*"); do
+        # Copy .env files from main project (includes .env.local, .env.development, etc. but not .env.example)
+        for env_file in $(find "$projects_dir/$project" -maxdepth 3 -name ".env*" -not -name "*.example" -not -path "*/node_modules/*" -not -path "*/.git/*"); do
             local rel_path="${env_file#$projects_dir/$project/}"
             local dest_dir="$wt_path/$(dirname "$rel_path")"
             mkdir -p "$dest_dir"
