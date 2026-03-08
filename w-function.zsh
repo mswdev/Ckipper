@@ -272,8 +272,11 @@ else:
             -v "$HOME/.claude.json:/home/claude/.claude-host.json:ro"
             # Mount SSH keys for git/plugin access (read-only)
             -v "$HOME/.ssh:/home/claude/.ssh:ro"
-            # Mount tool configs (statusline, etc.) so user customizations work in container
-            -v "$HOME/.config:/home/claude/.config:ro"
+            # ── Statusline config ─────────────────────────────────────
+            # Mount ccstatusline config if you use bunx ccstatusline for your
+            # statusline. Remove or change if you use a different statusline tool.
+            # -v "$HOME/.config/ccstatusline:/home/claude/.config/ccstatusline:ro"
+            # ──────────────────────────────────────────────────────────
             # ── MCP dependencies ──────────────────────────────────────
             # Add read-only mounts for any MCP servers that reference local files.
             # Mount at the exact same host path so MCP configs work unchanged.
