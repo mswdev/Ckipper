@@ -94,7 +94,7 @@ Three Claude Code hooks activate inside Docker:
 - `core.hooksPath` set globally to `~/.git-hooks` — git ignores `.git/hooks/` so planted hooks can't execute on host
 - GPG signing disabled via `GIT_CONFIG_COUNT` env vars — no file modification, overrides both local and global config, disappears when container exits
 - Post-session `.git/config` tamper detection
-- Credentials cleared from environment before `exec claude` (invisible to `env` and `/proc/self/environ`)
+- Credentials cleared from environment before launching the command (invisible to `env` and `/proc/self/environ`)
 - `.claude.json` mounted read-only as staging copy (prevents race condition with host)
 - No Docker socket mounted (cannot create sibling containers)
 
