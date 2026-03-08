@@ -270,7 +270,6 @@ else:
         local docker_args=(
             docker run --rm -it
             -e TERM="${TERM:-xterm-256color}"
-            -e "HOST_HOME=$HOME"
             # Mount worktree as workspace
             -v "$wt_path:/workspace:rw"
             # Mount main repo .git at same absolute path (resolves worktree .git file)
@@ -278,6 +277,10 @@ else:
             # Mount Claude auth and config
             -v "$HOME/.claude:/home/claude/.claude:rw"
             -v "$HOME/.claude.json:/home/claude/.claude-host.json:ro"
+            # Mount .claude at host path too — plugins store absolute host paths
+            # (e.g. /Users/<user>/.claude/plugins/...) that don't resolve at
+            # the container's /home/claude/.claude. This dual mount makes both work.
+            -v "$HOME/.claude:$HOME/.claude:rw"
             # Mount SSH keys for git/plugin access (read-only)
             -v "$HOME/.ssh:/home/claude/.ssh:ro"
             # ── Statusline (ccstatusline) ───────────────────────────────

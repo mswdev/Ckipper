@@ -42,13 +42,10 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
     && chmod +x /usr/local/bin/claude
 
 # Create non-root user and pre-seed SSH known hosts
-# /Users is created writable so the entrypoint can symlink the host's home path
-# (e.g. /Users/<user>/.claude → /home/claude/.claude) for plugin path resolution.
 RUN groupadd claude \
     && useradd -g claude -m -s /bin/bash claude \
     && echo "claude ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" >> /etc/sudoers.d/claude \
-    && mkdir -p /Users /home/claude/.local/bin /home/claude/.ssh /home/claude/.config /home/claude/.cache/uv \
-    && chown claude:claude /Users \
+    && mkdir -p /home/claude/.local/bin /home/claude/.ssh /home/claude/.config /home/claude/.cache/uv \
     && ln -s /usr/local/bin/claude /home/claude/.local/bin/claude \
     && ssh-keyscan -t ed25519,rsa github.com >> /home/claude/.ssh/known_hosts 2>/dev/null || true \
     && chown -R claude:claude /home/claude/.local /home/claude/.ssh /home/claude/.config /home/claude/.cache
