@@ -6,7 +6,7 @@ Docker-based sandbox for running Claude Code with `--dangerously-skip-permission
 
 - **`w-function.zsh`** — zsh function that manages worktrees (`git worktree add`), builds/runs Docker containers, extracts macOS Keychain credentials, forwards ports, and detects `.git/config` tampering post-session. Includes tab completion.
 - **`docker/Dockerfile`** — `node:24-slim` image with dev tools (git, gh, ripgrep, tmux, Chromium, uv/uvx, bun, Claude Code native installer). Runs as non-root `claude` user.
-- **`docker/entrypoint.sh`** — Container startup: copies `.claude.json` from read-only staging mount, writes credentials to disk, sets git identity, disables GPG signing via `GIT_CONFIG_COUNT`, authenticates `gh` CLI, optionally enables firewall, runs `npm install` for Linux binaries, clears credential env vars, then `exec claude --dangerously-skip-permissions`.
+- **`docker/entrypoint.sh`** — Container startup: copies `.claude.json` from read-only staging mount, writes credentials to disk, sets git identity, disables GPG signing via `GIT_CONFIG_COUNT`, authenticates `gh` CLI, optionally enables firewall, creates `bunx` wrapper for statusline colors, runs `npm install` for Linux binaries, clears credential env vars, then runs the provided command (or drops to bash shell if none).
 - **`hooks/`** — Three Claude Code hooks (registered in `settings-hooks.json`):
   - `protect-claude-config.sh` — PreToolUse on Edit/Write: blocks modifications to `.claude/settings.json`, hooks, plugins
   - `bash-guardrails.sh` — PreToolUse on Bash: blocks `rm -rf`, `git push --force`, `git reset --hard`, `.git/hooks` writes, recursive `chmod`/`chown`, credential file reads, Claude config modification via shell
@@ -39,7 +39,7 @@ Two copies of the code exist: this repo (development) and deployed files on the 
 
 ## Testing
 
-`test-prompt.md` is the validation suite. It has 11 sections covering entrypoint verification, filesystem access, git operations, build tools, safety hooks (including bypass attempts), and container isolation. Run it by starting a Docker session (`w <project> <branch> --auto`) and pasting the prompt contents.
+`test-prompt.md` is the validation suite. It has 11 sections covering entrypoint verification, filesystem access, git operations, build tools, safety hooks (including bypass attempts), and container isolation. Run it by starting a Docker session (`w <project> <branch> --docker claude`) and pasting the prompt contents.
 
 ## Key Implementation Details
 

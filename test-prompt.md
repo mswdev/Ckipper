@@ -1,7 +1,7 @@
 # Docker Container Environment Test
 
 Copy this prompt into a Claude Code session running inside the Docker container
-(`w <project> <branch> --auto`) to verify everything works.
+(`w <project> <branch> --docker claude`) to verify everything works.
 
 ---
 

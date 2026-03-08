@@ -58,6 +58,21 @@ cd /workspace
 # Fix Turbo cache path — worktrees resolve to the host's main repo path which isn't writable
 export TURBO_CACHE_DIR=/workspace/.turbo/cache
 
+# Force truecolor output for statusline — Claude Code may not pass FORCE_COLOR
+# to the statusline subprocess, so we inject it via a bunx wrapper that sits
+# earlier in PATH (~/.local/bin is prepended in Dockerfile). The wrapper also
+# unsets NO_COLOR to prevent chalk from stripping ANSI codes.
+export FORCE_COLOR=3
+export COLORTERM=truecolor
+cat > "$HOME/.local/bin/bunx" << 'WRAPPER'
+#!/bin/bash
+export FORCE_COLOR=3
+export COLORTERM=truecolor
+unset NO_COLOR
+exec /usr/local/bin/bunx "$@"
+WRAPPER
+chmod +x "$HOME/.local/bin/bunx"
+
 # Reinstall native binaries for Linux — npm install on the host (macOS) pulls
 # macOS-specific binaries (rollup, biome, esbuild, swc, etc.) that don't work
 # inside the Linux container. npm rebuild requires gcc which isn't installed,
@@ -70,5 +85,12 @@ fi
 # Clear credentials from environment (consumed above; exec ensures clean /proc/self/environ)
 unset CLAUDE_CREDENTIALS GH_TOKEN
 
-# Start interactive Claude session with skip-permissions
-exec claude --dangerously-skip-permissions
+# Run the provided command, or drop to an interactive shell if none given.
+# When called via `w <project> <branch> --docker claude`, Docker passes
+# "claude --dangerously-skip-permissions" as arguments. Without arguments
+# (just `--docker`), the user gets a fully set-up bash shell.
+if [ $# -gt 0 ]; then
+    exec "$@"
+else
+    exec /bin/bash
+fi

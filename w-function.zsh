@@ -1,12 +1,13 @@
 # ── Worktree Manager ──────────────────────────────────────────────
 # Usage:
-#   w <project> <branch-name>                   cd to worktree (creates if needed)
-#   w <project> <branch-name> <cmd>             run command in worktree (e.g. claude)
-#   w <project> <branch-name> --auto            run Claude in Docker (skip-permissions)
-#   w <project> <branch-name> --auto --firewall same as above + egress firewall
-#   w --list                                    list all worktrees
-#   w --rm <project> <branch-name>              remove worktree + delete branch
-#   w --rebuild-image                           rebuild claude-dev Docker image
+#   w <project> <branch-name>                     cd to worktree (creates if needed)
+#   w <project> <branch-name> <cmd>               run command in worktree (e.g. claude)
+#   w <project> <branch-name> --docker             shell in Docker container
+#   w <project> <branch-name> --docker claude      Claude in Docker (skip-permissions)
+#   w <project> <branch-name> --docker --firewall  Docker + egress firewall
+#   w --list                                       list all worktrees
+#   w --rm <project> <branch-name>                 remove worktree + delete branch
+#   w --rebuild-image                              rebuild claude-dev Docker image
 #
 # <project> is a path relative to ~/Developer (e.g. "Whmoro/orderguard", "my-app")
 #
@@ -113,38 +114,45 @@ if wt_path in d.get('projects', {}):
         return 0
     fi
 
-    # -- Normal usage: w <project> <worktree> [--auto [--firewall]] [command...] --
+    # -- Normal usage: w <project> <worktree> [--docker [--firewall] [cmd...]] [command...] --
     local project="$1"
     local worktree="$2"
     shift 2 2>/dev/null
 
     # Parse flags
-    local auto_mode=0
+    local docker_mode=0
     local firewall_mode=0
     local command=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --auto) auto_mode=1; shift ;;
+            --docker) docker_mode=1; shift ;;
+            --auto) docker_mode=1; command=(claude --dangerously-skip-permissions); shift ;;
             --firewall) firewall_mode=1; shift ;;
             *) command+=("$1"); shift ;;
         esac
     done
 
     if [[ -z "$project" || -z "$worktree" ]]; then
-        echo "Usage: w <project> <worktree> [--auto [--firewall]] [command...]"
+        echo "Usage: w <project> <worktree> [--docker [--firewall] [cmd...]]"
+        echo "       w <project> <worktree> [command...]"
         echo "       w --list"
         echo "       w --rm <project> <worktree>"
         echo "       w --rebuild-image"
         echo ""
         echo "Flags:"
-        echo "  --auto       Run Claude in Docker with --dangerously-skip-permissions"
-        echo "  --firewall   Add egress firewall (only with --auto)"
+        echo "  --docker     Run in Docker container (shell by default, or specify command)"
+        echo "  --firewall   Add egress firewall (only with --docker)"
+        echo ""
+        echo "Examples:"
+        echo "  w myorg/app feature --docker              # shell in container"
+        echo "  w myorg/app feature --docker claude        # Claude in container"
+        echo "  w myorg/app feature --docker --firewall    # shell + firewall"
         return 1
     fi
 
     # Validate flag combinations
-    if [[ $firewall_mode -eq 1 && $auto_mode -eq 0 ]]; then
-        echo "Error: --firewall requires --auto"
+    if [[ $firewall_mode -eq 1 && $docker_mode -eq 0 ]]; then
+        echo "Error: --firewall requires --docker"
         return 1
     fi
 
@@ -232,8 +240,8 @@ else:
 " 2>/dev/null
     fi
 
-    # -- Auto mode: run Claude in Docker --
-    if [[ $auto_mode -eq 1 ]]; then
+    # -- Docker mode: run in containerized environment --
+    if [[ $docker_mode -eq 1 ]]; then
         # Ensure Docker is available
         if ! command -v docker &>/dev/null; then
             echo "Error: docker is not installed or not in PATH"
@@ -272,10 +280,12 @@ else:
             -v "$HOME/.claude.json:/home/claude/.claude-host.json:ro"
             # Mount SSH keys for git/plugin access (read-only)
             -v "$HOME/.ssh:/home/claude/.ssh:ro"
-            # ── Statusline config ─────────────────────────────────────
-            # Mount ccstatusline config if you use bunx ccstatusline for your
-            # statusline. Remove or change if you use a different statusline tool.
+            # ── Statusline (ccstatusline) ───────────────────────────────
+            # Config mount: theme, widget layout, powerline settings (read-only)
+            # Cache mount: shares usage API cache with host to avoid 429 rate limits (read-write)
+            # Remove or change if you use a different statusline tool.
             # -v "$HOME/.config/ccstatusline:/home/claude/.config/ccstatusline:ro"
+            # -v "$HOME/.cache/ccstatusline:/home/claude/.cache/ccstatusline:rw"
             # ──────────────────────────────────────────────────────────
             # ── MCP dependencies ──────────────────────────────────────
             # Add read-only mounts for any MCP servers that reference local files.
@@ -315,9 +325,21 @@ else:
         fi
 
         docker_args+=( claude-dev )
-        local mode_label="auto mode"
-        [[ $firewall_mode -eq 1 ]] && mode_label+=", firewall enabled"
-        echo "Starting Claude in Docker ($mode_label)..."
+
+        # If "claude" is the command, expand it to the full skip-permissions invocation
+        if [[ ${#command[@]} -gt 0 && "${command[1]}" == "claude" ]]; then
+            command=(claude --dangerously-skip-permissions)
+        fi
+
+        # Pass command to container (if any)
+        if [[ ${#command[@]} -gt 0 ]]; then
+            docker_args+=( "${command[@]}" )
+        fi
+
+        local mode_label="Docker"
+        [[ ${#command[@]} -gt 0 ]] && mode_label+=": ${command[1]}"
+        [[ $firewall_mode -eq 1 ]] && mode_label+=", firewall"
+        echo "Starting $mode_label..."
         echo "  Worktree: $wt_path"
         echo "  Ports: ${ports[*]}"
 
@@ -407,8 +429,8 @@ _w() {
             local -a common_commands
             common_commands=(
                 'claude:Start Claude Code session'
-                '--auto:Run Claude in Docker (skip-permissions)'
-                '--firewall:Add egress firewall (requires --auto)'
+                '--docker:Run in Docker container (shell or specify command)'
+                '--firewall:Add egress firewall (requires --docker)'
                 'code:Open in VS Code'
                 'npm:Run npm commands'
             )

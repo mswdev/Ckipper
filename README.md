@@ -11,7 +11,7 @@ Claude Code's `--dangerously-skip-permissions` lets Claude work autonomously wit
 ## The Solution
 
 ```bash
-w Whmoro/orderguard my-feature --auto
+w Whmoro/orderguard my-feature --docker claude
 ```
 
 This creates a git worktree, spins up a Docker container, and runs Claude inside it. Claude thinks it has full permissions, but it can only access the worktree you gave it. Your Documents, other projects, and system files are completely inaccessible.
@@ -22,20 +22,21 @@ This creates a git worktree, spins up a Docker container, and runs Claude inside
 - **Installs dependencies** and copies `.env` files from the main project
 - **Launches a Docker container** with the worktree mounted at `/workspace`
 - **Entrypoint sets up the environment**: installs Linux-native binaries, configures git identity, authenticates `gh` CLI, sets Turbo cache path, optionally enables firewall
-- **Runs Claude Code** in autonomous mode inside the container
+- **Runs Claude Code** in autonomous mode inside the container (when `claude` is specified)
 - **Destroys the container** on exit (`--rm`) — the worktree persists for review
 - **Warns you** if `.git/config` was modified during the session
 
 ## Quick Reference
 
 ```bash
-w myorg/myapp feature-x --auto              # Docker autonomous mode
-w myorg/myapp feature-x --auto --firewall   # + egress firewall
-w myorg/myapp feature-x                     # cd to worktree (no Docker)
-w myorg/myapp feature-x claude              # run Claude in worktree (no Docker)
-w --list                                    # list all worktrees
-w --rm myorg/myapp feature-x               # remove worktree + delete branch
-w --rebuild-image                           # rebuild Docker image
+w myorg/myapp feature-x --docker claude        # Claude in Docker (skip-permissions)
+w myorg/myapp feature-x --docker               # shell in Docker container
+w myorg/myapp feature-x --docker --firewall    # Docker + egress firewall
+w myorg/myapp feature-x                        # cd to worktree (no Docker)
+w myorg/myapp feature-x claude                 # run Claude in worktree (no Docker)
+w --list                                       # list all worktrees
+w --rm myorg/myapp feature-x                   # remove worktree + delete branch
+w --rebuild-image                              # rebuild Docker image
 ```
 
 `<project>` is a relative path under `~/Developer/` (e.g. `Whmoro/orderguard`, `Vibma`). Tab completion is included.
@@ -62,8 +63,10 @@ On every container start, `entrypoint.sh` automatically:
 6. **Authenticates `gh` CLI** — unsets `GH_TOKEN`, runs `gh auth login --with-token`, then `gh auth setup-git` (enables `git push` over HTTPS)
 7. **Enables egress firewall** if `ENABLE_FIREWALL=1`
 8. **Sets `TURBO_CACHE_DIR`** to `/workspace/.turbo/cache` (worktree git root points to unwritable host path)
-9. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
-10. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before `exec claude`
+9. **Forces truecolor statusline** — creates a `bunx` wrapper that injects `FORCE_COLOR=3` (Claude Code doesn't pass it to subprocesses)
+10. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
+11. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before launching the command
+12. **Runs the specified command** — `claude --dangerously-skip-permissions` if `claude` was passed, otherwise drops to an interactive bash shell
 
 ## Security
 
@@ -98,7 +101,7 @@ Three Claude Code hooks activate inside Docker:
 ### Optional Egress Firewall
 
 ```bash
-w myorg/myapp feature-x --auto --firewall
+w myorg/myapp feature-x --docker --firewall claude
 ```
 
 Default-deny iptables firewall that only allows outbound traffic to whitelisted domains. Uses `iptables-legacy` (Docker Desktop doesn't support `nf_tables`). DNS auto-detected from `/etc/resolv.conf`. Blocked requests silently drop (~60s timeout).
@@ -154,7 +157,7 @@ source ~/.zshrc
 w --rebuild-image
 
 # Test it
-w <your-project> test-branch --auto
+w <your-project> test-branch --docker claude
 ```
 
 ### Option 2: Let Claude Do It
@@ -187,7 +190,7 @@ Tokens are short-lived (~6 hours). If they expire mid-session, exit the containe
 After setup, run the comprehensive environment test to verify everything works:
 
 ```bash
-w <your-project> test-branch --auto
+w <your-project> test-branch --docker claude
 ```
 
 Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It covers 11 sections:
@@ -226,7 +229,11 @@ Search for "MCP dependencies" in `w-function.zsh` and add read-only volume mount
 
 ### Statusline
 
-If you use a custom statusline (like [ccstatusline](https://github.com/nicobailon/ccstatusline)), you may need to mount its config directory into the container. In `w-function.zsh`, search for "ccstatusline" and uncomment the mount line. The `bun` runtime is included in the container image for `bunx`-based statusline commands.
+If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), uncomment the mounts in `w-function.zsh` (search for "ccstatusline"):
+- **Config mount** (`~/.config/ccstatusline`, read-only) — theme, widget layout, powerline settings
+- **Cache mount** (`~/.cache/ccstatusline`, read-write) — shares usage API cache with host to avoid 429 rate limits
+
+The `bun` runtime is included in the container image. The entrypoint creates a `bunx` wrapper that injects `FORCE_COLOR=3` for truecolor statusline output (Claude Code doesn't pass this to subprocesses).
 
 ## Troubleshooting
 
