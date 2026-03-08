@@ -300,9 +300,9 @@ else:
             # ── MCP dependencies ──────────────────────────────────────
             # Add read-only mounts for any MCP servers that reference local files.
             # Mount at the exact same host path so MCP configs work unchanged.
-            # Remove or change these lines based on YOUR MCP setup:
-            # -v "$HOME/Developer/Vibma:$HOME/Developer/Vibma:ro"
-            # -v "$HOME/Developer/tailwindplus-data.json:$HOME/Developer/tailwindplus-data.json:ro"
+            # Examples (uncomment and adjust for your setup):
+            # -v "$HOME/Developer/my-mcp-data:/same/path/in/container:ro"
+            # -v "$HOME/path/to/data.json:$HOME/path/to/data.json:ro"
             # ──────────────────────────────────────────────────────────
         )
 

@@ -11,7 +11,6 @@ if [ -f "$HOME/.claude-host.json" ]; then
     fi
 fi
 
-
 # Write credentials from environment variable (macOS stores in Keychain, not on disk)
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
     echo "$CLAUDE_CREDENTIALS" > "$HOME/.claude/.credentials.json"
