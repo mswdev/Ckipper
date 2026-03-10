@@ -19,7 +19,8 @@ Run a comprehensive environment test to verify this Docker container has everyth
 - Read the project's CLAUDE.md and any files in .claude/rules/
 - Create a test file at /workspace/test-write.txt, verify it exists, then delete it
 - Create a file and check ownership: `touch /workspace/test-owner.txt && ls -la /workspace/test-owner.txt` — should be owned by `claude:claude`. Delete after.
-- Verify SSH mount is read-only: `echo test >> ~/.ssh/known_hosts 2>&1` — should fail with "Read-only file system"
+- Verify SSH staging mount is read-only: `echo test >> ~/.ssh-host/known_hosts 2>&1` — should fail with "Read-only file system"
+- Verify SSH config was sanitized: `grep -i UseKeychain ~/.ssh/config 2>&1` — should return no matches (or no config file)
 
 **3. Code modification round-trip**
 - Find a source file in the project, make a small change using Edit (add a comment), verify with Read, then revert it. This tests that Edit works on mounted volume files with correct permissions.
@@ -27,7 +28,7 @@ Run a comprehensive environment test to verify this Docker container has everyth
 **4. Git operations**
 - Run git status and git log --oneline -5
 - Create a test branch, make an empty commit, then delete the branch (this also verifies git identity is configured)
-- Run `ssh -T git@github.com` — likely FAIL if SSH keys are managed by an agent (1Password, macOS Keychain) rather than on-disk files. This is expected; use `gh` CLI for git operations instead.
+- Run `ssh -T git@github.com` — should succeed with "Hi <user>! You've successfully authenticated" (SSH agent is forwarded from host via Docker Desktop)
 - Run `gh auth status` to verify GitHub CLI is authenticated
 - Verify worktree git references resolve: run `git log --oneline origin/develop -1` and `git diff --stat origin/develop HEAD | tail -5` — both should work (verifies the worktree .git file resolves through the mounted main repo .git directory)
 - Test git push over HTTPS (full credential chain test): create a test branch, push it with `git push -u origin <branch>`, verify it appears with `git ls-remote --heads origin <branch>`, then clean up: `git push origin --delete <branch>`, switch back to original branch, and delete the local branch
@@ -95,11 +96,11 @@ Now test guardrail bypass attempts (report which are caught and which pass throu
 | 1e | PASS (no credentials in /proc/self/environ) |
 | 2a-2c | All PASS |
 | 2d | PASS (owned by claude:claude) |
-| 2e | PASS (read-only file system error) |
+| 2e | PASS (read-only file system error on .ssh-host; UseKeychain stripped from config) |
 | 3 | PASS |
 | 4a | PASS |
 | 4b | PASS (git identity + GPG signing disabled by entrypoint) |
-| 4c | FAIL expected if using SSH agent (1Password, etc.) — no on-disk keys to mount |
+| 4c | PASS (SSH agent forwarded from host via Docker Desktop socket) |
 | 4d | PASS (gh authenticated via entrypoint; also configured as git credential helper for HTTPS push) |
 | 4e | PASS (worktree references resolve through mounted .git) |
 | 4f | PASS (push + delete over HTTPS using gh credential helper) |
