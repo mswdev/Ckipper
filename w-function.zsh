@@ -285,8 +285,13 @@ else:
             # (e.g. /Users/<user>/.claude/plugins/...) that don't resolve at
             # the container's /home/claude/.claude. This dual mount makes both work.
             -v "$HOME/.claude:$HOME/.claude:rw"
-            # Mount SSH keys for git/plugin access (read-only)
-            -v "$HOME/.ssh:/home/claude/.ssh:ro"
+            # Mount SSH config as staging copy (sanitized by entrypoint)
+            -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
+            # Forward host's SSH agent (Docker Desktop for Mac).
+            # Lets the container authenticate using the host's SSH keys
+            # without copying them. Works with 1Password and macOS Keychain agents.
+            -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+            -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
             # ── Statusline (ccstatusline) ───────────────────────────────
             # Config mount: theme, widget layout, powerline settings (read-only)
             # Cache mount: shares usage API cache with host to avoid 429 rate limits (read-write)
