@@ -11,6 +11,17 @@ if [ -f "$HOME/.claude-host.json" ]; then
     fi
 fi
 
+# Copy SSH config from staging mount, stripping macOS-specific options.
+# Same pattern as .claude.json → .claude-host.json.
+if [ -d "$HOME/.ssh-host" ]; then
+    cp -a "$HOME/.ssh-host/." "$HOME/.ssh/" 2>/dev/null || true
+    chmod 700 "$HOME/.ssh"
+    # UseKeychain is Apple-specific (not in upstream OpenSSH); causes errors on Linux
+    if [ -f "$HOME/.ssh/config" ]; then
+        sed -i '/^\s*UseKeychain\b/Id' "$HOME/.ssh/config"
+    fi
+fi
+
 # Write credentials from environment variable (macOS stores in Keychain, not on disk)
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
     echo "$CLAUDE_CREDENTIALS" > "$HOME/.claude/.credentials.json"

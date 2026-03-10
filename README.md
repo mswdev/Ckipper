@@ -56,17 +56,18 @@ w --rebuild-image                              # rebuild Docker image
 On every container start, `entrypoint.sh` automatically:
 
 1. **Copies `.claude.json`** from read-only staging mount to writable location (prevents race condition with host)
-2. **Disables Chrome extension checks** via jq (no browser in container)
-3. **Writes OAuth credentials** from `CLAUDE_CREDENTIALS` env var to `.credentials.json`
-4. **Sets git identity** (`user.name` / `user.email`) from `.claude.json` account info
-5. **Disables GPG signing** via `GIT_CONFIG_COUNT` environment variables (no GPG key in container). Uses env vars instead of `git config` so the host's `.git/config` is never modified — the overrides disappear when the container exits
-6. **Authenticates `gh` CLI** — unsets `GH_TOKEN`, runs `gh auth login --with-token`, then `gh auth setup-git` (enables `git push` over HTTPS)
-7. **Enables egress firewall** if `ENABLE_FIREWALL=1`
-8. **Sets `TURBO_CACHE_DIR`** to `/workspace/.turbo/cache` (worktree git root points to unwritable host path)
-9. **Forces truecolor statusline** — creates a `bunx` wrapper that injects `FORCE_COLOR=3` (Claude Code doesn't pass it to subprocesses)
-10. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
-11. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before launching the command
-12. **Runs the specified command** — `claude --dangerously-skip-permissions` if `claude` was passed, otherwise drops to an interactive bash shell
+2. **Copies and sanitizes SSH config** from read-only `.ssh-host` staging mount — strips macOS-specific `UseKeychain` option that breaks Linux OpenSSH
+3. **Disables Chrome extension checks** via jq (no browser in container)
+4. **Writes OAuth credentials** from `CLAUDE_CREDENTIALS` env var to `.credentials.json`
+5. **Sets git identity** (`user.name` / `user.email`) from `.claude.json` account info
+6. **Disables GPG signing** via `GIT_CONFIG_COUNT` environment variables (no GPG key in container). Uses env vars instead of `git config` so the host's `.git/config` is never modified — the overrides disappear when the container exits
+7. **Authenticates `gh` CLI** — unsets `GH_TOKEN`, runs `gh auth login --with-token`, then `gh auth setup-git` (enables `git push` over HTTPS)
+8. **Enables egress firewall** if `ENABLE_FIREWALL=1`
+9. **Sets `TURBO_CACHE_DIR`** to `/workspace/.turbo/cache` (worktree git root points to unwritable host path)
+10. **Forces truecolor statusline** — creates a `bunx` wrapper that injects `FORCE_COLOR=3` (Claude Code doesn't pass it to subprocesses)
+11. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
+12. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before launching the command
+13. **Runs the specified command** — `claude --dangerously-skip-permissions` if `claude` was passed, otherwise drops to an interactive bash shell
 
 ## Security
 
@@ -96,6 +97,8 @@ Three Claude Code hooks activate inside Docker:
 - Post-session `.git/config` tamper detection
 - Credentials cleared from environment before launching the command (invisible to `env` and `/proc/self/environ`)
 - `.claude.json` mounted read-only as staging copy (prevents race condition with host)
+- SSH config mounted read-only as staging copy (`.ssh-host`), copied and sanitized by entrypoint — macOS-specific `UseKeychain` stripped
+- SSH agent forwarded from host via Docker Desktop socket (`/run/host-services/ssh-auth.sock`) — no private keys copied into container
 - `~/.claude` dual-mounted at both `/home/claude/.claude` and the host path (e.g. `/Users/<user>/.claude`) so plugins with hardcoded absolute paths resolve correctly
 - No Docker socket mounted (cannot create sibling containers)
 
@@ -129,7 +132,7 @@ A named Docker volume (`claude-uv-cache`) persists the uv/uvx package cache acro
 - **macOS** with zsh
 - **Docker Desktop** installed and running
 - **Claude Code** installed and authenticated (`claude` command works)
-- **SSH keys** in `~/.ssh/` with GitHub access
+- **GitHub auth**: SSH keys added to your SSH agent, or `gh auth login` on host
 - **jq** installed (`brew install jq`)
 
 ### Option 1: Manual Install
@@ -199,9 +202,9 @@ w <your-project> test-branch --docker claude
 Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It covers 11 sections:
 
 - Entrypoint verification (env vars, git identity, Chrome disabled, Turbo cache, credential clearing from `/proc/self/environ`)
-- File system access (read, write, delete, ownership, SSH read-only mount)
+- File system access (read, write, delete, ownership, SSH staging mount, config sanitization)
 - Code modification round-trip (Edit tool on mounted files)
-- Git operations (status, log, branch, commit, SSH, gh CLI, HTTPS push via credential helper)
+- Git operations (status, log, branch, commit, SSH agent forwarding, gh CLI, HTTPS push via credential helper)
 - Build tools (npm, biome, turbo, tmux, Chromium headless, uv/uvx, Python)
 - Full project build
 - Dev servers
@@ -258,6 +261,7 @@ The `bun` runtime is included in the container image. The entrypoint creates a `
 | Branch already checked out | Switch main repo to different branch: `cd ~/Developer/<project> && git checkout develop` |
 | Stale worktree directory | Remove manually: `rm -rf ~/Developer/.worktrees/<project>/<branch>` |
 | Statusline not rendering correctly | Uncomment the ccstatusline mount in `w-function.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
+| `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
 | uvx MCP server fails to start | Ensure `claude-uv-cache` volume mount is in `w-function.zsh`; first run populates cache |
