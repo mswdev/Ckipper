@@ -263,9 +263,13 @@ else:
         local claude_creds
         claude_creds=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null) || true
 
-        # Extract GitHub token from .claude.json for gh CLI auth
+        # Extract GitHub token for gh CLI auth inside container
+        # Try .claude.json MCP config first, then fall back to host's gh CLI auth
         local gh_token
         gh_token=$(jq -r '.mcpServers.github.env.GITHUB_PERSONAL_ACCESS_TOKEN // empty' "$HOME/.claude.json" 2>/dev/null) || true
+        if [[ -z "$gh_token" ]] && command -v gh &>/dev/null; then
+            gh_token=$(gh auth token 2>/dev/null) || true
+        fi
 
         local docker_args=(
             docker run --rm -it
@@ -316,6 +320,8 @@ else:
         # Pass GitHub token for gh CLI auth
         if [[ -n "$gh_token" ]]; then
             docker_args+=( -e "GH_TOKEN=$gh_token" )
+        else
+            echo "  Warning: No GitHub token found (gh commands won't work in container)"
         fi
 
         # Port forwarding for dev servers (skip ports already in use)
