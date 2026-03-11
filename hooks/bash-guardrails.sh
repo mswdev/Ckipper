@@ -55,7 +55,10 @@ fi
 # 5. .git/hooks, .git/config, and .git/worktrees modification (execute on host)
 if echo "$NORMALIZED" | grep -qE '\.git/(hooks|config|info/(attributes|exclude)|worktrees)'; then
     if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|git)\s'; then
-        exit 0
+        # Allow reads but block output redirects (cat > .git/hooks/x is a write, not a read)
+        if ! echo "$NORMALIZED" | grep -qE '>'; then
+            exit 0
+        fi
     fi
     echo "Blocked: modifying .git/hooks, .git/config, .git/worktrees, or .git/info/. These affect the host." >&2
     exit 2
@@ -86,7 +89,10 @@ fi
 # 9. Claude config modification via Bash (closes Edit/Write hook bypass)
 if echo "$NORMALIZED" | grep -qE '\.claude/(settings(\.local)?\.json|statusline-command\.sh|CLAUDE\.md|commands/|docker/|hooks/|plugins/)'; then
     if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|jq)\s'; then
-        exit 0
+        # Allow reads but block output redirects (jq -n > settings.json is a write, not a read)
+        if ! echo "$NORMALIZED" | grep -qE '>'; then
+            exit 0
+        fi
     fi
     echo "Blocked: modifying Claude config files via Bash. These are protected." >&2
     exit 2
