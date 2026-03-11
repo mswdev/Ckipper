@@ -46,29 +46,45 @@ if echo "$NORMALIZED" | grep -qE 'git\s+worktree\s+(remove|move)'; then
     fi
 fi
 
-# 4. .git/hooks, .git/config, and .git/worktrees modification (execute on host)
-if echo "$NORMALIZED" | grep -qE '\.git/(hooks|config|info/attributes|worktrees)'; then
-    if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|git)\s'; then
-        exit 0
-    fi
-    echo "Blocked: modifying .git/hooks, .git/config, .git/worktrees, or .git/info/attributes. These affect the host." >&2
+# 4. git config --local/--worktree (implicitly modifies host .git/config without matching path pattern)
+if echo "$NORMALIZED" | grep -qE 'git\s+config\s+--(local|worktree)\s'; then
+    echo "Blocked: git config --local/--worktree modifies the host's .git/config. Use GIT_CONFIG_COUNT env vars instead." >&2
     exit 2
 fi
 
-# 5. Broad recursive chmod/chown
+# 5. .git/hooks, .git/config, and .git/worktrees modification (execute on host)
+if echo "$NORMALIZED" | grep -qE '\.git/(hooks|config|info/(attributes|exclude)|worktrees)'; then
+    if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|git)\s'; then
+        exit 0
+    fi
+    echo "Blocked: modifying .git/hooks, .git/config, .git/worktrees, or .git/info/. These affect the host." >&2
+    exit 2
+fi
+
+# 6. Broad recursive chmod/chown
 if echo "$NORMALIZED" | grep -qE '(chmod|chown)\s+(-R|--recursive)\s'; then
     echo "Blocked: recursive chmod/chown. Apply permissions to specific files instead." >&2
     exit 2
 fi
 
-# 6. Direct credential/key file reads
+# 7. Direct credential/key file reads
 if echo "$NORMALIZED" | grep -qE '(cat|less|head|tail|cp|curl|base64|xxd)\s+.*(\.ssh/(id_|config|authorized)|\.claude/\.credentials)'; then
     echo "Blocked: reading credential/key files. Use git, gh, or npm which handle auth automatically." >&2
     exit 2
 fi
 
-# 7. Claude config modification via Bash (closes Edit/Write hook bypass)
-if echo "$NORMALIZED" | grep -qE '\.claude/(settings(\.local)?\.json|statusline-command\.sh|docker/|hooks/|plugins/)'; then
+# 8. Data exfiltration channels
+if echo "$NORMALIZED" | grep -qE 'gh\s+gist\s+create'; then
+    echo "Blocked: gh gist create can exfiltrate data via GitHub. Use git push to the project repo instead." >&2
+    exit 2
+fi
+if echo "$NORMALIZED" | grep -qE 'npm\s+publish'; then
+    echo "Blocked: npm publish can exfiltrate data via the npm registry." >&2
+    exit 2
+fi
+
+# 9. Claude config modification via Bash (closes Edit/Write hook bypass)
+if echo "$NORMALIZED" | grep -qE '\.claude/(settings(\.local)?\.json|statusline-command\.sh|CLAUDE\.md|commands/|docker/|hooks/|plugins/)'; then
     if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|jq)\s'; then
         exit 0
     fi

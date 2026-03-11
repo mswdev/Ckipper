@@ -299,6 +299,11 @@ else:
             # -v "$HOME/.config/ccstatusline:/home/claude/.config/ccstatusline:ro"
             # -v "$HOME/.cache/ccstatusline:/home/claude/.cache/ccstatusline:rw"
             # ──────────────────────────────────────────────────────────
+            # ── Credentials tmpfs ──────────────────────────────────
+            # Entrypoint writes credentials here instead of the host-mounted
+            # ~/.claude, so they only exist in container memory.
+            --tmpfs /tmp/claude-creds:mode=700,uid=1000,gid=1000,size=1m
+            # ──────────────────────────────────────────────────────────
             # ── uvx/uv cache ─────────────────────────────────────────
             # Named volume persists Python packages across container restarts.
             # Without this, uvx-based MCP servers cold-start every launch
@@ -390,6 +395,11 @@ else:
 
         "${docker_args[@]}"
         local exit_code=$?
+
+        # Post-session: clean up dangling credentials symlink left by tmpfs credential isolation
+        if [[ -L "$HOME/.claude/.credentials.json" ]]; then
+            rm -f "$HOME/.claude/.credentials.json"
+        fi
 
         # Post-session: warn if .git/config was modified
         if [[ -n "$git_config_hash" && -f "$git_config" ]]; then

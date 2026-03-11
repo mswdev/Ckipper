@@ -10,7 +10,7 @@
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
-if [[ "$FILE_PATH" =~ \.claude/(settings(\.local)?\.json|statusline-command\.sh|docker/|hooks/|plugins/) ]]; then
+if [[ "$FILE_PATH" =~ \.claude/(settings(\.local)?\.json|statusline-command\.sh|CLAUDE\.md|commands/|docker/|hooks/|plugins/) ]]; then
     echo "Blocked: cannot modify $FILE_PATH (protected Claude config file)" >&2
     exit 2
 fi

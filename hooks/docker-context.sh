@@ -13,10 +13,12 @@ Safety hooks are active and will block:
 - git reset --hard (use git stash or targeted checkout)
 - git worktree prune (host worktree paths don't exist here — prune would destroy ALL worktrees)
 - git worktree remove/move outside /workspace
-- Modifications to .git/hooks/ or .git/config (these execute on the host)
+- git config --local/--worktree (modifies host .git/config; use GIT_CONFIG_COUNT env vars instead)
+- Modifications to .git/hooks/, .git/config, .git/worktrees, .git/info/ (these affect the host)
 - Recursive chmod/chown
 - Reading SSH keys or credential files directly
-- Modifying Claude config files (.claude/settings.json, hooks/, plugins/)
+- gh gist create, npm publish (data exfiltration channels)
+- Modifying Claude config files (.claude/settings.json, CLAUDE.md, hooks/, commands/, plugins/)
 
 CRITICAL: This container runs inside a host git worktree. The .git directory is
 mounted from the host and contains metadata for OTHER active worktrees. Never run
