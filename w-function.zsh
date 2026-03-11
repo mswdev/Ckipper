@@ -396,9 +396,13 @@ else:
         "${docker_args[@]}"
         local exit_code=$?
 
-        # Post-session: clean up dangling credentials symlink left by tmpfs credential isolation
+        # Post-session: clean up dangling credentials symlink left by tmpfs credential isolation.
+        # Only remove when no other claude-dev containers are running — parallel sessions
+        # share the ~/.claude bind mount, so deleting the symlink would break their credentials.
         if [[ -L "$HOME/.claude/.credentials.json" ]]; then
-            rm -f "$HOME/.claude/.credentials.json"
+            if ! docker ps --filter ancestor=claude-dev --quiet 2>/dev/null | grep -q .; then
+                rm -f "$HOME/.claude/.credentials.json"
+            fi
         fi
 
         # Post-session: warn if .git/config was modified

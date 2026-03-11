@@ -46,10 +46,13 @@ if echo "$NORMALIZED" | grep -qE 'git\s+worktree\s+(remove|move)'; then
     fi
 fi
 
-# 4. git config --local/--worktree (implicitly modifies host .git/config without matching path pattern)
+# 4. git config --local/--worktree writes (implicitly modifies host .git/config without matching path pattern)
+#    Allow reads (--list, --get, --get-all, --get-regexp) but block set/unset operations.
 if echo "$NORMALIZED" | grep -qE 'git\s+config\s+--(local|worktree)\s'; then
-    echo "Blocked: git config --local/--worktree modifies the host's .git/config. Use GIT_CONFIG_COUNT env vars instead." >&2
-    exit 2
+    if ! echo "$NORMALIZED" | grep -qE 'git\s+config\s+--(local|worktree)\s+--(list|get|get-all|get-regexp)\b'; then
+        echo "Blocked: git config --local/--worktree modifies the host's .git/config. Use GIT_CONFIG_COUNT env vars instead." >&2
+        exit 2
+    fi
 fi
 
 # 5. .git/hooks, .git/config, and .git/worktrees modification (execute on host)
