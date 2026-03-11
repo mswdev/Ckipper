@@ -292,6 +292,7 @@ else:
             # without copying them. Works with 1Password and macOS Keychain agents.
             -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
             -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+            --group-add 0  # SSH agent socket is root:root 0660; claude user needs group access
             # ── Statusline (ccstatusline) ───────────────────────────────
             # Config mount: theme, widget layout, powerline settings (read-only)
             # Cache mount: shares usage API cache with host to avoid 429 rate limits (read-write)
