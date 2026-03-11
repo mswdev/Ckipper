@@ -318,14 +318,26 @@ else:
             docker_args+=( -e "GH_TOKEN=$gh_token" )
         fi
 
-        # Port forwarding for dev servers (skip ports already in use)
+        # Port forwarding for dev servers (try fallback host ports if taken)
         # ── CUSTOMIZE: change these ports to match your dev servers ──
         local -a ports=(3000 3030 6006)
+        local max_fallback=10  # try up to 10 alternative host ports
         for port in "${ports[@]}"; do
-            if ! lsof -i :"$port" -P -n &>/dev/null; then
-                docker_args+=( -p "127.0.0.1:$port:$port" )
-            else
-                echo "  Port $port in use, skipping"
+            local host_port=$port
+            local bound=0
+            for (( i=0; i<max_fallback; i++ )); do
+                if ! lsof -i :"$host_port" -P -n &>/dev/null; then
+                    docker_args+=( -p "127.0.0.1:$host_port:$port" )
+                    bound=1
+                    if (( host_port != port )); then
+                        echo "  Port $port mapped to host:$host_port (original in use)"
+                    fi
+                    break
+                fi
+                (( host_port++ ))
+            done
+            if (( !bound )); then
+                echo "  Port $port: no available host port found ($port-$((port+max_fallback-1)) all in use)"
             fi
         done
 
