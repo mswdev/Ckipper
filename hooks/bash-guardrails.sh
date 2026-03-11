@@ -31,28 +31,43 @@ if echo "$NORMALIZED" | grep -qE 'git\s+reset\s+--hard'; then
     exit 2
 fi
 
-# 3. .git/hooks and .git/config modification (execute on host)
-if echo "$NORMALIZED" | grep -qE '\.git/(hooks|config|info/attributes)'; then
+# 3. Git worktree destruction (prune sees host paths as missing → nukes all worktrees)
+if echo "$NORMALIZED" | grep -qE 'git\s+worktree\s+prune'; then
+    echo "Blocked: git worktree prune. Host worktree paths don't exist in the container — prune would destroy ALL worktree metadata." >&2
+    exit 2
+fi
+if echo "$NORMALIZED" | grep -qE 'git\s+worktree\s+(remove|move)'; then
+    # Allow removing/moving container-created worktrees under /workspace
+    if echo "$NORMALIZED" | grep -qE 'git\s+worktree\s+(remove|move)\s+.*(/workspace/)'; then
+        : # allowed
+    else
+        echo "Blocked: git worktree remove/move outside /workspace. Use the host to manage worktrees." >&2
+        exit 2
+    fi
+fi
+
+# 4. .git/hooks, .git/config, and .git/worktrees modification (execute on host)
+if echo "$NORMALIZED" | grep -qE '\.git/(hooks|config|info/attributes|worktrees)'; then
     if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|git)\s'; then
         exit 0
     fi
-    echo "Blocked: modifying .git/hooks, .git/config, or .git/info/attributes. These execute on the host." >&2
+    echo "Blocked: modifying .git/hooks, .git/config, .git/worktrees, or .git/info/attributes. These affect the host." >&2
     exit 2
 fi
 
-# 4. Broad recursive chmod/chown
+# 5. Broad recursive chmod/chown
 if echo "$NORMALIZED" | grep -qE '(chmod|chown)\s+(-R|--recursive)\s'; then
     echo "Blocked: recursive chmod/chown. Apply permissions to specific files instead." >&2
     exit 2
 fi
 
-# 5. Direct credential/key file reads
+# 6. Direct credential/key file reads
 if echo "$NORMALIZED" | grep -qE '(cat|less|head|tail|cp|curl|base64|xxd)\s+.*(\.ssh/(id_|config|authorized)|\.claude/\.credentials)'; then
     echo "Blocked: reading credential/key files. Use git, gh, or npm which handle auth automatically." >&2
     exit 2
 fi
 
-# 6. Claude config modification via Bash (closes Edit/Write hook bypass)
+# 7. Claude config modification via Bash (closes Edit/Write hook bypass)
 if echo "$NORMALIZED" | grep -qE '\.claude/(settings(\.local)?\.json|statusline-command\.sh|docker/|hooks/|plugins/)'; then
     if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|jq)\s'; then
         exit 0
