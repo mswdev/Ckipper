@@ -12,15 +12,24 @@
 # <project> is a path relative to ~/Developer (e.g. "Whmoro/orderguard", "my-app")
 #
 # ── CUSTOMIZATION ────────────────────────────────────────────────
-# 1. MCP MOUNTS: Search for "MCP dependencies" below and add/remove/change
-#    volume mounts based on your own MCP servers that reference local files.
-#    Mount at the exact same host path so MCP configs work without modification.
+# Edit ~/.claude/docker/w-config.zsh to customize:
+#   - W_PORTS: dev server ports to forward
+#   - W_EXTRA_VOLUMES: MCP server mounts and other volume mounts
+#   - W_EXTRA_ENV: extra environment variables for the container
 #
-# 2. PORTS: Change the "ports" array to match your dev server ports.
-#
-# 3. BASE BRANCH: Worktrees are created from origin/develop. Change "develop"
-#    if your default branch is different (e.g. main).
+# BASE BRANCH: Worktrees are created from origin/develop. Change
+# "develop" below if your default branch is different (e.g. main).
 # ─────────────────────────────────────────────────────────────────
+
+# Source user config (ports, extra volumes, extra env vars)
+_w_config="$HOME/.claude/docker/w-config.zsh"
+if [[ -f "$_w_config" ]]; then
+    source "$_w_config"
+fi
+# Defaults if config is missing or incomplete
+(( ${#W_PORTS[@]} == 0 )) && W_PORTS=(3000)
+(( ${#W_EXTRA_VOLUMES[@]} == 0 )) && W_EXTRA_VOLUMES=()
+(( ${#W_EXTRA_ENV[@]} == 0 )) && W_EXTRA_ENV=()
 
 _w_build_image() {
     local docker_dir="$HOME/.claude/docker"
@@ -173,20 +182,25 @@ if wt_path in d.get('projects', {}):
 
     # Create if it doesn't exist
     if [[ -z "$wt_path" ]]; then
-        echo "Creating worktree: $worktree (from develop)"
+        echo "Creating worktree: $worktree"
         mkdir -p "$worktrees_dir/$project"
         wt_path="$worktrees_dir/$project/$worktree"
-        # Fetch latest develop
+        # Fetch latest develop + target branch (target may not exist on remote)
         (cd "$projects_dir/$project" && git fetch origin develop) || {
             echo "Failed to fetch from origin. Check your network connection and that 'develop' exists on the remote."
             return 1
         }
+        (cd "$projects_dir/$project" && git fetch origin "$worktree" 2>/dev/null) || true
         # Create the worktree
         (cd "$projects_dir/$project" && \
             if git show-ref --verify --quiet "refs/heads/$worktree"; then
-                echo "Using existing branch: $worktree"
+                echo "Using existing local branch: $worktree"
                 git worktree add "$wt_path" "$worktree"
+            elif git show-ref --verify --quiet "refs/remotes/origin/$worktree"; then
+                echo "Tracking remote branch: origin/$worktree"
+                git worktree add "$wt_path" -b "$worktree" "origin/$worktree"
             else
+                echo "Creating new branch from origin/develop"
                 git worktree add "$wt_path" -b "$worktree" origin/develop
             fi
         ) || {
@@ -293,12 +307,10 @@ else:
             -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
             -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
             --group-add 0  # SSH agent socket is root:root 0660; claude user needs group access
-            # ── Statusline (ccstatusline) ───────────────────────────────
-            # Config mount: theme, widget layout, powerline settings (read-only)
-            # Cache mount: shares usage API cache with host to avoid 429 rate limits (read-write)
-            # Remove or change if you use a different statusline tool.
-            # -v "$HOME/.config/ccstatusline:/home/claude/.config/ccstatusline:ro"
-            # -v "$HOME/.cache/ccstatusline:/home/claude/.cache/ccstatusline:rw"
+            # ── Credentials tmpfs ──────────────────────────────────
+            # Entrypoint writes credentials here instead of the host-mounted
+            # ~/.claude, so they only exist in container memory.
+            --tmpfs /tmp/claude-creds:mode=700,uid=1000,gid=1000,size=1m
             # ──────────────────────────────────────────────────────────
             # ── uvx/uv cache ─────────────────────────────────────────
             # Named volume persists Python packages across container restarts.
@@ -307,14 +319,12 @@ else:
             # MCP startup timeout.
             -v "claude-uv-cache:/home/claude/.cache/uv"
             # ──────────────────────────────────────────────────────────
-            # ── MCP dependencies ──────────────────────────────────────
-            # Add read-only mounts for any MCP servers that reference local files.
-            # Mount at the exact same host path so MCP configs work unchanged.
-            # Examples (uncomment and adjust for your setup):
-            # -v "$HOME/Developer/my-mcp-data:/same/path/in/container:ro"
-            # -v "$HOME/path/to/data.json:$HOME/path/to/data.json:ro"
-            # ──────────────────────────────────────────────────────────
         )
+
+        # Add user-configured extra volumes from w-config.zsh
+        for vol in "${W_EXTRA_VOLUMES[@]}"; do
+            docker_args+=( -v "$vol" )
+        done
 
         # Pass Keychain credentials to container
         if [[ -n "$claude_creds" ]]; then
@@ -330,14 +340,30 @@ else:
             echo "  Warning: No GitHub token found (gh commands won't work in container)"
         fi
 
-        # Port forwarding for dev servers (skip ports already in use)
-        # ── CUSTOMIZE: change these ports to match your dev servers ──
-        local -a ports=(3000 3030 6006)
+        # Add user-configured extra env vars from w-config.zsh
+        for env_var in "${W_EXTRA_ENV[@]}"; do
+            docker_args+=( -e "$env_var" )
+        done
+
+        # Port forwarding for dev servers (try fallback host ports if taken)
+        local -a ports=("${W_PORTS[@]}")
+        local max_fallback=10  # try up to 10 alternative host ports
         for port in "${ports[@]}"; do
-            if ! lsof -i :"$port" -P -n &>/dev/null; then
-                docker_args+=( -p "127.0.0.1:$port:$port" )
-            else
-                echo "  Port $port in use, skipping"
+            local host_port=$port
+            local bound=0
+            for (( i=0; i<max_fallback; i++ )); do
+                if ! lsof -i :"$host_port" -P -n &>/dev/null; then
+                    docker_args+=( -p "127.0.0.1:$host_port:$port" )
+                    bound=1
+                    if (( host_port != port )); then
+                        echo "  Port $port mapped to host:$host_port (original in use)"
+                    fi
+                    break
+                fi
+                (( host_port++ ))
+            done
+            if (( !bound )); then
+                echo "  Port $port: no available host port found ($port-$((port+max_fallback-1)) all in use)"
             fi
         done
 
@@ -349,8 +375,9 @@ else:
         docker_args+=( claude-dev )
 
         # If "claude" is the command, expand it to the full skip-permissions invocation
+        # and auto-name the session after the worktree branch
         if [[ ${#command[@]} -gt 0 && "${command[1]}" == "claude" ]]; then
-            command=(claude --dangerously-skip-permissions)
+            command=(claude --dangerously-skip-permissions "/rename $worktree")
         fi
 
         # Pass command to container (if any)
@@ -370,8 +397,24 @@ else:
         local git_config_hash=""
         [[ -f "$git_config" ]] && git_config_hash=$(shasum -a 256 "$git_config" | cut -d' ' -f1)
 
+        # Snapshot worktree metadata before session (detect pruning damage)
+        local git_worktrees_dir="$projects_dir/$project/.git/worktrees"
+        local -a worktrees_before=()
+        if [[ -d "$git_worktrees_dir" ]]; then
+            worktrees_before=( "$git_worktrees_dir"/*(N/:t) )
+        fi
+
         "${docker_args[@]}"
         local exit_code=$?
+
+        # Post-session: clean up dangling credentials symlink left by tmpfs credential isolation.
+        # Only remove when no other claude-dev containers are running — parallel sessions
+        # share the ~/.claude bind mount, so deleting the symlink would break their credentials.
+        if [[ -L "$HOME/.claude/.credentials.json" ]]; then
+            if ! docker ps --filter ancestor=claude-dev --quiet 2>/dev/null | grep -q .; then
+                rm -f "$HOME/.claude/.credentials.json"
+            fi
+        fi
 
         # Post-session: warn if .git/config was modified
         if [[ -n "$git_config_hash" && -f "$git_config" ]]; then
@@ -383,6 +426,32 @@ else:
             fi
         fi
 
+        # Post-session: check if any worktree metadata was destroyed
+        if [[ ${#worktrees_before[@]} -gt 0 ]]; then
+            local -a worktrees_after=()
+            if [[ -d "$git_worktrees_dir" ]]; then
+                worktrees_after=( "$git_worktrees_dir"/*(N/:t) )
+            fi
+            local -a missing=()
+            for wt in "${worktrees_before[@]}"; do
+                if [[ ! " ${worktrees_after[*]} " =~ " $wt " ]]; then
+                    missing+=("$wt")
+                fi
+            done
+            if [[ ${#missing[@]} -gt 0 ]]; then
+                echo ""
+                echo "CRITICAL: ${#missing[@]} worktree(s) had metadata destroyed during the Docker session!"
+                echo "Missing worktrees: ${missing[*]}"
+                echo ""
+                echo "The working directories still exist on disk — only the .git/worktrees/ metadata was deleted."
+                echo "To recover, re-register each worktree:"
+                echo "  cd $projects_dir/$project"
+                for wt in "${missing[@]}"; do
+                    echo "  git worktree add <path-to-$wt> $wt"
+                done
+            fi
+        fi
+
         return $exit_code
     fi
 
@@ -390,6 +459,10 @@ else:
     if [[ ${#command[@]} -eq 0 ]]; then
         cd "$wt_path"
     else
+        # If command is "claude", auto-name the session after the worktree branch
+        if [[ "${command[1]}" == "claude" ]]; then
+            command+=("/rename $worktree")
+        fi
         local old_pwd="$PWD"
         cd "$wt_path"
         "${command[@]}"
