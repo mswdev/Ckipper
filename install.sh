@@ -6,7 +6,7 @@ echo ""
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# 0. Check prerequisites
+# 1. Check prerequisites
 echo "Checking prerequisites..."
 missing=()
 command -v docker &>/dev/null || missing+=("docker (install Docker Desktop)")
@@ -28,7 +28,7 @@ fi
 echo "  All prerequisites found."
 echo ""
 
-# 1. Copy Docker files
+# 2. Copy Docker files
 echo "Copying Docker files to ~/.claude/docker/..."
 mkdir -p "$HOME/.claude/docker"
 cp "$REPO_DIR/docker/Dockerfile" "$HOME/.claude/docker/"
@@ -37,7 +37,7 @@ cp "$REPO_DIR/docker/init-firewall.sh" "$HOME/.claude/docker/"
 chmod +x "$HOME/.claude/docker/entrypoint.sh"
 chmod +x "$HOME/.claude/docker/init-firewall.sh"
 
-# 2. Copy hooks
+# 3. Copy hooks
 echo "Copying hooks to ~/.claude/hooks/..."
 mkdir -p "$HOME/.claude/hooks"
 cp "$REPO_DIR/hooks/protect-claude-config.sh" "$HOME/.claude/hooks/"
@@ -47,46 +47,62 @@ chmod +x "$HOME/.claude/hooks/protect-claude-config.sh"
 chmod +x "$HOME/.claude/hooks/bash-guardrails.sh"
 chmod +x "$HOME/.claude/hooks/docker-context.sh"
 
-# 3. Set up git hooks path
+# 4. Copy w-function.zsh
+echo "Copying w-function.zsh to ~/.claude/docker/..."
+cp "$REPO_DIR/w-function.zsh" "$HOME/.claude/docker/"
+
+# 5. Generate w-config.zsh (only if it doesn't exist — never overwrite)
+config_file="$HOME/.claude/docker/w-config.zsh"
+if [[ ! -f "$config_file" ]]; then
+    cp "$REPO_DIR/w-config.zsh.example" "$config_file"
+    echo "  Created w-config.zsh with defaults — edit to add your MCP mounts, ports, etc."
+else
+    echo "  w-config.zsh already exists (not overwritten)"
+fi
+
+# 6. Merge settings-hooks.json into ~/.claude/settings.json
+echo "Merging hooks into ~/.claude/settings.json..."
+settings_file="$HOME/.claude/settings.json"
+if [[ ! -f "$settings_file" ]]; then
+    echo '{}' > "$settings_file"
+fi
+hooks_json=$(jq 'del(._comment)' "$REPO_DIR/settings-hooks.json")
+jq --argjson hooks "$hooks_json" '. * $hooks' "$settings_file" > "${settings_file}.tmp" \
+    && mv "${settings_file}.tmp" "$settings_file"
+echo "  Hooks merged."
+
+# 7. Add source line to .zshrc (if not already present)
+if ! grep -q 'w-function.zsh' "$HOME/.zshrc" 2>/dev/null; then
+    echo '' >> "$HOME/.zshrc"
+    echo '# Worktree Manager (w function)' >> "$HOME/.zshrc"
+    echo 'source "$HOME/.claude/docker/w-function.zsh"' >> "$HOME/.zshrc"
+    echo "  Added w() source line to ~/.zshrc"
+else
+    echo "  ~/.zshrc already sources w-function.zsh"
+fi
+
+# 8. Warn about inlined w() from old installs
+if grep -q '^w()' "$HOME/.zshrc" 2>/dev/null || grep -q '^_w_build_image()' "$HOME/.zshrc" 2>/dev/null; then
+    echo ""
+    echo "WARNING: Your ~/.zshrc contains an inlined w() function from a previous install."
+    echo "The new approach sources it from ~/.claude/docker/w-function.zsh instead."
+    echo "Please remove the old inlined function from ~/.zshrc manually."
+    echo "(Search for '_w_build_image()' or 'w()' and remove everything through the 'COMPEOF' line)"
+fi
+
+# 9. Set up git hooks path
 echo "Configuring git hooks path..."
 mkdir -p "$HOME/.git-hooks"
 git config --global core.hooksPath "$HOME/.git-hooks"
 
-# 4. Print manual steps
+# 10. Print summary
 echo ""
-echo "=== Manual Steps Required ==="
+echo "=== Setup Complete ==="
 echo ""
-echo "1. Add the hooks to your ~/.claude/settings.json. Merge the contents of"
-echo "   settings-hooks.json into your existing 'hooks' section:"
+echo "Next steps:"
+echo "  1. Edit ~/.claude/docker/w-config.zsh with your MCP mounts, ports, etc."
+echo "  2. source ~/.zshrc"
+echo "  3. w --rebuild-image"
+echo "  4. w <your-project> test-branch --docker claude"
 echo ""
-echo "   cat $REPO_DIR/settings-hooks.json"
-echo ""
-echo "   IMPORTANT: Use \$HOME/ in all paths, not hardcoded /Users/yourname/"
-echo ""
-
-# Check if w() function already exists in .zshrc
-if grep -q '^w()' "$HOME/.zshrc" 2>/dev/null || grep -q 'function w()' "$HOME/.zshrc" 2>/dev/null; then
-    echo "2. The w() function already exists in your ~/.zshrc."
-    echo "   To update it, remove the old version first, then append the new one:"
-    echo ""
-    echo "   # Remove old w() function from ~/.zshrc manually, then:"
-    echo "   cat $REPO_DIR/w-function.zsh >> ~/.zshrc"
-else
-    echo "2. Append the w() function to your ~/.zshrc:"
-    echo ""
-    echo "   cat $REPO_DIR/w-function.zsh >> ~/.zshrc"
-fi
-echo ""
-echo "   Then customize (search for these in the file):"
-echo "   - 'MCP dependencies' — add volume mounts for your MCP servers"
-echo "   - 'ports=' — change to your dev server ports"
-echo "   - 'develop' — change if your default branch is main"
-echo "   - 'ccstatusline' — uncomment if you use ccstatusline"
-echo ""
-echo "3. Build the Docker image and test:"
-echo ""
-echo "   source ~/.zshrc"
-echo "   w --rebuild-image"
-echo "   w <your-project> test-branch --docker claude"
-echo ""
-echo "=== Done ==="
+echo "To update later: git pull && ./install.sh"
