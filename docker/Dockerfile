@@ -42,8 +42,9 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
     && chmod +x /usr/local/bin/claude
 
 # Create non-root user and pre-seed SSH known hosts
-RUN groupadd claude \
-    && useradd -g claude -m -s /bin/bash claude \
+RUN userdel -r node 2>/dev/null; groupdel node 2>/dev/null; \
+    groupadd -g 1000 claude \
+    && useradd -u 1000 -g claude -m -s /bin/bash claude \
     && echo "claude ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" >> /etc/sudoers.d/claude \
     && mkdir -p /home/claude/.local/bin /home/claude/.ssh /home/claude/.config /home/claude/.cache/uv \
     && ln -s /usr/local/bin/claude /home/claude/.local/bin/claude \

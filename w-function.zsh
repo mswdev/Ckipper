@@ -375,8 +375,9 @@ else:
         docker_args+=( claude-dev )
 
         # If "claude" is the command, expand it to the full skip-permissions invocation
+        # and auto-name the session after the worktree branch
         if [[ ${#command[@]} -gt 0 && "${command[1]}" == "claude" ]]; then
-            command=(claude --dangerously-skip-permissions)
+            command=(claude --dangerously-skip-permissions "/rename $worktree")
         fi
 
         # Pass command to container (if any)
@@ -458,6 +459,10 @@ else:
     if [[ ${#command[@]} -eq 0 ]]; then
         cd "$wt_path"
     else
+        # If command is "claude", auto-name the session after the worktree branch
+        if [[ "${command[1]}" == "claude" ]]; then
+            command+=("/rename $worktree")
+        fi
         local old_pwd="$PWD"
         cd "$wt_path"
         "${command[@]}"
