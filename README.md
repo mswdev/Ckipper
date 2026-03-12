@@ -121,7 +121,7 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 | MCPs with local files | node/uvx (mounted ro) | Yes (add mount) |
 | Docker-based MCPs | Docker-in-Docker | No (security) |
 
-For MCPs that reference local files, add read-only volume mounts in `w-function.zsh` (search for "MCP dependencies"). Mount at the exact same host path so MCP configs work unchanged.
+For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
 
 A named Docker volume (`claude-uv-cache`) persists the uv/uvx package cache across container restarts. Without it, uvx-based MCP servers cold-start every launch (download Python + clone + install), often exceeding Claude Code's MCP startup timeout.
 
@@ -142,21 +142,11 @@ A named Docker volume (`claude-uv-cache`) persists the uv/uvx package cache acro
 git clone https://github.com/whmoro/claude-docker-sandbox.git
 cd claude-docker-sandbox
 
-# Run the installer (copies files to ~/.claude/, sets up git hooks path)
+# Run the installer (copies all files, merges hooks, adds source line)
 ./install.sh
 
-# Add hooks to your ~/.claude/settings.json
-# Merge the contents of settings-hooks.json into your existing settings.
-# IMPORTANT: Use $HOME/ in all paths, not hardcoded /Users/yourname/
-
-# Append the w() function to your ~/.zshrc
-cat w-function.zsh >> ~/.zshrc
-
-# Customize w-function.zsh in your .zshrc:
-# 1. Search for "MCP dependencies" — add your MCP mounts or remove the examples
-# 2. Search for "ports=" — change to your dev server ports
-# 3. Search for "develop" — change if your default branch is different
-# 4. Search for "ccstatusline" — uncomment the mount if you use a custom statusline
+# Customize your config
+# Edit ~/.claude/docker/w-config.zsh with your MCP mounts, ports, etc.
 
 # Build the Docker image (takes a few minutes first time)
 source ~/.zshrc
@@ -170,7 +160,7 @@ w <your-project> test-branch --docker claude
 
 Clone the repo, then open Claude Code and paste this prompt:
 
-> Read the README.md and install.sh in this repo. Run the install script, then merge settings-hooks.json into my ~/.claude/settings.json (keep my existing settings, just add the hooks). Append the contents of w-function.zsh to my ~/.zshrc. The MCP mount lines in the w() function should be commented out by default — I'll customize them later. After everything is set up, run `mkdir -p ~/.git-hooks && git config --global core.hooksPath ~/.git-hooks && source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test.
+> Read the README.md in this repo, then run `./install.sh`. After that, edit `~/.claude/docker/w-config.zsh` with my MCP mounts and ports. Then run `source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test.
 
 ### What Gets Installed Where
 
@@ -182,8 +172,9 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `hooks/protect-claude-config.sh` | `~/.claude/hooks/protect-claude-config.sh` | Edit/Write guard |
 | `hooks/bash-guardrails.sh` | `~/.claude/hooks/bash-guardrails.sh` | Bash command guard |
 | `hooks/docker-context.sh` | `~/.claude/hooks/docker-context.sh` | Context injection |
-| `settings-hooks.json` | Merge into `~/.claude/settings.json` | Hook registration |
-| `w-function.zsh` | Append to `~/.zshrc` | w() function + completion |
+| `w-function.zsh` | `~/.claude/docker/w-function.zsh` | w() function (sourced by .zshrc) |
+| `w-config.zsh.example` | `~/.claude/docker/w-config.zsh` | User config (ports, mounts, env vars) |
+| `settings-hooks.json` | Auto-merged into `~/.claude/settings.json` | Hook registration |
 
 ### macOS Keychain Authentication
 
@@ -223,19 +214,19 @@ Edit `docker/init-firewall.sh` → `ALLOWED_DOMAINS` array, then `w --rebuild-im
 
 ### Forwarded Ports
 
-Edit the `ports` array in `w-function.zsh` (in your `.zshrc`).
+Edit `W_PORTS` in `~/.claude/docker/w-config.zsh`.
 
 ### Base Branch
 
-Worktrees are created from `origin/develop`. Search for `develop` in `w-function.zsh` and change to `main` or your default branch.
+Worktrees are created from `origin/develop`. Search for `develop` in `w-function.zsh` (or `~/.claude/docker/w-function.zsh` if deployed) and change to `main` or your default branch.
 
 ### MCP Mounts
 
-Search for "MCP dependencies" in `w-function.zsh` and add read-only volume mounts for any MCP servers that reference local files on your host.
+Add entries to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`. Format: `"host_path:container_path:mode"`.
 
 ### Statusline
 
-If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), uncomment the mounts in `w-function.zsh` (search for "ccstatusline"):
+If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`:
 - **Config mount** (`~/.config/ccstatusline`, read-only) — theme, widget layout, powerline settings
 - **Cache mount** (`~/.cache/ccstatusline`, read-write) — shares usage API cache with host to avoid 429 rate limits
 
