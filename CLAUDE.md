@@ -5,6 +5,7 @@ Docker-based sandbox for running Claude Code with `--dangerously-skip-permission
 ## Architecture
 
 - **`w-function.zsh`** — zsh function that manages worktrees (`git worktree add`), builds/runs Docker containers, extracts macOS Keychain credentials, forwards ports, and detects `.git/config` tampering post-session. Includes tab completion.
+- **`w-config.zsh.example`** — Template for user-specific Docker config (ports, volume mounts, env vars). Copied to `~/.claude/docker/w-config.zsh` on first install, never overwritten on updates.
 - **`docker/Dockerfile`** — `node:24-slim` image with dev tools (git, gh, ripgrep, tmux, Chromium, uv/uvx, bun, Claude Code native installer). Runs as non-root `claude` user.
 - **`docker/entrypoint.sh`** — Container startup: copies `.claude.json` from read-only staging mount, writes credentials to disk, sets git identity, disables GPG signing via `GIT_CONFIG_COUNT`, authenticates `gh` CLI, optionally enables firewall, creates `bunx` wrapper for statusline colors, runs `npm install` for Linux binaries, clears credential env vars, then runs the provided command (or drops to bash shell if none).
 - **`hooks/`** — Three Claude Code hooks (registered in `settings-hooks.json`):
@@ -31,11 +32,12 @@ Docker-based sandbox for running Claude Code with `--dangerously-skip-permission
 | `Dockerfile` | `w --rebuild-image` |
 | `entrypoint.sh` | `w --rebuild-image` (it's `COPY`'d into the image) |
 | `init-firewall.sh` | `w --rebuild-image` (it's `COPY`'d into the image) |
-| `w-function.zsh` | Sync to `~/.zshrc` (note: user's copy has customized MCP mounts and statusline config) |
+| `w-function.zsh` | `./install.sh` (copies to `~/.claude/docker/`; user config in `w-config.zsh` is preserved) |
+| `w-config.zsh.example` | Template only — user's `~/.claude/docker/w-config.zsh` is never overwritten |
 | `hooks/*` | Sync to `~/.claude/hooks/` |
-| `settings-hooks.json` | Merge into `~/.claude/settings.json` |
+| `settings-hooks.json` | `./install.sh` (auto-merged into `~/.claude/settings.json`) |
 
-Two copies of the code exist: this repo (development) and deployed files on the host (`~/.claude/docker/`, `~/.claude/hooks/`, `~/.zshrc`). Always sync both after changes.
+Two copies of the code exist: this repo (development) and deployed files on the host (`~/.claude/docker/`, `~/.claude/hooks/`). Run `./install.sh` to sync all core files. User customizations live in `~/.claude/docker/w-config.zsh` and are never overwritten.
 
 ## Testing
 
