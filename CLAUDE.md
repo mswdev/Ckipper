@@ -31,11 +31,11 @@ Docker-based sandbox for running Claude Code with `--dangerously-skip-permission
 | `Dockerfile` | `w --rebuild-image` |
 | `entrypoint.sh` | `w --rebuild-image` (it's `COPY`'d into the image) |
 | `init-firewall.sh` | `w --rebuild-image` (it's `COPY`'d into the image) |
-| `w-function.zsh` | Sync to `~/.zshrc` (note: user's copy has customized MCP mounts and statusline config) |
+| `w-function.zsh` | Copy to `~/.claude/docker/w-function.zsh` (sourced by `~/.zshrc`; user's copy has customized MCP mounts and statusline config) |
 | `hooks/*` | Sync to `~/.claude/hooks/` |
 | `settings-hooks.json` | Merge into `~/.claude/settings.json` |
 
-Two copies of the code exist: this repo (development) and deployed files on the host (`~/.claude/docker/`, `~/.claude/hooks/`, `~/.zshrc`). Always sync both after changes.
+Two copies of the code exist: this repo (development) and deployed files on the host (`~/.claude/docker/`, `~/.claude/hooks/`). The `w` function is sourced from `~/.claude/docker/w-function.zsh` via a one-liner in `~/.zshrc`. Always sync both after changes.
 
 ## Testing
 
