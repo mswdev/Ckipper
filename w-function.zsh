@@ -173,20 +173,25 @@ if wt_path in d.get('projects', {}):
 
     # Create if it doesn't exist
     if [[ -z "$wt_path" ]]; then
-        echo "Creating worktree: $worktree (from develop)"
+        echo "Creating worktree: $worktree"
         mkdir -p "$worktrees_dir/$project"
         wt_path="$worktrees_dir/$project/$worktree"
-        # Fetch latest develop
+        # Fetch latest develop + target branch (target may not exist on remote)
         (cd "$projects_dir/$project" && git fetch origin develop) || {
             echo "Failed to fetch from origin. Check your network connection and that 'develop' exists on the remote."
             return 1
         }
+        (cd "$projects_dir/$project" && git fetch origin "$worktree" 2>/dev/null) || true
         # Create the worktree
         (cd "$projects_dir/$project" && \
             if git show-ref --verify --quiet "refs/heads/$worktree"; then
-                echo "Using existing branch: $worktree"
+                echo "Using existing local branch: $worktree"
                 git worktree add "$wt_path" "$worktree"
+            elif git show-ref --verify --quiet "refs/remotes/origin/$worktree"; then
+                echo "Tracking remote branch: origin/$worktree"
+                git worktree add "$wt_path" -b "$worktree" "origin/$worktree"
             else
+                echo "Creating new branch from origin/develop"
                 git worktree add "$wt_path" -b "$worktree" origin/develop
             fi
         ) || {
