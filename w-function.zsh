@@ -12,15 +12,24 @@
 # <project> is a path relative to ~/Developer (e.g. "Whmoro/orderguard", "my-app")
 #
 # ── CUSTOMIZATION ────────────────────────────────────────────────
-# 1. MCP MOUNTS: Search for "MCP dependencies" below and add/remove/change
-#    volume mounts based on your own MCP servers that reference local files.
-#    Mount at the exact same host path so MCP configs work without modification.
+# Edit ~/.claude/docker/w-config.zsh to customize:
+#   - W_PORTS: dev server ports to forward
+#   - W_EXTRA_VOLUMES: MCP server mounts and other volume mounts
+#   - W_EXTRA_ENV: extra environment variables for the container
 #
-# 2. PORTS: Change the "ports" array to match your dev server ports.
-#
-# 3. BASE BRANCH: Worktrees are created from origin/develop. Change "develop"
-#    if your default branch is different (e.g. main).
+# BASE BRANCH: Worktrees are created from origin/develop. Change
+# "develop" below if your default branch is different (e.g. main).
 # ─────────────────────────────────────────────────────────────────
+
+# Source user config (ports, extra volumes, extra env vars)
+_w_config="$HOME/.claude/docker/w-config.zsh"
+if [[ -f "$_w_config" ]]; then
+    source "$_w_config"
+fi
+# Defaults if config is missing or incomplete
+(( ${#W_PORTS[@]} == 0 )) && W_PORTS=(3000)
+(( ${#W_EXTRA_VOLUMES[@]} == 0 )) && W_EXTRA_VOLUMES=()
+(( ${#W_EXTRA_ENV[@]} == 0 )) && W_EXTRA_ENV=()
 
 _w_build_image() {
     local docker_dir="$HOME/.claude/docker"
@@ -298,13 +307,6 @@ else:
             -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
             -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
             --group-add 0  # SSH agent socket is root:root 0660; claude user needs group access
-            # ── Statusline (ccstatusline) ───────────────────────────────
-            # Config mount: theme, widget layout, powerline settings (read-only)
-            # Cache mount: shares usage API cache with host to avoid 429 rate limits (read-write)
-            # Remove or change if you use a different statusline tool.
-            # -v "$HOME/.config/ccstatusline:/home/claude/.config/ccstatusline:ro"
-            # -v "$HOME/.cache/ccstatusline:/home/claude/.cache/ccstatusline:rw"
-            # ──────────────────────────────────────────────────────────
             # ── Credentials tmpfs ──────────────────────────────────
             # Entrypoint writes credentials here instead of the host-mounted
             # ~/.claude, so they only exist in container memory.
@@ -317,14 +319,12 @@ else:
             # MCP startup timeout.
             -v "claude-uv-cache:/home/claude/.cache/uv"
             # ──────────────────────────────────────────────────────────
-            # ── MCP dependencies ──────────────────────────────────────
-            # Add read-only mounts for any MCP servers that reference local files.
-            # Mount at the exact same host path so MCP configs work unchanged.
-            # Examples (uncomment and adjust for your setup):
-            # -v "$HOME/Developer/my-mcp-data:/same/path/in/container:ro"
-            # -v "$HOME/path/to/data.json:$HOME/path/to/data.json:ro"
-            # ──────────────────────────────────────────────────────────
         )
+
+        # Add user-configured extra volumes from w-config.zsh
+        for vol in "${W_EXTRA_VOLUMES[@]}"; do
+            docker_args+=( -v "$vol" )
+        done
 
         # Pass Keychain credentials to container
         if [[ -n "$claude_creds" ]]; then
@@ -340,9 +340,13 @@ else:
             echo "  Warning: No GitHub token found (gh commands won't work in container)"
         fi
 
+        # Add user-configured extra env vars from w-config.zsh
+        for env_var in "${W_EXTRA_ENV[@]}"; do
+            docker_args+=( -e "$env_var" )
+        done
+
         # Port forwarding for dev servers (try fallback host ports if taken)
-        # ── CUSTOMIZE: change these ports to match your dev servers ──
-        local -a ports=(3000 3030 6006)
+        local -a ports=("${W_PORTS[@]}")
         local max_fallback=10  # try up to 10 alternative host ports
         for port in "${ports[@]}"; do
             local host_port=$port
