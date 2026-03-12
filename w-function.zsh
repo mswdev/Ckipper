@@ -300,6 +300,11 @@ else:
             # -v "$HOME/.config/ccstatusline:/home/claude/.config/ccstatusline:ro"
             # -v "$HOME/.cache/ccstatusline:/home/claude/.cache/ccstatusline:rw"
             # ──────────────────────────────────────────────────────────
+            # ── Credentials tmpfs ──────────────────────────────────
+            # Entrypoint writes credentials here instead of the host-mounted
+            # ~/.claude, so they only exist in container memory.
+            --tmpfs /tmp/claude-creds:mode=700,uid=1000,gid=1000,size=1m
+            # ──────────────────────────────────────────────────────────
             # ── uvx/uv cache ─────────────────────────────────────────
             # Named volume persists Python packages across container restarts.
             # Without this, uvx-based MCP servers cold-start every launch
@@ -382,8 +387,24 @@ else:
         local git_config_hash=""
         [[ -f "$git_config" ]] && git_config_hash=$(shasum -a 256 "$git_config" | cut -d' ' -f1)
 
+        # Snapshot worktree metadata before session (detect pruning damage)
+        local git_worktrees_dir="$projects_dir/$project/.git/worktrees"
+        local -a worktrees_before=()
+        if [[ -d "$git_worktrees_dir" ]]; then
+            worktrees_before=( "$git_worktrees_dir"/*(N/:t) )
+        fi
+
         "${docker_args[@]}"
         local exit_code=$?
+
+        # Post-session: clean up dangling credentials symlink left by tmpfs credential isolation.
+        # Only remove when no other claude-dev containers are running — parallel sessions
+        # share the ~/.claude bind mount, so deleting the symlink would break their credentials.
+        if [[ -L "$HOME/.claude/.credentials.json" ]]; then
+            if ! docker ps --filter ancestor=claude-dev --quiet 2>/dev/null | grep -q .; then
+                rm -f "$HOME/.claude/.credentials.json"
+            fi
+        fi
 
         # Post-session: warn if .git/config was modified
         if [[ -n "$git_config_hash" && -f "$git_config" ]]; then
@@ -392,6 +413,32 @@ else:
                 echo ""
                 echo "WARNING: .git/config was modified during the Docker session!"
                 echo "Review changes: git -C $projects_dir/$project config --local --list"
+            fi
+        fi
+
+        # Post-session: check if any worktree metadata was destroyed
+        if [[ ${#worktrees_before[@]} -gt 0 ]]; then
+            local -a worktrees_after=()
+            if [[ -d "$git_worktrees_dir" ]]; then
+                worktrees_after=( "$git_worktrees_dir"/*(N/:t) )
+            fi
+            local -a missing=()
+            for wt in "${worktrees_before[@]}"; do
+                if [[ ! " ${worktrees_after[*]} " =~ " $wt " ]]; then
+                    missing+=("$wt")
+                fi
+            done
+            if [[ ${#missing[@]} -gt 0 ]]; then
+                echo ""
+                echo "CRITICAL: ${#missing[@]} worktree(s) had metadata destroyed during the Docker session!"
+                echo "Missing worktrees: ${missing[*]}"
+                echo ""
+                echo "The working directories still exist on disk — only the .git/worktrees/ metadata was deleted."
+                echo "To recover, re-register each worktree:"
+                echo "  cd $projects_dir/$project"
+                for wt in "${missing[@]}"; do
+                    echo "  git worktree add <path-to-$wt> $wt"
+                done
             fi
         fi
 

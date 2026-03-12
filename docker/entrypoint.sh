@@ -22,10 +22,16 @@ if [ -d "$HOME/.ssh-host" ]; then
     fi
 fi
 
-# Write credentials from environment variable (macOS stores in Keychain, not on disk)
+# Write credentials to tmpfs (not the host-mounted ~/.claude — prevents credential
+# leakage to the host filesystem). The tmpfs mount at /tmp/claude-creds is
+# container-local and disappears when the container exits.
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
-    echo "$CLAUDE_CREDENTIALS" > "$HOME/.claude/.credentials.json"
-    chmod 600 "$HOME/.claude/.credentials.json"
+    mkdir -p /tmp/claude-creds
+    echo "$CLAUDE_CREDENTIALS" > /tmp/claude-creds/.credentials.json
+    chmod 700 /tmp/claude-creds
+    chmod 600 /tmp/claude-creds/.credentials.json
+    # Symlink from expected location — Claude Code reads ~/.claude/.credentials.json
+    ln -sf /tmp/claude-creds/.credentials.json "$HOME/.claude/.credentials.json"
 fi
 
 # Set git identity from .claude.json account info (needed for commits inside container)
@@ -86,11 +92,11 @@ chmod +x "$HOME/.local/bin/bunx"
 
 # Reinstall native binaries for Linux — npm install on the host (macOS) pulls
 # macOS-specific binaries (rollup, biome, esbuild, swc, etc.) that don't work
-# inside the Linux container. npm rebuild requires gcc which isn't installed,
-# so we run npm install which downloads pre-built Linux binaries instead.
+# inside the Linux container. Uses --ignore-scripts to prevent tampered
+# postinstall scripts from executing at container startup (supply chain defense).
 if [ -d node_modules ]; then
     echo "Installing platform-specific binaries for Linux..."
-    npm install --prefer-offline 2>/dev/null || true
+    npm install --prefer-offline --ignore-scripts 2>/dev/null || true
 fi
 
 # Clear credentials from environment (consumed above; exec ensures clean /proc/self/environ)
