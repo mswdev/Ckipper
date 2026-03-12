@@ -160,7 +160,7 @@ w <your-project> test-branch --docker claude
 
 Clone the repo, then open Claude Code and paste this prompt:
 
-> Read the README.md in this repo, then run `./install.sh`. After that, edit `~/.claude/docker/w-config.zsh` with my MCP mounts and ports. Then run `source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test.
+> Read the README.md in this repo and run `./install.sh`. Then run `source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test. Show me what's in `~/.claude/docker/w-config.zsh` so I can customize it.
 
 ### What Gets Installed Where
 
