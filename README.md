@@ -251,7 +251,7 @@ The `bun` runtime is included in the container image. The entrypoint creates a `
 | Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `w --rebuild-image` if missing |
 | Branch already checked out | Switch main repo to different branch: `cd ~/Developer/<project> && git checkout develop` |
 | Stale worktree directory | Remove manually: `rm -rf ~/Developer/.worktrees/<project>/<branch>` |
-| Statusline not rendering correctly | Uncomment the ccstatusline mount in `w-function.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
+| Statusline not rendering correctly | Add ccstatusline mounts to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
 | `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
