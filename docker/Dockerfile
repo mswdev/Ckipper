@@ -45,17 +45,23 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 RUN userdel -r node 2>/dev/null; groupdel node 2>/dev/null; \
     groupadd -g 1000 claude \
     && useradd -u 1000 -g claude -m -s /bin/bash claude \
-    && echo "claude ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" >> /etc/sudoers.d/claude \
-    && mkdir -p /home/claude/.local/bin /home/claude/.ssh /home/claude/.config /home/claude/.cache/uv \
+    && echo "claude ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/fix-volume-perms.sh" >> /etc/sudoers.d/claude \
+    && mkdir -p /home/claude/.local/bin /home/claude/.ssh /home/claude/.config /home/claude/.cache/uv /home/claude/.uv-tools \
     && ln -s /usr/local/bin/claude /home/claude/.local/bin/claude \
     && ssh-keyscan -t ed25519,rsa github.com >> /home/claude/.ssh/known_hosts 2>/dev/null || true \
-    && chown -R claude:claude /home/claude/.local /home/claude/.ssh /home/claude/.config /home/claude/.cache
+    && chown -R claude:claude /home/claude/.local /home/claude/.ssh /home/claude/.config /home/claude/.cache /home/claude/.uv-tools
 
 # Install bun (fast JS runtime — needed for bunx-based statusline commands and general use)
 RUN curl -fsSL https://bun.sh/install | bash \
     && cp /root/.bun/bin/bun /usr/local/bin/bun \
     && cp /root/.bun/bin/bunx /usr/local/bin/bunx \
     && chmod +x /usr/local/bin/bun /usr/local/bin/bunx
+
+# Create volume permission repair script (named volumes may retain stale UIDs
+# from older image builds — this fixes ownership on container start)
+RUN printf '#!/bin/bash\nchown -R claude:claude /home/claude/.cache/uv /home/claude/.uv-tools 2>/dev/null || true\n' \
+    > /usr/local/bin/fix-volume-perms.sh \
+    && chmod +x /usr/local/bin/fix-volume-perms.sh
 
 # Copy scripts
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

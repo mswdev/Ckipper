@@ -99,6 +99,58 @@ if [ -d node_modules ]; then
     npm install --prefer-offline --ignore-scripts 2>/dev/null || true
 fi
 
+# Fix ownership on named volumes (may retain stale UIDs from older image builds)
+sudo /usr/local/bin/fix-volume-perms.sh
+
+# Pre-install uvx-based MCP servers to avoid Claude's MCP startup timeout.
+# uvx with git URLs needs network checks + ephemeral venv creation on every
+# launch, which often exceeds the timeout. Pre-installing here (outside the
+# timeout window) and rewriting the config to use the installed binary makes
+# MCP startup near-instant. Tool installations persist via the claude-uv-tools
+# named volume, so subsequent containers reuse existing installs.
+uv_bin_dir="${UV_TOOL_BIN_DIR:-$HOME/.local/bin}"
+mkdir -p "$uv_bin_dir" "${UV_TOOL_DIR:-$HOME/.local/share/uv/tools}" 2>/dev/null || true
+export PATH="$uv_bin_dir:$PATH"
+
+if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/dev/null; then
+    uvx_servers=$(jq -r '
+        .mcpServers // {} | to_entries[] |
+        select(.value.command == "uvx") | .key
+    ' "$HOME/.claude.json" 2>/dev/null)
+
+    if [ -n "$uvx_servers" ]; then
+        echo "Pre-installing uvx-based MCP servers..."
+        while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            pkg=$(jq -r ".mcpServers[\"$name\"].args[0]" "$HOME/.claude.json")
+            [ -z "$pkg" ] && continue
+
+            # Derive binary name from package spec
+            # git+https://.../<pkg-name>@ref → pkg-name
+            bin_name=$(echo "$pkg" | sed 's|.*/||; s/@.*//')
+            bin_path="$uv_bin_dir/$bin_name"
+
+            # Skip install if binary already exists from a previous container run
+            # (persisted via claude-uv-tools volume). Only install if missing.
+            if [ ! -x "$bin_path" ]; then
+                timeout 60 uv tool install "$pkg" 2>/dev/null || true
+            fi
+
+            if [ -x "$bin_path" ]; then
+                # Rewrite MCP config: use installed binary, drop package spec from args
+                jq --arg n "$name" --arg b "$bin_path" '
+                    .mcpServers[$n].command = $b |
+                    .mcpServers[$n].args = .mcpServers[$n].args[1:]
+                ' "$HOME/.claude.json" > "$HOME/.claude.json.tmp" \
+                    && mv "$HOME/.claude.json.tmp" "$HOME/.claude.json"
+                echo "  $name -> $bin_path"
+            else
+                echo "  $name: binary not found at $bin_path, keeping uvx"
+            fi
+        done <<< "$uvx_servers"
+    fi
+fi
+
 # Clear credentials from environment (consumed above; exec ensures clean /proc/self/environ)
 unset CLAUDE_CREDENTIALS GH_TOKEN
 
