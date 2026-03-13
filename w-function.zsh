@@ -312,12 +312,14 @@ else:
             # ~/.claude, so they only exist in container memory.
             --tmpfs /tmp/claude-creds:mode=700,uid=1000,gid=1000,size=1m
             # ──────────────────────────────────────────────────────────
-            # ── uvx/uv cache ─────────────────────────────────────────
-            # Named volume persists Python packages across container restarts.
-            # Without this, uvx-based MCP servers cold-start every launch
-            # (download Python + clone + install), often exceeding Claude's
-            # MCP startup timeout.
+            # ── uvx/uv cache & tools ───────────────────────────────────
+            # Named volumes persist Python packages and pre-installed tool
+            # environments across container restarts. The entrypoint pre-installs
+            # uvx-based MCP servers into .uv-tools/ so they start instantly.
             -v "claude-uv-cache:/home/claude/.cache/uv"
+            -v "claude-uv-tools:/home/claude/.uv-tools"
+            -e "UV_TOOL_DIR=/home/claude/.uv-tools/envs"
+            -e "UV_TOOL_BIN_DIR=/home/claude/.uv-tools/bin"
             # ──────────────────────────────────────────────────────────
         )
 
