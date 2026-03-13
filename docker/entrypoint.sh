@@ -109,7 +109,7 @@ sudo /usr/local/bin/fix-volume-perms.sh
 # MCP startup near-instant. Tool installations persist via the claude-uv-tools
 # named volume, so subsequent containers reuse existing installs.
 uv_bin_dir="${UV_TOOL_BIN_DIR:-$HOME/.local/bin}"
-mkdir -p "$uv_bin_dir" "${UV_TOOL_DIR:-$HOME/.local/share/uv/tools}" 2>/dev/null || true
+mkdir -p "$uv_bin_dir" "${UV_TOOL_DIR:-$HOME/.local/share/uv/tools}" "${UV_PYTHON_INSTALL_DIR:-$HOME/.local/share/uv/python}" 2>/dev/null || true
 export PATH="$uv_bin_dir:$PATH"
 
 if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/dev/null; then

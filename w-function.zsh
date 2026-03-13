@@ -320,6 +320,7 @@ else:
             -v "claude-uv-tools:/home/claude/.uv-tools"
             -e "UV_TOOL_DIR=/home/claude/.uv-tools/envs"
             -e "UV_TOOL_BIN_DIR=/home/claude/.uv-tools/bin"
+            -e "UV_PYTHON_INSTALL_DIR=/home/claude/.uv-tools/python"
             # ──────────────────────────────────────────────────────────
         )
 
