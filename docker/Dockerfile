@@ -30,12 +30,6 @@ ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CHROMIUM_FLAGS="--no-sandbox"
 ENV PUPPETEER_CHROMIUM_ARGS="--no-sandbox"
 
-# Install uv/uvx (Python package runner — needed for Python-based MCP servers)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && cp /root/.local/bin/uv /usr/local/bin/uv \
-    && cp /root/.local/bin/uvx /usr/local/bin/uvx \
-    && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
-
 # Create non-root user and pre-seed SSH known hosts
 RUN userdel -r node 2>/dev/null; groupdel node 2>/dev/null; \
     groupadd -g 1000 claude \
@@ -58,10 +52,18 @@ RUN printf '#!/bin/bash\nchown -R claude:claude /home/claude/.cache/uv /home/cla
     > /usr/local/bin/fix-volume-perms.sh \
     && chmod +x /usr/local/bin/fix-volume-perms.sh
 
-# Install Claude Code via native installer (placed late in the Dockerfile so
-# the CACHEBUST arg only invalidates this layer and the COPY below, not the
-# heavier layers above like apt-get, bun, and uv)
+# ── Cache-busted layers ──────────────────────────────────────────
+# Everything below here is re-fetched on every `w --rebuild-image`.
+# Keep only fast-installing tools here to minimize rebuild time.
 ARG CACHEBUST=1
+
+# Install uv/uvx (Python package runner — needed for Python-based MCP servers)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && cp /root/.local/bin/uv /usr/local/bin/uv \
+    && cp /root/.local/bin/uvx /usr/local/bin/uvx \
+    && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
+
+# Install Claude Code via native installer
 RUN curl -fsSL https://claude.ai/install.sh | bash \
     && cp /root/.local/bin/claude /usr/local/bin/claude \
     && chmod +x /usr/local/bin/claude

@@ -234,6 +234,24 @@ If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc
 
 The `bun` runtime is included in the container image. The entrypoint creates a `bunx` wrapper that injects `FORCE_COLOR=3` for truecolor statusline output (Claude Code doesn't pass this to subprocesses).
 
+## Updating
+
+Run `w --rebuild-image` to get the latest versions of Claude Code and uv/uvx. The build uses a cache-bust argument so these tools are always re-fetched, while heavier layers (system packages, bun, Chromium) stay cached for fast rebuilds.
+
+If you need to update everything (system packages, bun, gh CLI, Node.js base image), do a full rebuild:
+
+```bash
+docker build --no-cache -t claude-dev ~/.claude/docker
+```
+
+To clear stale uv/MCP caches (e.g., after permission errors or broken tool installs):
+
+```bash
+docker volume rm claude-uv-cache claude-uv-tools
+```
+
+The volumes are recreated automatically on the next container start.
+
 ## Known Limitations
 
 These are inherent to running Claude Code inside a Docker container on macOS and cannot be fully resolved without upstream changes.
@@ -273,4 +291,5 @@ Voice mode requires microphone access, which is unavailable inside the container
 | `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
-| uvx MCP server fails to start | Ensure `claude-uv-cache` volume mount is in `w-function.zsh`; first run populates cache |
+| uvx MCP server fails to start | Run `w --rebuild-image`; if still broken, delete stale volumes: `docker volume rm claude-uv-cache claude-uv-tools` |
+| Claude Code version outdated | Run `w --rebuild-image` — Claude and uv are always re-fetched |
