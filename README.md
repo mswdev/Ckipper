@@ -77,7 +77,7 @@ Claude **cannot**: access files outside the worktree, reach your Documents/Deskt
 
 ### Safety Hooks (Docker-only, no-op on host)
 
-Three Claude Code hooks activate inside Docker:
+Four Claude Code hooks activate inside Docker:
 
 1. **Config Protection** (`protect-claude-config.sh`) — Blocks Edit/Write to Claude config files (settings.json, hooks, plugins, etc.) that could execute code on the host
 2. **Bash Guardrails** (`bash-guardrails.sh`) — Blocks destructive commands:
@@ -89,6 +89,7 @@ Three Claude Code hooks activate inside Docker:
    - Reading SSH keys or credential files directly
    - Modifying Claude config files via shell
 3. **Context Injection** (`docker-context.sh`) — Tells Claude the safety rules at startup so it avoids triggering guardrails
+4. **Notification Bell** (`notify-bell.sh`) — Sends a terminal bell character (`\a`) on Claude Code notification events, which passes through Docker's TTY to the host terminal. Triggers native notifications (dock bounce, sound) in Ghostty, iTerm2, Warp, and other terminals that support terminal bell
 
 ### Additional Security
 
@@ -172,6 +173,7 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `hooks/protect-claude-config.sh` | `~/.claude/hooks/protect-claude-config.sh` | Edit/Write guard |
 | `hooks/bash-guardrails.sh` | `~/.claude/hooks/bash-guardrails.sh` | Bash command guard |
 | `hooks/docker-context.sh` | `~/.claude/hooks/docker-context.sh` | Context injection |
+| `hooks/notify-bell.sh` | `~/.claude/hooks/notify-bell.sh` | Notification bell |
 | `w-function.zsh` | `~/.claude/docker/w-function.zsh` | w() function (sourced by .zshrc) |
 | `w-config.zsh.example` | `~/.claude/docker/w-config.zsh` | User config (ports, mounts, env vars) |
 | `settings-hooks.json` | Auto-merged into `~/.claude/settings.json` | Hook registration |
@@ -231,6 +233,22 @@ If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc
 - **Cache mount** (`~/.cache/ccstatusline`, read-write) — shares usage API cache with host to avoid 429 rate limits
 
 The `bun` runtime is included in the container image. The entrypoint creates a `bunx` wrapper that injects `FORCE_COLOR=3` for truecolor statusline output (Claude Code doesn't pass this to subprocesses).
+
+## Known Limitations
+
+These are inherent to running Claude Code inside a Docker container on macOS and cannot be fully resolved without upstream changes.
+
+### OAuth Token Expiry Across Host and Container
+
+Claude Code stores OAuth credentials in the macOS Keychain. When the container's Claude refreshes an expired token (~6 hours), the host's token is invalidated server-side. The refreshed token lives in container RAM (tmpfs) and cannot be written back to Keychain from Linux. If you run long container sessions, the host Claude will be logged out. Workaround: run `claude` on the host to re-authenticate.
+
+### Clipboard / Image Paste
+
+Ctrl+V image paste does not work inside the container. Claude Code uses `pbpaste` (macOS-only) to access the system clipboard, which doesn't exist in the Linux container. There is no standard mechanism for forwarding the macOS clipboard into a Docker container. OSC 52 terminal escape sequences can forward text clipboard but not images.
+
+### Voice Mode (`/voice`)
+
+Voice mode requires microphone access, which is unavailable inside the container. Docker Desktop for Mac does not expose the host's microphone to containers. There is no equivalent of the SSH agent forwarding pattern for audio devices on macOS.
 
 ## Troubleshooting
 

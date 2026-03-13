@@ -8,11 +8,12 @@ Docker-based sandbox for running Claude Code with `--dangerously-skip-permission
 - **`w-config.zsh.example`** — Template for user-specific Docker config (ports, volume mounts, env vars). Copied to `~/.claude/docker/w-config.zsh` on first install, never overwritten on updates.
 - **`docker/Dockerfile`** — `node:24-slim` image with dev tools (git, gh, ripgrep, tmux, Chromium, uv/uvx, bun, Claude Code native installer). Runs as non-root `claude` user.
 - **`docker/entrypoint.sh`** — Container startup: copies `.claude.json` from read-only staging mount, writes credentials to disk, sets git identity, disables GPG signing via `GIT_CONFIG_COUNT`, authenticates `gh` CLI, optionally enables firewall, creates `bunx` wrapper for statusline colors, runs `npm install` for Linux binaries, clears credential env vars, then runs the provided command (or drops to bash shell if none).
-- **`hooks/`** — Three Claude Code hooks (registered in `settings-hooks.json`):
+- **`hooks/`** — Four Claude Code hooks (registered in `settings-hooks.json`):
   - `protect-claude-config.sh` — PreToolUse on Edit/Write: blocks modifications to `.claude/settings.json`, hooks, plugins
   - `bash-guardrails.sh` — PreToolUse on Bash: blocks `rm -rf`, `git push --force`, `git reset --hard`, `.git/hooks` writes, recursive `chmod`/`chown`, credential file reads, Claude config modification via shell
   - `docker-context.sh` — SessionStart: injects safety rules so Claude avoids triggering guardrails
-  - All three are no-op on the host (exit early if `/.dockerenv` doesn't exist)
+  - `notify-bell.sh` — Notification: sends terminal bell (`\a`) so host terminal fires native notifications (dock bounce, sound)
+  - All four are no-op on the host (exit early if `/.dockerenv` doesn't exist)
 - **`docker/init-firewall.sh`** — Optional `iptables-legacy` egress whitelist (default-deny). Uses `--cap-add=NET_ADMIN`.
 
 ## Critical Safety Rules
