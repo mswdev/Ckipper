@@ -33,12 +33,18 @@ fi
 
 _w_build_image() {
     local docker_dir="$HOME/.claude/docker"
+    local extra_args=()
+    if [[ "$1" == "--no-cache" ]]; then
+        extra_args+=(--no-cache)
+        echo "Building claude-dev Docker image (full rebuild, no cache)..."
+    else
+        echo "Building claude-dev Docker image..."
+    fi
     if [[ ! -f "$docker_dir/Dockerfile" ]]; then
         echo "Dockerfile not found: $docker_dir/Dockerfile"
         return 1
     fi
-    echo "Building claude-dev Docker image..."
-    docker build --build-arg "CACHEBUST=$(date +%s)" -t claude-dev "$docker_dir"
+    docker build --build-arg "CACHEBUST=$(date +%s)" "${extra_args[@]}" -t claude-dev "$docker_dir"
 }
 
 w() {
@@ -80,7 +86,7 @@ w() {
 
     # -- Rebuild Docker image --
     if [[ "$1" == "--rebuild-image" ]]; then
-        _w_build_image
+        _w_build_image "$2"
         return $?
     fi
 
