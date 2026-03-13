@@ -66,8 +66,10 @@ On every container start, `entrypoint.sh` automatically:
 9. **Sets `TURBO_CACHE_DIR`** to `/workspace/.turbo/cache` (worktree git root points to unwritable host path)
 10. **Forces truecolor statusline** — creates a `bunx` wrapper that injects `FORCE_COLOR=3` (Claude Code doesn't pass it to subprocesses)
 11. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
-12. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before launching the command
-13. **Runs the specified command** — `claude --dangerously-skip-permissions` if `claude` was passed, otherwise drops to an interactive bash shell
+12. **Fixes volume permissions** — runs `chown` on named volumes that may retain stale UIDs from older image builds
+13. **Pre-installs uvx-based MCP servers** — parses `.claude.json` for MCP servers that use `uvx`, pre-installs them with `uv tool install`, and rewrites the config to invoke the installed binary directly (avoids Claude's MCP startup timeout)
+14. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before launching the command
+15. **Runs the specified command** — `claude --dangerously-skip-permissions` if `claude` was passed, otherwise drops to an interactive bash shell
 
 ## Security
 
@@ -124,7 +126,11 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 
 For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
 
-A named Docker volume (`claude-uv-cache`) persists the uv/uvx package cache across container restarts. Without it, uvx-based MCP servers cold-start every launch (download Python + clone + install), often exceeding Claude Code's MCP startup timeout.
+Two named Docker volumes support uvx-based MCP servers:
+- **`claude-uv-cache`** — persists the uv package cache (downloaded wheels, git clones) across container restarts
+- **`claude-uv-tools`** — persists pre-installed tool environments and the uv-managed Python interpreter
+
+The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewrites the container's `.claude.json` to invoke the installed binary directly. This eliminates the network freshness check and ephemeral venv creation that cause intermittent MCP startup timeouts.
 
 ## Setup
 
