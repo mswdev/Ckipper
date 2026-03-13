@@ -36,11 +36,6 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && cp /root/.local/bin/uvx /usr/local/bin/uvx \
     && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
 
-# Install Claude Code via native installer
-RUN curl -fsSL https://claude.ai/install.sh | bash \
-    && cp /root/.local/bin/claude /usr/local/bin/claude \
-    && chmod +x /usr/local/bin/claude
-
 # Create non-root user and pre-seed SSH known hosts
 RUN userdel -r node 2>/dev/null; groupdel node 2>/dev/null; \
     groupadd -g 1000 claude \
@@ -62,6 +57,14 @@ RUN curl -fsSL https://bun.sh/install | bash \
 RUN printf '#!/bin/bash\nchown -R claude:claude /home/claude/.cache/uv /home/claude/.uv-tools 2>/dev/null || true\n' \
     > /usr/local/bin/fix-volume-perms.sh \
     && chmod +x /usr/local/bin/fix-volume-perms.sh
+
+# Install Claude Code via native installer (placed late in the Dockerfile so
+# the CACHEBUST arg only invalidates this layer and the COPY below, not the
+# heavier layers above like apt-get, bun, and uv)
+ARG CACHEBUST=1
+RUN curl -fsSL https://claude.ai/install.sh | bash \
+    && cp /root/.local/bin/claude /usr/local/bin/claude \
+    && chmod +x /usr/local/bin/claude
 
 # Copy scripts
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
