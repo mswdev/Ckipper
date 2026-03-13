@@ -1,5 +1,11 @@
 FROM node:24-slim
 
+# Every `w --rebuild-image` passes a unique CACHEBUST value, so all layers
+# below are re-fetched. This keeps system packages, CLI tools, and Claude
+# Code current without ever going stale. Only the base image (node:24-slim)
+# is cached — pull it manually with `docker pull node:24-slim` if needed.
+ARG CACHEBUST=1
+
 # Install system dependencies + GitHub CLI repo setup
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \

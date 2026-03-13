@@ -38,7 +38,7 @@ _w_build_image() {
         return 1
     fi
     echo "Building claude-dev Docker image..."
-    docker build -t claude-dev "$docker_dir"
+    docker build --build-arg "CACHEBUST=$(date +%s)" -t claude-dev "$docker_dir"
 }
 
 w() {
@@ -320,6 +320,7 @@ else:
             -v "claude-uv-tools:/home/claude/.uv-tools"
             -e "UV_TOOL_DIR=/home/claude/.uv-tools/envs"
             -e "UV_TOOL_BIN_DIR=/home/claude/.uv-tools/bin"
+            -e "UV_PYTHON_INSTALL_DIR=/home/claude/.uv-tools/python"
             # ──────────────────────────────────────────────────────────
         )
 

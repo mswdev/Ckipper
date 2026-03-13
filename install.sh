@@ -43,9 +43,11 @@ mkdir -p "$HOME/.claude/hooks"
 cp "$REPO_DIR/hooks/protect-claude-config.sh" "$HOME/.claude/hooks/"
 cp "$REPO_DIR/hooks/bash-guardrails.sh" "$HOME/.claude/hooks/"
 cp "$REPO_DIR/hooks/docker-context.sh" "$HOME/.claude/hooks/"
+cp "$REPO_DIR/hooks/notify-bell.sh" "$HOME/.claude/hooks/"
 chmod +x "$HOME/.claude/hooks/protect-claude-config.sh"
 chmod +x "$HOME/.claude/hooks/bash-guardrails.sh"
 chmod +x "$HOME/.claude/hooks/docker-context.sh"
+chmod +x "$HOME/.claude/hooks/notify-bell.sh"
 
 # 4. Copy w-function.zsh
 echo "Copying w-function.zsh to ~/.claude/docker/..."
