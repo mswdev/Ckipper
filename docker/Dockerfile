@@ -1,5 +1,11 @@
 FROM node:24-slim
 
+# Every `w --rebuild-image` passes a unique CACHEBUST value, so all layers
+# below are re-fetched. This keeps system packages, CLI tools, and Claude
+# Code current without ever going stale. Only the base image (node:24-slim)
+# is cached — pull it manually with `docker pull node:24-slim` if needed.
+ARG CACHEBUST=1
+
 # Install system dependencies + GitHub CLI repo setup
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -30,6 +36,17 @@ ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CHROMIUM_FLAGS="--no-sandbox"
 ENV PUPPETEER_CHROMIUM_ARGS="--no-sandbox"
 
+# Install uv/uvx (Python package runner — needed for Python-based MCP servers)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && cp /root/.local/bin/uv /usr/local/bin/uv \
+    && cp /root/.local/bin/uvx /usr/local/bin/uvx \
+    && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
+
+# Install Claude Code via native installer
+RUN curl -fsSL https://claude.ai/install.sh | bash \
+    && cp /root/.local/bin/claude /usr/local/bin/claude \
+    && chmod +x /usr/local/bin/claude
+
 # Create non-root user and pre-seed SSH known hosts
 RUN userdel -r node 2>/dev/null; groupdel node 2>/dev/null; \
     groupadd -g 1000 claude \
@@ -51,22 +68,6 @@ RUN curl -fsSL https://bun.sh/install | bash \
 RUN printf '#!/bin/bash\nchown -R claude:claude /home/claude/.cache/uv /home/claude/.uv-tools 2>/dev/null || true\n' \
     > /usr/local/bin/fix-volume-perms.sh \
     && chmod +x /usr/local/bin/fix-volume-perms.sh
-
-# ── Cache-busted layers ──────────────────────────────────────────
-# Everything below here is re-fetched on every `w --rebuild-image`.
-# Keep only fast-installing tools here to minimize rebuild time.
-ARG CACHEBUST=1
-
-# Install uv/uvx (Python package runner — needed for Python-based MCP servers)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && cp /root/.local/bin/uv /usr/local/bin/uv \
-    && cp /root/.local/bin/uvx /usr/local/bin/uvx \
-    && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
-
-# Install Claude Code via native installer
-RUN curl -fsSL https://claude.ai/install.sh | bash \
-    && cp /root/.local/bin/claude /usr/local/bin/claude \
-    && chmod +x /usr/local/bin/claude
 
 # Copy scripts
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

@@ -236,13 +236,7 @@ The `bun` runtime is included in the container image. The entrypoint creates a `
 
 ## Updating
 
-Run `w --rebuild-image` to get the latest versions of Claude Code and uv/uvx. The build uses a cache-bust argument so these tools are always re-fetched, while heavier layers (system packages, bun, Chromium) stay cached for fast rebuilds.
-
-If you need to update everything (system packages, bun, gh CLI, Node.js base image), do a full rebuild:
-
-```bash
-docker build --no-cache -t claude-dev ~/.claude/docker
-```
+Run `w --rebuild-image` to update everything in the container — system packages, Claude Code, uv/uvx, bun, gh CLI, and Chromium. The build cache-busts all layers so nothing goes stale. Only the base image (`node:24-slim`) is cached; pull it manually with `docker pull node:24-slim` if needed.
 
 To clear stale uv/MCP caches (e.g., after permission errors or broken tool installs):
 
