@@ -66,8 +66,10 @@ On every container start, `entrypoint.sh` automatically:
 9. **Sets `TURBO_CACHE_DIR`** to `/workspace/.turbo/cache` (worktree git root points to unwritable host path)
 10. **Forces truecolor statusline** — creates a `bunx` wrapper that injects `FORCE_COLOR=3` (Claude Code doesn't pass it to subprocesses)
 11. **Reinstalls native binaries** — `npm install --prefer-offline` replaces macOS binaries (rollup, biome, esbuild, swc) with Linux versions
-12. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before launching the command
-13. **Runs the specified command** — `claude --dangerously-skip-permissions` if `claude` was passed, otherwise drops to an interactive bash shell
+12. **Fixes volume permissions** — runs `chown` on named volumes that may retain stale UIDs from older image builds
+13. **Pre-installs uvx-based MCP servers** — parses `.claude.json` for MCP servers that use `uvx`, pre-installs them with `uv tool install`, and rewrites the config to invoke the installed binary directly (avoids Claude's MCP startup timeout)
+14. **Clears credential env vars** (`unset CLAUDE_CREDENTIALS GH_TOKEN`) before launching the command
+15. **Runs the specified command** — `claude --dangerously-skip-permissions` if `claude` was passed, otherwise drops to an interactive bash shell
 
 ## Security
 
@@ -77,7 +79,7 @@ Claude **cannot**: access files outside the worktree, reach your Documents/Deskt
 
 ### Safety Hooks (Docker-only, no-op on host)
 
-Three Claude Code hooks activate inside Docker:
+Four Claude Code hooks activate inside Docker:
 
 1. **Config Protection** (`protect-claude-config.sh`) — Blocks Edit/Write to Claude config files (settings.json, hooks, plugins, etc.) that could execute code on the host
 2. **Bash Guardrails** (`bash-guardrails.sh`) — Blocks destructive commands:
@@ -89,6 +91,7 @@ Three Claude Code hooks activate inside Docker:
    - Reading SSH keys or credential files directly
    - Modifying Claude config files via shell
 3. **Context Injection** (`docker-context.sh`) — Tells Claude the safety rules at startup so it avoids triggering guardrails
+4. **Notification Bell** (`notify-bell.sh`) — Sends a terminal bell character (`\a`) on Claude Code notification events, which passes through Docker's TTY to the host terminal. Triggers native notifications (dock bounce, sound) in Ghostty, iTerm2, Warp, and other terminals that support terminal bell
 
 ### Additional Security
 
@@ -123,7 +126,11 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 
 For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
 
-A named Docker volume (`claude-uv-cache`) persists the uv/uvx package cache across container restarts. Without it, uvx-based MCP servers cold-start every launch (download Python + clone + install), often exceeding Claude Code's MCP startup timeout.
+Two named Docker volumes support uvx-based MCP servers:
+- **`claude-uv-cache`** — persists the uv package cache (downloaded wheels, git clones) across container restarts
+- **`claude-uv-tools`** — persists pre-installed tool environments and the uv-managed Python interpreter
+
+The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewrites the container's `.claude.json` to invoke the installed binary directly. This eliminates the network freshness check and ephemeral venv creation that cause intermittent MCP startup timeouts.
 
 ## Setup
 
@@ -172,6 +179,7 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `hooks/protect-claude-config.sh` | `~/.claude/hooks/protect-claude-config.sh` | Edit/Write guard |
 | `hooks/bash-guardrails.sh` | `~/.claude/hooks/bash-guardrails.sh` | Bash command guard |
 | `hooks/docker-context.sh` | `~/.claude/hooks/docker-context.sh` | Context injection |
+| `hooks/notify-bell.sh` | `~/.claude/hooks/notify-bell.sh` | Notification bell |
 | `w-function.zsh` | `~/.claude/docker/w-function.zsh` | w() function (sourced by .zshrc) |
 | `w-config.zsh.example` | `~/.claude/docker/w-config.zsh` | User config (ports, mounts, env vars) |
 | `settings-hooks.json` | Auto-merged into `~/.claude/settings.json` | Hook registration |
@@ -232,6 +240,34 @@ If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc
 
 The `bun` runtime is included in the container image. The entrypoint creates a `bunx` wrapper that injects `FORCE_COLOR=3` for truecolor statusline output (Claude Code doesn't pass this to subprocesses).
 
+## Updating
+
+Run `w --rebuild-image` to update everything in the container — system packages, Claude Code, uv/uvx, bun, gh CLI, and Chromium. The build cache-busts all layers so nothing goes stale. Only the base image (`node:24-slim`) is cached; pull it manually with `docker pull node:24-slim` if needed.
+
+To clear stale uv/MCP caches (e.g., after permission errors or broken tool installs):
+
+```bash
+docker volume rm claude-uv-cache claude-uv-tools
+```
+
+The volumes are recreated automatically on the next container start.
+
+## Known Limitations
+
+These are inherent to running Claude Code inside a Docker container on macOS and cannot be fully resolved without upstream changes.
+
+### OAuth Token Expiry Across Host and Container
+
+Claude Code stores OAuth credentials in the macOS Keychain. When the container's Claude refreshes an expired token (~6 hours), the host's token is invalidated server-side. The refreshed token lives in container RAM (tmpfs) and cannot be written back to Keychain from Linux. If you run long container sessions, the host Claude will be logged out. Workaround: run `claude` on the host to re-authenticate.
+
+### Clipboard / Image Paste
+
+Ctrl+V image paste does not work inside the container. Claude Code uses `pbpaste` (macOS-only) to access the system clipboard, which doesn't exist in the Linux container. There is no standard mechanism for forwarding the macOS clipboard into a Docker container. OSC 52 terminal escape sequences can forward text clipboard but not images.
+
+### Voice Mode (`/voice`)
+
+Voice mode requires microphone access, which is unavailable inside the container. Docker Desktop for Mac does not expose the host's microphone to containers. There is no equivalent of the SSH agent forwarding pattern for audio devices on macOS.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -255,4 +291,5 @@ The `bun` runtime is included in the container image. The entrypoint creates a `
 | `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
-| uvx MCP server fails to start | Ensure `claude-uv-cache` volume mount is in `w-function.zsh`; first run populates cache |
+| uvx MCP server fails to start | Run `w --rebuild-image`; if still broken, delete stale volumes: `docker volume rm claude-uv-cache claude-uv-tools` |
+| Claude Code version outdated | Run `w --rebuild-image` — Claude and uv are always re-fetched |
