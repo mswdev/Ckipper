@@ -1,4 +1,4 @@
-# Claude Docker Sandbox
+# Ckipper (pronounced "skipper")
 
 Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely. One command to spin up a sandboxed autonomous Claude session on any project.
 
@@ -124,13 +124,17 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 | MCPs with local files | node/uvx (mounted ro) | Yes (add mount) |
 | Docker-based MCPs | Docker-in-Docker | No (security) |
 
-For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
+For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
 
 Two named Docker volumes support uvx-based MCP servers:
 - **`claude-uv-cache`** — persists the uv package cache (downloaded wheels, git clones) across container restarts
 - **`claude-uv-tools`** — persists pre-installed tool environments and the uv-managed Python interpreter
 
 The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewrites the container's `.claude.json` to invoke the installed binary directly. This eliminates the network freshness check and ephemeral venv creation that cause intermittent MCP startup timeouts.
+
+## Migrating from previous versions
+
+<!-- Filled in by Task 19 (full README rewrite). Run `ckipper migrate` after upgrading. -->
 
 ## Setup
 
@@ -146,14 +150,14 @@ The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewri
 
 ```bash
 # Clone the repo
-git clone https://github.com/whmoro/claude-docker-sandbox.git
-cd claude-docker-sandbox
+git clone https://github.com/whmoro/ckipper.git
+cd ckipper
 
 # Run the installer (copies all files, merges hooks, adds source line)
 ./install.sh
 
 # Customize your config
-# Edit ~/.claude/docker/w-config.zsh with your MCP mounts, ports, etc.
+# Edit ~/.ckipper/docker/w-config.zsh with your MCP mounts, ports, etc.
 
 # Build the Docker image (takes a few minutes first time)
 source ~/.zshrc
@@ -167,21 +171,21 @@ w <your-project> test-branch --docker claude
 
 Clone the repo, then open Claude Code and paste this prompt:
 
-> Read the README.md in this repo and run `./install.sh`. Then run `source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test. Show me what's in `~/.claude/docker/w-config.zsh` so I can customize it.
+> Read the README.md in this repo and run `./install.sh`. Then run `source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test. Show me what's in `~/.ckipper/docker/w-config.zsh` so I can customize it.
 
 ### What Gets Installed Where
 
 | Source | Destination | Purpose |
 |---|---|---|
-| `docker/Dockerfile` | `~/.claude/docker/Dockerfile` | Docker image definition |
-| `docker/entrypoint.sh` | `~/.claude/docker/entrypoint.sh` | Container startup + environment setup |
-| `docker/init-firewall.sh` | `~/.claude/docker/init-firewall.sh` | Egress firewall |
-| `hooks/protect-claude-config.sh` | `~/.claude/hooks/protect-claude-config.sh` | Edit/Write guard |
-| `hooks/bash-guardrails.sh` | `~/.claude/hooks/bash-guardrails.sh` | Bash command guard |
-| `hooks/docker-context.sh` | `~/.claude/hooks/docker-context.sh` | Context injection |
-| `hooks/notify-bell.sh` | `~/.claude/hooks/notify-bell.sh` | Notification bell |
-| `w-function.zsh` | `~/.claude/docker/w-function.zsh` | w() function (sourced by .zshrc) |
-| `w-config.zsh.example` | `~/.claude/docker/w-config.zsh` | User config (ports, mounts, env vars) |
+| `docker/Dockerfile` | `~/.ckipper/docker/Dockerfile` | Docker image definition |
+| `docker/entrypoint.sh` | `~/.ckipper/docker/entrypoint.sh` | Container startup + environment setup |
+| `docker/init-firewall.sh` | `~/.ckipper/docker/init-firewall.sh` | Egress firewall |
+| `hooks/protect-claude-config.sh` | `~/.ckipper/hooks/protect-claude-config.sh` | Edit/Write guard |
+| `hooks/bash-guardrails.sh` | `~/.ckipper/hooks/bash-guardrails.sh` | Bash command guard |
+| `hooks/docker-context.sh` | `~/.ckipper/hooks/docker-context.sh` | Context injection |
+| `hooks/notify-bell.sh` | `~/.ckipper/hooks/notify-bell.sh` | Notification bell |
+| `w-function.zsh` | `~/.ckipper/docker/w-function.zsh` | w() function (sourced by .zshrc) |
+| `w-config.zsh.example` | `~/.ckipper/docker/w-config.zsh` | User config (ports, mounts, env vars) |
 | `settings-hooks.json` | Auto-merged into `~/.claude/settings.json` | Hook registration |
 
 ### macOS Keychain Authentication
@@ -222,19 +226,19 @@ Edit `docker/init-firewall.sh` → `ALLOWED_DOMAINS` array, then `w --rebuild-im
 
 ### Forwarded Ports
 
-Edit `W_PORTS` in `~/.claude/docker/w-config.zsh`.
+Edit `W_PORTS` in `~/.ckipper/docker/w-config.zsh`.
 
 ### Base Branch
 
-Worktrees are created from `origin/develop`. Search for `develop` in `w-function.zsh` (or `~/.claude/docker/w-function.zsh` if deployed) and change to `main` or your default branch.
+Worktrees are created from `origin/develop`. Search for `develop` in `w-function.zsh` (or `~/.ckipper/docker/w-function.zsh` if deployed) and change to `main` or your default branch.
 
 ### MCP Mounts
 
-Add entries to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`. Format: `"host_path:container_path:mode"`.
+Add entries to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Format: `"host_path:container_path:mode"`.
 
 ### Statusline
 
-If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`:
+If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`:
 - **Config mount** (`~/.config/ccstatusline`, read-only) — theme, widget layout, powerline settings
 - **Cache mount** (`~/.cache/ccstatusline`, read-write) — shares usage API cache with host to avoid 429 rate limits
 
@@ -287,7 +291,7 @@ Voice mode requires microphone access, which is unavailable inside the container
 | Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `w --rebuild-image` if missing |
 | Branch already checked out | Switch main repo to different branch: `cd ~/Developer/<project> && git checkout develop` |
 | Stale worktree directory | Remove manually: `rm -rf ~/Developer/.worktrees/<project>/<branch>` |
-| Statusline not rendering correctly | Add ccstatusline mounts to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
+| Statusline not rendering correctly | Add ccstatusline mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
 | `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
