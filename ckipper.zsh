@@ -292,7 +292,37 @@ _ckipper_list() {
     echo ""
     echo "Reminder: do not run the same account in two sessions concurrently — see #24317."
 }
-_ckipper_default()    { echo "ckipper default: not yet implemented"; return 1; }
-_ckipper_remove()     { echo "ckipper remove: not yet implemented"; return 1; }
+_ckipper_default() {
+    _ckipper_check_registry_version || return 1
+    local name="$1"
+    [[ -z "$name" ]] && { echo "Usage: ckipper default <name>"; return 1; }
+    if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null; then
+        echo "Account '$name' is not registered."
+        return 1
+    fi
+    _ckipper_registry_update '.default = $n' --arg n "$name"
+    echo "Default account is now '$name'."
+}
+
+_ckipper_remove() {
+    _ckipper_check_registry_version || return 1
+    local name="$1"
+    [[ -z "$name" ]] && { echo "Usage: ckipper remove <name>"; return 1; }
+    if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null; then
+        echo "Account '$name' is not registered."
+        return 1
+    fi
+    local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
+    local service; service=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
+    _ckipper_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"
+    _ckipper_regenerate_aliases
+    echo "Unregistered '$name'."
+    echo ""
+    echo "The directory and Keychain entry were not deleted. To remove them manually:"
+    printf "  rm -rf %q\n" "$dir"
+    if [[ -n "$service" ]]; then
+        printf "  security delete-generic-password -s %q\n" "$service"
+    fi
+}
 _ckipper_sync_hooks() { echo "ckipper sync-hooks: not yet implemented"; return 1; }
 _ckipper_migrate()    { echo "ckipper migrate: not yet implemented"; return 1; }
