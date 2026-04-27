@@ -12,7 +12,7 @@
 # <project> is a path relative to ~/Developer (e.g. "Whmoro/orderguard", "my-app")
 #
 # ── CUSTOMIZATION ────────────────────────────────────────────────
-# Edit ~/.claude/docker/w-config.zsh to customize:
+# Edit ~/.ckipper/docker/w-config.zsh to customize:
 #   - W_PORTS: dev server ports to forward
 #   - W_EXTRA_VOLUMES: MCP server mounts and other volume mounts
 #   - W_EXTRA_ENV: extra environment variables for the container
@@ -22,7 +22,7 @@
 # ─────────────────────────────────────────────────────────────────
 
 # Source user config (ports, extra volumes, extra env vars)
-_w_config="$HOME/.claude/docker/w-config.zsh"
+_w_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/w-config.zsh"
 if [[ -f "$_w_config" ]]; then
     source "$_w_config"
 fi
@@ -32,7 +32,7 @@ fi
 (( ${#W_EXTRA_ENV[@]} == 0 )) && W_EXTRA_ENV=()
 
 _w_build_image() {
-    local docker_dir="$HOME/.claude/docker"
+    local docker_dir="${CKIPPER_DIR:-$HOME/.ckipper}/docker"
     if [[ ! -f "$docker_dir/Dockerfile" ]]; then
         echo "Dockerfile not found: $docker_dir/Dockerfile"
         return 1
