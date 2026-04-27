@@ -73,7 +73,7 @@ _ckipper_validate_keychain_service() {
 
 _ckipper_keychain_snapshot() {
     # macOS only. Returns service names of all "Claude Code-credentials*" entries, sorted.
-    [[ "$OSTYPE" != darwin* ]] && return 0
+    [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]] && return 0
 
     # Fail loudly if keychain is locked (timeout protects against GUI prompt blocking).
     local out
@@ -96,7 +96,7 @@ _ckipper_registry_update() {
     if command -v flock >/dev/null 2>&1; then
         {
             flock -x 9
-            local tmp; tmp=$(mktemp)
+            local tmp; tmp=$(mktemp "$CKIPPER_DIR/.registry.tmp.XXXXXX")
             jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$tmp" && mv "$tmp" "$CKIPPER_REGISTRY"
             chmod 600 "$CKIPPER_REGISTRY"
         } 9>"$lock"
@@ -105,7 +105,7 @@ _ckipper_registry_update() {
         local lockdir="$CKIPPER_DIR/.registry.lock.d"
         until mkdir "$lockdir" 2>/dev/null; do sleep 0.05; done
         trap 'rmdir "$lockdir" 2>/dev/null' EXIT INT TERM
-        local tmp; tmp=$(mktemp)
+        local tmp; tmp=$(mktemp "$CKIPPER_DIR/.registry.tmp.XXXXXX")
         jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$tmp" && mv "$tmp" "$CKIPPER_REGISTRY"
         chmod 600 "$CKIPPER_REGISTRY"
         rmdir "$lockdir" 2>/dev/null
@@ -164,7 +164,7 @@ _ckipper_add() {
         fi
         # In adopt mode, list candidate Keychain entries and let the user pick (or skip).
         local picked=""
-        if [[ "$OSTYPE" == darwin* ]]; then
+        if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
             local candidates
             candidates=$(_ckipper_keychain_snapshot) || return 1
             if [[ -n "$candidates" ]]; then
