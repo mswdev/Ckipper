@@ -7,7 +7,7 @@
 #   w <project> <branch-name> --docker --firewall  Docker + egress firewall
 #   w --list                                       list all worktrees
 #   w --rm <project> <branch-name>                 remove worktree + delete branch
-#   w --rebuild-image                              rebuild claude-dev Docker image
+#   w --rebuild-image                              rebuild ckipper-dev Docker image
 #
 # <project> is a path relative to ~/Developer (e.g. "Whmoro/orderguard", "my-app")
 #
@@ -37,8 +37,8 @@ _w_build_image() {
         echo "Dockerfile not found: $docker_dir/Dockerfile"
         return 1
     fi
-    echo "Building claude-dev Docker image..."
-    docker build --build-arg "CACHEBUST=$(date +%s)" -t claude-dev "$docker_dir"
+    echo "Building ckipper-dev Docker image..."
+    docker build --build-arg "CACHEBUST=$(date +%s)" -t ckipper-dev "$docker_dir"
 }
 
 w() {
@@ -266,7 +266,7 @@ else:
         fi
 
         # Ensure Docker image exists
-        if ! docker image inspect claude-dev > /dev/null 2>&1; then
+        if ! docker image inspect ckipper-dev > /dev/null 2>&1; then
             _w_build_image || return 1
         fi
 
@@ -375,7 +375,7 @@ else:
             docker_args+=( --cap-add=NET_ADMIN -e ENABLE_FIREWALL=1 )
         fi
 
-        docker_args+=( claude-dev )
+        docker_args+=( ckipper-dev )
 
         # If "claude" is the command, expand it to the full skip-permissions invocation
         # and auto-name the session after the worktree branch
@@ -411,10 +411,10 @@ else:
         local exit_code=$?
 
         # Post-session: clean up dangling credentials symlink left by tmpfs credential isolation.
-        # Only remove when no other claude-dev containers are running — parallel sessions
+        # Only remove when no other ckipper-dev containers are running — parallel sessions
         # share the ~/.claude bind mount, so deleting the symlink would break their credentials.
         if [[ -L "$HOME/.claude/.credentials.json" ]]; then
-            if ! docker ps --filter ancestor=claude-dev --quiet 2>/dev/null | grep -q .; then
+            if ! docker ps --filter ancestor=ckipper-dev --quiet 2>/dev/null | grep -q .; then
                 rm -f "$HOME/.claude/.credentials.json"
             fi
         fi
@@ -491,7 +491,7 @@ _w() {
     _arguments -C \
         '(--rm)--list[List all worktrees]' \
         '(--list)--rm[Remove a worktree]' \
-        '--rebuild-image[Rebuild claude-dev Docker image]' \
+        '--rebuild-image[Rebuild ckipper-dev Docker image]' \
         '1: :->project' \
         '2: :->worktree' \
         '3: :->command' \
