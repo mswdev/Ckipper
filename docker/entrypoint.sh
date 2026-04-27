@@ -1,13 +1,25 @@
 #!/bin/bash
 set -e
 
+# Require CLAUDE_CONFIG_DIR — Ckipper's account context. No silent fallback.
+if [ -z "$CLAUDE_CONFIG_DIR" ]; then
+    echo "Error: CLAUDE_CONFIG_DIR is not set inside the container." >&2
+    echo "This means w() did not pass the account context. Bug — please report." >&2
+    exit 1
+fi
+if [ ! -d "$CLAUDE_CONFIG_DIR" ]; then
+    echo "Error: CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR does not exist (mount failed?)." >&2
+    exit 1
+fi
+
 # Copy host's .claude.json to writable location (mounted read-only to avoid race condition)
-if [ -f "$HOME/.claude-host.json" ]; then
-    cp "$HOME/.claude-host.json" "$HOME/.claude.json"
+if [ -f "$CLAUDE_CONFIG_DIR/.claude-host.json" ]; then
+    cp "$CLAUDE_CONFIG_DIR/.claude-host.json" "$CLAUDE_CONFIG_DIR/.claude.json"
     # Disable Chrome extension check in container (no browser available)
     if command -v jq &>/dev/null; then
         jq '.claudeInChromeDefaultEnabled = false | .cachedChromeExtensionInstalled = false' \
-            "$HOME/.claude.json" > "$HOME/.claude.json.tmp" && mv "$HOME/.claude.json.tmp" "$HOME/.claude.json"
+            "$CLAUDE_CONFIG_DIR/.claude.json" > "$CLAUDE_CONFIG_DIR/.claude.json.tmp" \
+            && mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
     fi
 fi
 
@@ -22,7 +34,7 @@ if [ -d "$HOME/.ssh-host" ]; then
     fi
 fi
 
-# Write credentials to tmpfs (not the host-mounted ~/.claude — prevents credential
+# Write credentials to tmpfs (not the host-mounted account dir — prevents credential
 # leakage to the host filesystem). The tmpfs mount at /tmp/claude-creds is
 # container-local and disappears when the container exits.
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
@@ -30,14 +42,14 @@ if [ -n "$CLAUDE_CREDENTIALS" ]; then
     echo "$CLAUDE_CREDENTIALS" > /tmp/claude-creds/.credentials.json
     chmod 700 /tmp/claude-creds
     chmod 600 /tmp/claude-creds/.credentials.json
-    # Symlink from expected location — Claude Code reads ~/.claude/.credentials.json
-    ln -sf /tmp/claude-creds/.credentials.json "$HOME/.claude/.credentials.json"
+    # Symlink from the account dir — Claude Code reads $CLAUDE_CONFIG_DIR/.credentials.json
+    ln -sf /tmp/claude-creds/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json"
 fi
 
 # Set git identity from .claude.json account info (needed for commits inside container)
-if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null; then
-    git_name=$(jq -r '.oauthAccount.displayName // empty' "$HOME/.claude.json" 2>/dev/null)
-    git_email=$(jq -r '.oauthAccount.emailAddress // empty' "$HOME/.claude.json" 2>/dev/null)
+if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null; then
+    git_name=$(jq -r '.oauthAccount.displayName // empty' "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null)
+    git_email=$(jq -r '.oauthAccount.emailAddress // empty' "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null)
     [ -n "$git_name" ] && git config --global user.name "$git_name"
     [ -n "$git_email" ] && git config --global user.email "$git_email"
 fi
@@ -112,17 +124,17 @@ uv_bin_dir="${UV_TOOL_BIN_DIR:-$HOME/.local/bin}"
 mkdir -p "$uv_bin_dir" "${UV_TOOL_DIR:-$HOME/.local/share/uv/tools}" "${UV_PYTHON_INSTALL_DIR:-$HOME/.local/share/uv/python}" 2>/dev/null || true
 export PATH="$uv_bin_dir:$PATH"
 
-if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/dev/null; then
+if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/dev/null; then
     uvx_servers=$(jq -r '
         .mcpServers // {} | to_entries[] |
         select(.value.command == "uvx") | .key
-    ' "$HOME/.claude.json" 2>/dev/null)
+    ' "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null)
 
     if [ -n "$uvx_servers" ]; then
         echo "Pre-installing uvx-based MCP servers..."
         while IFS= read -r name; do
             [ -z "$name" ] && continue
-            pkg=$(jq -r ".mcpServers[\"$name\"].args[0]" "$HOME/.claude.json")
+            pkg=$(jq -r ".mcpServers[\"$name\"].args[0]" "$CLAUDE_CONFIG_DIR/.claude.json")
             [ -z "$pkg" ] && continue
 
             # Derive binary name from package spec
@@ -148,8 +160,8 @@ if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/
                 jq --arg n "$name" --arg b "$bin_path" '
                     .mcpServers[$n].command = $b |
                     .mcpServers[$n].args = .mcpServers[$n].args[1:]
-                ' "$HOME/.claude.json" > "$HOME/.claude.json.tmp" \
-                    && mv "$HOME/.claude.json.tmp" "$HOME/.claude.json"
+                ' "$CLAUDE_CONFIG_DIR/.claude.json" > "$CLAUDE_CONFIG_DIR/.claude.json.tmp" \
+                    && mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
                 echo "  $name -> $bin_path"
             else
                 echo "  $name: binary not found at $bin_path, keeping uvx"
