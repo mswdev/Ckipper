@@ -7,6 +7,29 @@ echo ""
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 CKIPPER_DIR="${CKIPPER_DIR:-$HOME/.ckipper}"
 
+# Migrate legacy ~/.claude/docker/ layout if present (idempotent)
+LEGACY_DIR="$HOME/.claude/docker"
+if [ -d "$LEGACY_DIR" ] && [ ! -d "$CKIPPER_DIR" ]; then
+    echo "Migrating ~/.claude/docker/ -> $CKIPPER_DIR/"
+    mkdir -p "$CKIPPER_DIR"
+    cp -a "$LEGACY_DIR/." "$CKIPPER_DIR/"
+    echo "Migrated. The legacy directory is left intact at $LEGACY_DIR for one release cycle."
+    echo "After verifying the new location works (ckipper list shows your accounts):"
+    echo "  rm -rf $LEGACY_DIR"
+
+    # Sweep migrated w-config.zsh for stale path strings (warn only — never auto-edit user config)
+    if [ -f "$CKIPPER_DIR/w-config.zsh" ]; then
+        stale=$(grep -n "\.claude/docker" "$CKIPPER_DIR/w-config.zsh" 2>/dev/null || true)
+        if [ -n "$stale" ]; then
+            echo ""
+            echo "WARNING: Your migrated w-config.zsh contains stale ~/.claude/docker/ paths:"
+            echo "$stale"
+            echo "Update these to ~/.ckipper/docker/ manually."
+            echo ""
+        fi
+    fi
+fi
+
 # 1. Check prerequisites
 echo "Checking prerequisites..."
 missing=()
@@ -71,14 +94,17 @@ echo "Copying settings-template.json to $CKIPPER_DIR/..."
 cp "$REPO_DIR/settings-hooks.json" "$CKIPPER_DIR/settings-template.json"
 echo "  Settings template deployed. ckipper sync-hooks applies it per-account."
 
-# 7. Add source line to .zshrc (if not already present)
-if ! grep -q 'ckipper/docker/w-function.zsh\|w-function.zsh' "$HOME/.zshrc" 2>/dev/null; then
+# 7. Add or update source line in .zshrc
+if grep -q "source.*\.claude/docker/w-function.zsh" "$HOME/.zshrc" 2>/dev/null; then
+    sed -i.bak 's|source.*\.claude/docker/w-function\.zsh|source ~/.ckipper/docker/w-function.zsh|' "$HOME/.zshrc"
+    echo "  Updated ~/.zshrc source line to ~/.ckipper/. Backup at ~/.zshrc.bak."
+elif ! grep -q 'ckipper/docker/w-function.zsh' "$HOME/.zshrc" 2>/dev/null; then
     echo '' >> "$HOME/.zshrc"
     echo '# Ckipper — Worktree Manager (w function)' >> "$HOME/.zshrc"
     echo 'source "$HOME/.ckipper/docker/w-function.zsh"' >> "$HOME/.zshrc"
     echo "  Added w() source line to ~/.zshrc"
 else
-    echo "  ~/.zshrc already sources w-function.zsh"
+    echo "  ~/.zshrc already sources ~/.ckipper/docker/w-function.zsh"
 fi
 
 # 8. Print (do not auto-append) the optional aliases.zsh source line
