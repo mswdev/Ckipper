@@ -12,15 +12,13 @@ if [ ! -d "$CLAUDE_CONFIG_DIR" ]; then
     exit 1
 fi
 
-# Copy host's .claude.json to writable location (mounted read-only to avoid race condition)
-if [ -f "$CLAUDE_CONFIG_DIR/.claude-host.json" ]; then
-    cp "$CLAUDE_CONFIG_DIR/.claude-host.json" "$CLAUDE_CONFIG_DIR/.claude.json"
-    # Disable Chrome extension check in container (no browser available)
-    if command -v jq &>/dev/null; then
-        jq '.claudeInChromeDefaultEnabled = false | .cachedChromeExtensionInstalled = false' \
-            "$CLAUDE_CONFIG_DIR/.claude.json" > "$CLAUDE_CONFIG_DIR/.claude.json.tmp" \
-            && mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
-    fi
+# Disable Chrome extension check in the bind-mounted .claude.json (no browser in container).
+# This mutates the host file too — accepted, because the same-account-twice rule
+# prevents concurrent host/container use of the same file.
+if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null; then
+    jq '.claudeInChromeDefaultEnabled = false | .cachedChromeExtensionInstalled = false' \
+        "$CLAUDE_CONFIG_DIR/.claude.json" > "$CLAUDE_CONFIG_DIR/.claude.json.tmp" \
+        && mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
 fi
 
 # Copy SSH config from staging mount, stripping macOS-specific options.

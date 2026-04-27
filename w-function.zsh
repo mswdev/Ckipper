@@ -320,10 +320,10 @@ w() {
             -v "$projects_dir/$project/.git:$projects_dir/$project/.git:rw"
             # Mount per-account Claude config dir at the same host path so plugins'
             # absolute-path references (e.g. /Users/<user>/.claude-<name>/plugins/...)
-            # resolve inside the container.
+            # resolve inside the container. Host-vs-container races on .claude.json
+            # are prevented by the "don't run the same account in two sessions" rule
+            # (see README #24317 note) — no read-only staging mount needed.
             -v "$active_config_dir:$active_config_dir:rw"
-            # Read-only staging copy of .claude.json (entrypoint copies it to the writable location)
-            -v "$active_config_dir/.claude.json:$active_config_dir/.claude-host.json:ro"
             -e "CLAUDE_CONFIG_DIR=$active_config_dir"
             # Mount SSH config as staging copy (sanitized by entrypoint)
             -v "$HOME/.ssh:/home/claude/.ssh-host:ro"

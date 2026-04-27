@@ -105,12 +105,12 @@ A. Each container has the right `CLAUDE_CONFIG_DIR`:
 [ "$CLAUDE_CONFIG_DIR" = "$HOME/.claude-<other>" ] && echo PASS || echo FAIL
 ```
 
-B. The right `.claude.json` was copied:
+B. `.claude.json` is the per-account file (account-specific email):
 
 ```bash
-expected_email=$(jq -r .oauthAccount.emailAddress "$CLAUDE_CONFIG_DIR/.claude-host.json")
-actual_email=$(jq -r .oauthAccount.emailAddress "$CLAUDE_CONFIG_DIR/.claude.json")
-[ "$expected_email" = "$actual_email" ] && echo PASS || echo FAIL
+# Confirm the email matches the account's registered identity
+jq -r .oauthAccount.emailAddress "$CLAUDE_CONFIG_DIR/.claude.json"
+# Should match the email shown by `ckipper list` for this account.
 ```
 
 C. Credentials symlinked to tmpfs:
