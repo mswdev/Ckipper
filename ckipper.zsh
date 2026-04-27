@@ -65,7 +65,31 @@ EOF
 
 # Stubs — implemented in subsequent tasks
 _ckipper_add()        { echo "ckipper add: not yet implemented"; return 1; }
-_ckipper_list()       { echo "ckipper list: not yet implemented"; return 1; }
+_ckipper_list() {
+    if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
+        echo "No accounts registered. Run: ckipper add <name>"
+        return 0
+    fi
+    local default
+    default=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
+    echo "Registered accounts:"
+    jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)"' "$CKIPPER_REGISTRY" | \
+        while IFS=$'\t' read -r name dir; do
+            local marker="  "
+            [[ "$name" == "$default" ]] && marker="* "
+            local email=""
+            if [[ -f "$dir/.claude.json" ]]; then
+                email=$(jq -r '.oauthAccount.emailAddress // ""' "$dir/.claude.json" 2>/dev/null)
+            fi
+            local exists="(missing)"
+            [[ -d "$dir" ]] && exists=""
+            echo "$marker$name  $dir  ${email:+($email)} $exists"
+        done
+    echo ""
+    echo "* = default. Run: ckipper default <name>"
+    echo ""
+    echo "Reminder: do not run the same account in two sessions concurrently — see #24317."
+}
 _ckipper_default()    { echo "ckipper default: not yet implemented"; return 1; }
 _ckipper_remove()     { echo "ckipper remove: not yet implemented"; return 1; }
 _ckipper_sync_hooks() { echo "ckipper sync-hooks: not yet implemented"; return 1; }
