@@ -73,8 +73,8 @@ if echo "$NORMALIZED" | grep -qE '(chmod|chown)\s+(-R|--recursive)\s'; then
     exit 2
 fi
 
-# 7. Direct credential/key file reads
-if echo "$NORMALIZED" | grep -qE '(cat|less|head|tail|cp|curl|base64|xxd)\s+.*(\.ssh/(id_|config|authorized)|\.claude/\.credentials)'; then
+# 7. Direct credential/key file reads (covers ~/.claude and per-account ~/.claude-<name>)
+if echo "$NORMALIZED" | grep -qE '(cat|less|head|tail|cp|curl|base64|xxd)\s+.*(\.ssh/(id_|config|authorized)|\.claude(-[a-z0-9_-]+)?/\.credentials)'; then
     echo "Blocked: reading credential/key files. Use git, gh, or npm which handle auth automatically." >&2
     exit 2
 fi
@@ -89,15 +89,17 @@ if echo "$NORMALIZED" | grep -qE 'npm\s+publish'; then
     exit 2
 fi
 
-# 9. Claude config modification via Bash (closes Edit/Write hook bypass)
-if echo "$NORMALIZED" | grep -qE '\.claude/(settings(\.local)?\.json|statusline-command\.sh|CLAUDE\.md|commands/|docker/|hooks/|plugins/)'; then
+# 9. Claude config modification via Bash (closes Edit/Write hook bypass).
+# Covers ~/.claude, per-account ~/.claude-<name>, and ~/.ckipper.
+# .claude-host.json is excluded by the trailing '/' in the regex.
+if echo "$NORMALIZED" | grep -qE '\.claude(-[a-z0-9_-]+)?/(settings(\.local)?\.json|statusline-command\.sh|CLAUDE\.md|commands/|docker/|hooks/|plugins/)|/\.ckipper/'; then
     if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|jq)\s'; then
         # Allow reads but block output redirects (jq -n > settings.json is a write, not a read)
         if ! echo "$NORMALIZED" | grep -qE '>'; then
             exit 0
         fi
     fi
-    echo "Blocked: modifying Claude config files via Bash. These are protected." >&2
+    echo "Blocked: modifying Claude/Ckipper config files via Bash. These are protected." >&2
     exit 2
 fi
 

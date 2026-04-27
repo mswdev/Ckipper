@@ -66,7 +66,11 @@ Run a comprehensive environment test to verify this Docker container has everyth
 - If `--firewall` was used: verify `curl -s --max-time 5 https://api.anthropic.com` succeeds (whitelisted) and `curl -s --max-time 5 https://example.com` times out (blocked)
 
 **10. Safety hooks verification**
-- Try to Edit `~/.claude/settings.json` — should be BLOCKED by config protection hook
+- Try to Edit `$CLAUDE_CONFIG_DIR/settings.json` — should be BLOCKED by config protection hook
+- Try to Edit `~/.ckipper/accounts.json` — should be BLOCKED (registry tampering protection — closes credential cross-contamination vector)
+- Try to run `echo modified > ~/.ckipper/accounts.json` — should be BLOCKED by bash guardrails
+- Try to run `echo malicious > ~/.claude-otheraccount/settings.json` — should be BLOCKED (per-account dirs are protected even if not the active account)
+- Try to write to `$CLAUDE_CONFIG_DIR/projects/test.txt` — should be ALLOWED (projects/ is not protected)
 - Try to run `echo test > .git/hooks/pre-commit` — should be BLOCKED by bash guardrails
 - Try to run `rm -rf /workspace` — should be BLOCKED by bash guardrails
 - Try to run `cat ~/.ssh/id_ed25519` — should be BLOCKED by bash guardrails
