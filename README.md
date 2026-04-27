@@ -1,8 +1,8 @@
 # Ckipper (pronounced "skipper")
 
-Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely. One command to spin up a sandboxed autonomous Claude session on any project.
+Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely, with **first-class multi-account support**: run a personal Claude account in one terminal and a work account in another, fully isolated. One command to spin up a sandboxed autonomous Claude session on any project.
 
-Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, egress firewall, safety hooks, and macOS Keychain auth integration.
+Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, egress firewall, safety hooks, macOS Keychain auth integration, and per-account isolation across credentials, settings, MCP, plugins, and projects.
 
 ## The Problem
 
@@ -29,17 +29,77 @@ This creates a git worktree, spins up a Docker container, and runs Claude inside
 ## Quick Reference
 
 ```bash
-w myorg/myapp feature-x --docker claude        # Claude in Docker (skip-permissions)
-w myorg/myapp feature-x --docker               # shell in Docker container
-w myorg/myapp feature-x --docker --firewall    # Docker + egress firewall
-w myorg/myapp feature-x                        # cd to worktree (no Docker)
-w myorg/myapp feature-x claude                 # run Claude in worktree (no Docker)
-w --list                                       # list all worktrees
-w --rm myorg/myapp feature-x                   # remove worktree + delete branch
-w --rebuild-image                              # rebuild Docker image
+w myorg/myapp feature-x --docker claude              # Claude in Docker (skip-permissions)
+w myorg/myapp feature-x --docker --account work     # use a specific Ckipper account
+w myorg/myapp feature-x --docker                     # shell in Docker container
+w myorg/myapp feature-x --docker --firewall         # Docker + egress firewall
+w myorg/myapp feature-x                              # cd to worktree (no Docker)
+w myorg/myapp feature-x claude                       # run Claude in worktree (no Docker)
+w --list                                             # list all worktrees
+w --rm myorg/myapp feature-x                         # remove worktree + delete branch
+w --rebuild-image                                    # rebuild Docker image
+
+ckipper add <name>                                   # register a Claude account
+ckipper list                                         # show registered accounts
+ckipper default <name>                               # set the default account
+ckipper migrate                                      # one-time migration from claude-docker-sandbox
 ```
 
 `<project>` is a relative path under `~/Developer/` (e.g. `Whmoro/orderguard`, `Vibma`). Tab completion is included.
+
+## Multiple accounts (Ckipper's headline feature)
+
+Run a personal Claude account in one terminal and a work account in another, fully isolated. Each gets its own credentials, MCP servers, plugins, projects, and session history.
+
+### Add an account
+
+```bash
+ckipper add work
+```
+
+`ckipper` walks you through `/login` and registers the account. Repeat for every account you want.
+
+### Use an account
+
+Three ways:
+
+```bash
+claude-work                                  # auto-generated alias (preferred)
+cca work                                     # one-off dispatcher (claude-config-as)
+CLAUDE_CONFIG_DIR=~/.claude-work claude      # raw form
+```
+
+### Inside Docker
+
+```bash
+w myorg/app feature --account work --docker claude
+```
+
+If you're already in a terminal where `CLAUDE_CONFIG_DIR` is set (e.g., via `claude-work`), `w` picks up the account automatically — no flag needed.
+
+### List, default, remove
+
+```bash
+ckipper list
+ckipper default personal
+ckipper remove old-account
+```
+
+### How accounts are stored
+
+- Per-account state lives in `~/.claude-<name>/` (analogous to the legacy `~/.claude/`).
+- The registry mapping accounts to dirs and Keychain services lives at `~/.ckipper/accounts.json` (chmod 600, atomic writes via `flock`).
+- Auto-generated `~/.ckipper/aliases.zsh` defines `cca` and one `claude-<name>` function per registered account.
+- Hooks under `~/.ckipper/hooks/` are the canonical source — `ckipper sync-hooks` copies them per-account and rewrites `settings.json` paths.
+
+## ⚠️ Don't run the same account in two sessions
+
+Two terminals running the **same** account simultaneously will hit a known OAuth refresh-token race ([upstream issue #24317](https://github.com/anthropics/claude-code/issues/24317)) — symptoms: frequent re-login prompts, lost sessions.
+
+- **Safe:** `claude-personal` in one terminal, `claude-work` in another. Different accounts, different refresh tokens, no race.
+- **Bad:** `claude-personal` in two terminals at once.
+
+If you want concurrent runs of the *same* account, register it twice under two names (`personal-a`, `personal-b`) — though this means re-`/login` for each.
 
 ## What's In the Container
 
@@ -132,9 +192,26 @@ Two named Docker volumes support uvx-based MCP servers:
 
 The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewrites the container's `.claude.json` to invoke the installed binary directly. This eliminates the network freshness check and ephemeral venv creation that cause intermittent MCP startup timeouts.
 
-## Migrating from previous versions
+## Migrating from claude-docker-sandbox
 
-<!-- Filled in by Task 19 (full README rewrite). Run `ckipper migrate` after upgrading. -->
+If you've been running this project under its previous name with a single `~/.claude/docker/` install, run:
+
+```bash
+ckipper migrate
+```
+
+This will:
+
+1. Refuse to run if any `claude` process is currently active (quit them first).
+2. Copy `~/.claude/docker/` → `~/.ckipper/`.
+3. Offer to register your existing `~/.claude` as the `personal` account. If you accept: rename `~/.claude` → `~/.claude-personal`, probe Keychain for the matching credential entry, and write the registry. **No symlink is created** — after migration, you launch Claude with `claude-personal` (bare `claude` will start a fresh login).
+4. If anything fails, the rename automatically reverses (rollback).
+
+Then add additional accounts:
+
+```bash
+ckipper add work
+```
 
 ## Setup
 
