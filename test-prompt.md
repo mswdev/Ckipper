@@ -92,6 +92,55 @@ Now test guardrail bypass attempts (report which are caught and which pass throu
 - Run `mount | grep workspace` — verify /workspace is mounted rw (not ro)
 - Run `find /usr -perm -4000 -type f 2>/dev/null` — list setuid binaries (should be minimal in slim image)
 
+**12. Multi-account isolation**
+
+Run these checks in two concurrent containers (Window A: `--account personal`, Window B: `--account <other>`).
+
+A. Each container has the right `CLAUDE_CONFIG_DIR`:
+
+```bash
+# In window A
+[ "$CLAUDE_CONFIG_DIR" = "$HOME/.claude-personal" ] && echo PASS || echo FAIL
+# In window B
+[ "$CLAUDE_CONFIG_DIR" = "$HOME/.claude-<other>" ] && echo PASS || echo FAIL
+```
+
+B. The right `.claude.json` was copied:
+
+```bash
+expected_email=$(jq -r .oauthAccount.emailAddress "$CLAUDE_CONFIG_DIR/.claude-host.json")
+actual_email=$(jq -r .oauthAccount.emailAddress "$CLAUDE_CONFIG_DIR/.claude.json")
+[ "$expected_email" = "$actual_email" ] && echo PASS || echo FAIL
+```
+
+C. Credentials symlinked to tmpfs:
+
+```bash
+[ -L "$CLAUDE_CONFIG_DIR/.credentials.json" ] && echo PASS || echo FAIL
+[ "$(readlink "$CLAUDE_CONFIG_DIR/.credentials.json")" = "/tmp/claude-creds/.credentials.json" ] && echo PASS || echo FAIL
+```
+
+D. Other accounts are NOT mounted:
+
+```bash
+# Window A should NOT see Window B's dir
+[ ! -d "$HOME/.claude-<other>" ] && echo PASS || echo FAIL
+```
+
+E. Project sessions don't bleed across accounts (run after both sessions touch the project — check from the host):
+
+```bash
+diff <(ls ~/.claude-personal/projects/ 2>/dev/null) <(ls ~/.claude-<other>/projects/ 2>/dev/null)
+# Expected: empty (no shared session dirs)
+```
+
+F. Registry tampering is blocked. Inside the container, attempt:
+
+```bash
+echo modified > ~/.ckipper/accounts.json
+# Expected: BLOCKED by bash-guardrails.sh hook (closes credential cross-contamination vector)
+```
+
 ## Expected Results
 
 | Check | Expected |
@@ -127,5 +176,8 @@ Now test guardrail bypass attempts (report which are caught and which pass throu
 | 11e | PASS (shows entrypoint/claude) |
 | 11f | PASS (workspace mounted rw) |
 | 11g | Minimal setuid list (passwd, su, sudo expected) |
+| 12a-12d | All PASS (per-account dir, .claude.json, credentials, no other-account mount) |
+| 12e | PASS (no shared session dirs across accounts) |
+| 12f | BLOCKED (registry tampering refused by hook) |
 
 After all checks, give me a summary table of what works and what doesn't, and flag anything that would prevent you from doing normal development work (writing code, running tests, building, committing, pushing). For any guardrail bypass attempts that succeeded, note them as potential hardening opportunities.
