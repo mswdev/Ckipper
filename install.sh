@@ -73,9 +73,10 @@ chmod +x "$CKIPPER_DIR/hooks/bash-guardrails.sh"
 chmod +x "$CKIPPER_DIR/hooks/docker-context.sh"
 chmod +x "$CKIPPER_DIR/hooks/notify-bell.sh"
 
-# 4. Copy w-function.zsh
-echo "Copying w-function.zsh to $CKIPPER_DIR/docker/..."
+# 4. Copy w-function.zsh and ckipper.zsh
+echo "Copying w-function.zsh and ckipper.zsh to $CKIPPER_DIR/docker/..."
 cp "$REPO_DIR/w-function.zsh" "$CKIPPER_DIR/docker/"
+cp "$REPO_DIR/ckipper.zsh" "$CKIPPER_DIR/docker/"
 
 # 5. Generate w-config.zsh (only if it doesn't exist — never overwrite user customizations)
 # Also preserve accounts.json and aliases.zsh if they already exist (managed by ckipper CLI).

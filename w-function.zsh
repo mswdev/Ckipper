@@ -546,3 +546,7 @@ _w() {
 _w "$@"
 COMPEOF
 fi
+
+# Source ckipper subcommand dispatcher (if deployed)
+[[ -f "${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper.zsh" ]] && \
+    source "${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper.zsh"
