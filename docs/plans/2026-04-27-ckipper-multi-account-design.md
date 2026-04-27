@@ -91,8 +91,9 @@ The sandbox tooling moves out of `~/.claude/docker/` to its own root:
   aliases.zsh                # auto-generated `cca` + `claude-<name>` (sourced by .zshrc; self-contained)
   accounts.json              # the registry, chmod 600
   settings-template.json     # canonical settings used to seed new account dirs
-  tests/                     # fixture-based regression tests (security dump-keychain sample, etc.)
 ```
+
+(Test fixtures like `tests/keychain-dump.sample` live in the *repo*, not in the deployed `~/.ckipper/` — they are dev-time only.)
 
 The shell sources two lines from `.zshrc` (the first is auto-appended by `install.sh`; the second is suggested if the user wants per-account aliases):
 

@@ -14,6 +14,39 @@
 
 ---
 
+## Prerequisites — read this before Task 1
+
+**Starting repository state (verify before beginning):**
+
+```bash
+git rev-parse --abbrev-ref HEAD     # → feature/ckipper-multi-account
+git status                           # working tree clean
+ls docs/plans/                       # contains the design + this implementation file
+```
+
+If you are not on `feature/ckipper-multi-account`, stop and ask the user. If the working tree has uncommitted changes, stop and ask. The first two commits on this branch should already be the design doc and the (now-revised) implementation plan — do not re-create them.
+
+**Required tools on the implementer's machine:**
+
+- `zsh` (the project's primary shell)
+- `bash` (entrypoint, hooks)
+- `jq` (1.6 or newer — `jq walk` is used in `sync-hooks`)
+- `flock` (registry locking — bundled on Linux; `util-linux` on macOS via Homebrew, BUT macOS ships with a different tool: see fallback note below)
+- `shellcheck`
+- Docker (for Phase 6.5 onwards)
+- `git` (with whatever signing config the user already has — see GPG note below)
+- `python3` (for `docker/cleanup-projects.py`)
+
+**macOS `flock` fallback:** if `flock` is not in PATH, the registry-update helper should fall back to a `mkdir`-based lock: `until mkdir "$CKIPPER_DIR/.registry.lock.d" 2>/dev/null; do sleep 0.05; done; trap 'rmdir "$CKIPPER_DIR/.registry.lock.d"' EXIT INT TERM`. Add this to `_ckipper_registry_update` as a runtime check during Task 9 if `flock` is unavailable.
+
+**GPG signing under sandboxed Bash:** the implementer's git config has commit signing enabled. Inside Claude Code's default sandbox, `gpg-agent` access fails with "Operation not permitted" — every commit will fail. Each `git commit` in this plan must be invoked with `dangerouslyDisableSandbox: true` (Bash tool parameter). This is environmental, not a code issue. Do not amend commits to skip signing without the user's explicit consent.
+
+**Two deployments to keep in sync** (already noted in `CLAUDE.md`): this repo (development) and the user's live install (`~/.ckipper/` post-migration). Phases 1–6.5 only touch the repo. Phase 7 deploys to the host.
+
+**Memory and CLAUDE.md persist across context clears.** Verify by checking that `~/.claude/projects/-Users-matt-Developer-Whmoro-claude-docker-sandbox/memory/MEMORY.md` mentions the Ckipper rename. If it does, the high-level project context is intact even after a fresh start.
+
+---
+
 ## Working Conventions
 
 - **Branch:** `feature/ckipper-multi-account` (off `develop`).
@@ -1588,7 +1621,9 @@ docker image prune -f
 
 ## Phase 7 — Local deployment + end-to-end validation
 
-These tasks run on the implementer's actual host. Do not run earlier.
+> **For the executing agent:** STOP at the end of Phase 6.5. **Phase 7 is user-driven**, not autonomous. These tasks modify the user's actual `~/.claude` (renaming, registering Keychain entries, opening interactive `/login` flows, requiring two Ghostty windows). The agent cannot meaningfully drive an interactive `/login` or coordinate two terminal windows. Hand control back to the user with a summary of what's done and a pointer to Task 21.
+>
+> The user runs Phase 7 themselves, in their terminal, following these steps as a checklist. The agent may be re-engaged after Task 25 to help compose the PR body if requested.
 
 ### Task 21: Deploy to host
 
