@@ -1,13 +1,32 @@
 # Ckipper — Multi-Account Claude Code Sandbox
 
 **Date:** 2026-04-27
-**Status:** Design (approved)
+**Status:** Design (revised after panel review — 6 reviewers + Team Lead, all GO-WITH-FIXES)
 
 ## Overview
 
 Rename the project formerly called `claude-docker-sandbox` to **Ckipper** (pronounced "skipper") and add support for running multiple Claude Code accounts (personal, work, etc.) concurrently in different terminals or Docker containers without shared auth, MCP config, sessions, or settings.
 
-The design is generic for N ≥ 1 accounts and agnostic to specific account names. Account names like `personal`, `work`, `af` are user choices, never hardcoded.
+The design is generic for N ≥ 1 accounts and agnostic to specific account names. Account names like `personal`, `work`, or any other lowercase-alphanumeric string are user choices, never hardcoded.
+
+## Revisions from panel review (post-initial-draft)
+
+Six reviewers (Senior SWE, Senior Architect, Security, DevOps, DX, QA) plus a Team Lead synthesized the following changes into the design before execution:
+
+- **Drop the `~/.claude → ~/.claude-personal` symlink.** Originally proposed as backward-compat for bare `claude`, the symlink created four failure modes (dangling on `remove personal`, interaction with upstream issue #3833 workspace writes, hook realpath drift across versions, target-swap attack vector) for one minor convenience. After migrate, the user uses `claude-personal` (or whatever name they registered). Bare `claude` with no `CLAUDE_CONFIG_DIR` falls back to whatever Claude Code's default is, which after migration is an empty `~/.claude` (Claude will prompt to log in fresh). The README warns about this.
+- **Hooks must protect `~/.ckipper/` and per-account dirs.** `bash-guardrails.sh` and `protect-claude-config.sh` get an explicit anchored regex covering `$HOME/.claude(-[a-z0-9_-]+)?/` and `$HOME/.ckipper/`. Without this, a Claude session in account A can edit `~/.ckipper/accounts.json` to repoint A's name at B's keychain service — a credential cross-contamination vector.
+- **Validate `keychain_service` shape before passing to `security`.** Empty strings or shell metacharacters from a corrupted registry would otherwise reach `security find-generic-password -s …`. Required regex: `^Claude Code-credentials(-[a-f0-9]+)?$`.
+- **Fix the Keychain snapshot.** Use `printf '%s\n'` (not `echo`) to feed `comm`; capture a real `security dump-keychain` sample as a test fixture; detect a locked keychain (timeout + error rather than silent empty diff).
+- **`cca` self-containment.** The dispatcher must define its own dependencies so sourcing `aliases.zsh` alone works without `ckipper.zsh`.
+- **Migration safety.** Refuse migration if any `claude` process is running. Wrap destructive `mv` in a `trap` that restores on failure. Probe the legacy Keychain entry before trusting it.
+- **`accounts.json` schema versioning + `chmod 600`.** Add `"version": 1`. Lock perms.
+- **Phase 6.5 Docker smoke test** before live deploy on the user's host. The current plan's Phase 7 was the first time anything ran in Docker.
+- **Default `CLAUDE_CONFIG_DIR` in entrypoint should be an error, not a silent fallback to `~/.claude`.**
+
+Reviewer disagreements resolved by Team Lead:
+- Symlink fate (drop vs. clarify vs. protect) → **drop**.
+- Default `CLAUDE_CONFIG_DIR` (document vs. error) → **error**.
+- `.zshrc` auto-edit (do nothing vs. auto-append) → **auto-append the source line for `~/.ckipper/docker/w-function.zsh`** (consistent with existing `install.sh` behavior); print instructions for the optional `aliases.zsh` source line.
 
 ## Goals
 
@@ -62,37 +81,44 @@ The sandbox tooling moves out of `~/.claude/docker/` to its own root:
     fix-volume-perms.sh
     w-function.zsh
     w-config.zsh             # user's port/volume customizations (preserved across updates)
+    ckipper.zsh              # umbrella CLI subcommand dispatcher
+    cleanup-projects.py      # extracted helper, called from w --rm
   hooks/                     # canonical hook source
     bash-guardrails.sh
     protect-claude-config.sh
     docker-context.sh
     notify-bell.sh
-  ckipper                    # umbrella CLI (zsh function or shell script)
-  aliases.zsh                # auto-generated `claude-<name>` aliases (sourced by .zshrc)
-  accounts.json              # the registry
+  aliases.zsh                # auto-generated `cca` + `claude-<name>` (sourced by .zshrc; self-contained)
+  accounts.json              # the registry, chmod 600
   settings-template.json     # canonical settings used to seed new account dirs
+  tests/                     # fixture-based regression tests (security dump-keychain sample, etc.)
 ```
 
-The shell needs one source line in `.zshrc`:
+The shell sources two lines from `.zshrc` (the first is auto-appended by `install.sh`; the second is suggested if the user wants per-account aliases):
 
 ```zsh
 [[ -f ~/.ckipper/docker/w-function.zsh ]] && source ~/.ckipper/docker/w-function.zsh
 [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh
 ```
 
+`aliases.zsh` is fully self-contained — it does not depend on `w-function.zsh` or `ckipper.zsh` being sourced. The generated file defines its own `CKIPPER_REGISTRY` path before defining `cca`.
+
+After migration, **bare `claude`** (no env var, no alias) does whatever Claude Code's default behavior is — which after migration is "no `~/.claude` exists, prompt for fresh login". This is intentional. To use the personal account, the user runs `claude-personal` (or whichever name they registered).
+
 ### Registry — `~/.ckipper/accounts.json`
 
 ```json
 {
+  "version": 1,
   "default": "personal",
   "accounts": {
     "personal": {
-      "config_dir": "/Users/matt/.claude-personal",
+      "config_dir": "$HOME/.claude-personal",
       "keychain_service": "Claude Code-credentials",
       "registered_at": "2026-04-27T18:00:00Z"
     },
     "<name>": {
-      "config_dir": "/Users/matt/.claude-<name>",
+      "config_dir": "$HOME/.claude-<name>",
       "keychain_service": "Claude Code-credentials-<8hex>",
       "registered_at": "..."
     }
@@ -100,7 +126,14 @@ The shell needs one source line in `.zshrc`:
 }
 ```
 
-`keychain_service: null` is valid — used when the account authenticates via API key (`.credentials.json` on disk) or on Linux/Windows where there is no Keychain.
+(In the actual file, `$HOME` is expanded — shown above as a placeholder so the example reads correctly for any user.)
+
+The schema:
+- `version: 1` — bumped when fields are added or semantics change. CLI refuses to operate on a registry whose version it doesn't understand.
+- `keychain_service` shape is enforced: `^Claude Code-credentials(-[a-f0-9]+)?$`. CLI rejects values that don't match before passing to the macOS `security` command.
+- `keychain_service: null` is valid — used when the account authenticates via API key (`.credentials.json` on disk) or on Linux/Windows where there is no Keychain.
+- File permissions are `0600` (set on creation and on every write).
+- Atomic writes use `flock` on the registry file to serialize concurrent `ckipper add` invocations.
 
 ## Components
 
@@ -151,7 +184,8 @@ Once resolved, `w` reads `config_dir` and `keychain_service` from the registry a
 - Mounts the per-account config dir into Docker at the same host absolute path (so plugin paths inside `.claude.json` resolve): `-v "$config_dir:$config_dir:rw"`.
 - Sets `-e CLAUDE_CONFIG_DIR=$config_dir` inside the container.
 - Reads/writes `<config_dir>/.claude.json` instead of `~/.claude.json` for the project-settings sync that runs at worktree creation.
-- Drops the dual-mount of `~/.claude` at both `/home/claude/.claude` and `$HOME/.claude` — replaced by a single mount at the per-account host path. The container only needs the per-account dir; there is no shared `~/.claude` anymore.
+- Drops the dual-mount of `~/.claude` at both `/home/claude/.claude` and `$HOME/.claude`, replaced by a single mount at the per-account host path. **Before this change ships, the implementation phase grep-audits every `/home/claude/.claude` reference under `docker/` and migrates each one to `$CLAUDE_CONFIG_DIR`.** The plan has an explicit task for this audit — silent removal of the dual mount would break uvx pre-install, gh auth setup, and any plugin path that referenced the dropped mount.
+- Cross-account `--rm` cleanup walks the registry (not a glob of `~/.claude-*`), so backup or archived dirs aren't picked up by accident.
 
 ### 5. Entrypoint changes
 
@@ -175,25 +209,36 @@ Each account's `settings.json` references absolute paths to **its own** hooks (`
 
 ### 7. Migration for existing users — `ckipper migrate`
 
-Detects pre-Ckipper layouts and runs a guided migration. Idempotent.
+Detects pre-Ckipper layouts and runs a guided migration. Idempotent. Safety-checked.
+
+**Preconditions enforced before any destructive operation:**
+
+1. No `claude` process is currently running (`pgrep -f "claude " >/dev/null` must return non-zero, else abort with a clear message).
+2. `~/.claude-personal` does not already exist (else abort — `mv` would nest, not overwrite).
+3. The legacy `Claude Code-credentials` Keychain entry actually returns credentials (`security find-generic-password -s "Claude Code-credentials" -w` succeeds). If not, the user is shown a list of `Claude Code-credentials*` entries and asked to pick.
+
+**The destructive sequence is wrapped in a `trap` that restores on failure** — if `mv` succeeds but the registry write fails, the trap reverses the move so the user is never left with a missing `~/.claude`.
 
 | Detected state | Action |
 |---|---|
-| `~/.claude/docker/` exists | Move tooling files to `~/.ckipper/`. Preserve `w-config.zsh` (user customization). |
-| `~/.claude/.claude.json` exists with an `oauthAccount` | Offer to register it as `personal`. If accepted: rename `~/.claude` → `~/.claude-personal`, create `~/.claude` symlink back to it (for legacy bare-`claude` invocations), write the registry entry. Match the existing `Claude Code-credentials` (no suffix) Keychain entry to it. |
-| Old `~/.zshrc` source line points at `~/.claude/docker/w-function.zsh` | Update to `~/.ckipper/docker/w-function.zsh`. |
-| Existing hooks in `~/.claude/hooks/` referenced from `~/.claude/settings.json` | After the rename, settings.json now lives at `~/.claude-personal/settings.json` and references `~/.claude-personal/hooks/*` (rewritten by `sync-hooks`). |
+| `~/.claude/docker/` exists | Copy tooling files to `~/.ckipper/`. Preserve `w-config.zsh` (user customization). Old dir kept for one release cycle (prints recovery instructions). |
+| `~/.claude/.claude.json` exists with an `oauthAccount` | After preconditions pass: offer to register it as `personal`. If accepted: rename `~/.claude` → `~/.claude-personal` (no symlink — see "Revisions from panel review"), write the registry entry. Probe the matched Keychain entry first. |
+| Old `~/.zshrc` source line points at `~/.claude/docker/w-function.zsh` | Print a one-line update for the user to apply (`install.sh` may auto-edit; `migrate` does not). |
+| Existing hooks in `~/.claude/hooks/` | After the rename, settings.json now lives at `~/.claude-personal/settings.json` and references `~/.claude-personal/hooks/*` (rewritten by `sync-hooks`). |
+| Old `claude-dev` Docker image | `docker rmi claude-dev 2>/dev/null` — best-effort cleanup of the renamed image. |
 
-Then the user runs `ckipper add <name>` for each additional account.
+After migrate completes successfully, the user runs `ckipper add <name>` for each additional account, and uses `claude-personal` (not bare `claude`) to launch Claude Code.
 
 ## Issues from research — and how the design handles them
 
-1. **Plain `claude` after rename** — `~/.claude → ~/.claude-personal` symlink preserves it. Bare `claude` keeps working with the personal account.
-2. **Keychain hash discovery** — `ckipper add` snapshots Keychain entries before/after the user runs `/login`, then diffs to find the new entry. No reverse engineering.
-3. **`w` Docker integration** — fully parameterized via the registry: per-account Keychain service, per-account mount path, per-account `CLAUDE_CONFIG_DIR` in container. No more hardcoded `Claude Code-credentials`.
-4. **Hooks duplication across accounts** — `ckipper sync-hooks` is a one-command refresh. Each account's `settings.json` references its own absolute paths, so isolation is real.
-5. **OAuth race (#24317)** — different accounts have different refresh tokens; only same-account concurrent use can race. README warns. Two terminals using `claude-personal` simultaneously is the bad case; one `claude-personal` and one `claude-work` is fine.
+1. **Plain `claude` after rename** — *not preserved* (decision reversed in panel review). After migration, `~/.claude` no longer exists. Bare `claude` invocations create a fresh empty `~/.claude` and prompt for login. The README and `ckipper migrate` output state this explicitly: "after migrate, use `claude-personal` to launch Claude Code with your personal account."
+2. **Keychain hash discovery** — `ckipper add` snapshots Keychain entries before/after the user runs `/login`, then diffs to find the new entry. The snapshot uses `printf '%s\n'` (not `echo`) for `comm`-friendly input, detects a locked keychain via timeout, and is regression-tested against a captured `security dump-keychain` fixture under `~/.ckipper/tests/`.
+3. **`w` Docker integration** — fully parameterized via the registry: per-account Keychain service, per-account mount path, per-account `CLAUDE_CONFIG_DIR` in container. `keychain_service` shape is validated before passing to the `security` command. No more hardcoded `Claude Code-credentials`.
+4. **Hooks duplication across accounts** — `ckipper sync-hooks` is a one-command refresh. Each account's `settings.json` references its own absolute paths, so isolation is real. Both `bash-guardrails.sh` and `protect-claude-config.sh` extend their protected-path regex to cover `$HOME/.claude(-[a-z0-9_-]+)?/` and `$HOME/.ckipper/` (so a session in account A can't tamper with the registry to redirect account B's credentials).
+5. **OAuth race (#24317)** — different accounts have different refresh tokens; only same-account concurrent use can race. README warns prominently. Two terminals using `claude-personal` simultaneously is the bad case; one `claude-personal` and one `claude-work` is fine.
 6. **`#3833` workspace-local `.claude/`** — out of our control. If it appears, we document and report upstream.
+7. **Registry tampering** — `~/.ckipper/accounts.json` lives in user-writable space. Defenses: hooks block Edit/Write to it from inside Claude sessions; `chmod 600` reduces accidental exposure; `keychain_service` shape validation rejects corrupt values before `security` is invoked.
+8. **Migration data loss** — `ckipper migrate` enforces three preconditions before any `mv` and wraps the destructive sequence in an error-trap that restores the previous state on any failure.
 
 ## Data flow — typical session
 
@@ -240,13 +285,15 @@ Old "claude-docker-sandbox" naming gets replaced wholesale with "Ckipper".
 - Should `ckipper sync-hooks` run automatically on `ckipper add`? **Decision:** yes, on first add for that account. Manual otherwise.
 - Should `ckipper add --adopt` also work for the brand-new `~/.claude` dir at first install? **Decision:** yes — `ckipper migrate` is just `ckipper add personal --adopt` with extra layout-cleanup.
 
-## Implementation phases (preview — full plan in writing-plans next)
+## Implementation phases (preview — full plan in `2026-04-27-ckipper-multi-account-implementation.md`)
 
-1. Rename project metadata (CLAUDE.md, README.md, install.sh paths). No behavior change.
-2. Move tooling location: `~/.claude/docker/` → `~/.ckipper/`. Update install.sh + source lines.
-3. Add `ckipper` CLI with `add`, `list`, `default`, `remove`, `sync-hooks`, `migrate`.
-4. Make `w` and `entrypoint.sh` account-aware.
-5. README rewrite with multi-account walkthrough.
-6. Run `ckipper migrate` on the user's host to do the personal → personal+af split. Test end-to-end with both accounts.
+1. Rename project metadata (CLAUDE.md, README.md, install.sh paths, Docker image tag). No behavior change.
+2. Move tooling location: `~/.claude/docker/` → `~/.ckipper/`. Update install.sh + auto-append `.zshrc` source line.
+3. Add `ckipper` CLI with `add`, `list`, `default`, `remove`, `sync-hooks`, `migrate`. Includes registry schema versioning, file locking, fixture-based Keychain regression test.
+4. Make `w` and `entrypoint.sh` account-aware. Audit `/home/claude/.claude` references first; remove only after each one is migrated to `$CLAUDE_CONFIG_DIR`. Validate `keychain_service` shape before passing to `security`.
+5. Extend hooks (`bash-guardrails.sh`, `protect-claude-config.sh`) to cover `~/.ckipper/` and per-account dirs. Re-run existing `test-prompt.md` Section 10 hook-bypass tests after the change.
+6. README, CLAUDE.md, and test-prompt.md updates with multi-account walkthrough, concurrent-use warning, migration preamble, and concrete Section 12 isolation assertions.
+6.5. Build the renamed `ckipper-dev` image and run a Docker smoke test against a registered test account before deploying anywhere real.
+7. Run `ckipper migrate` on the implementer's host. Add additional accounts with generic placeholder names (`<work>`, `<your-second-account>`). End-to-end validation against both accounts in concurrent Docker sessions.
 
-Each phase is independently testable.
+Each phase is independently testable. Phase 7 is the only phase that touches the implementer's actual host.
