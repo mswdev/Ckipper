@@ -41,6 +41,26 @@ _w_build_image() {
     docker build --build-arg "CACHEBUST=$(date +%s)" -t ckipper-dev "$docker_dir"
 }
 
+_w_resolve_account() {
+    local cli_account="$1"
+    if [[ -n "$cli_account" ]]; then
+        echo "$cli_account"; return 0
+    fi
+    if [[ -n "$CLAUDE_CONFIG_DIR" && -f "$CKIPPER_REGISTRY" ]]; then
+        local matched
+        matched=$(jq -r --arg d "$CLAUDE_CONFIG_DIR" \
+            '.accounts | to_entries[] | select(.value.config_dir == $d) | .key' \
+            "$CKIPPER_REGISTRY" | head -1)
+        [[ -n "$matched" ]] && { echo "$matched"; return 0; }
+    fi
+    if [[ -f "$CKIPPER_REGISTRY" ]]; then
+        local default
+        default=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
+        [[ -n "$default" ]] && { echo "$default"; return 0; }
+    fi
+    return 0
+}
+
 w() {
     local projects_dir="$HOME/Developer"
     local worktrees_dir="$HOME/Developer/.worktrees"
@@ -131,12 +151,14 @@ if wt_path in d.get('projects', {}):
     # Parse flags
     local docker_mode=0
     local firewall_mode=0
+    local cli_account=""
     local command=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --docker) docker_mode=1; shift ;;
+            --docker)   docker_mode=1; shift ;;
             --firewall) firewall_mode=1; shift ;;
-            *) command+=("$1"); shift ;;
+            --account)  cli_account="$2"; shift 2 ;;
+            *)          command+=("$1"); shift ;;
         esac
     done
 
@@ -148,8 +170,9 @@ if wt_path in d.get('projects', {}):
         echo "       w --rebuild-image"
         echo ""
         echo "Flags:"
-        echo "  --docker     Run in Docker container (shell by default, or specify command)"
-        echo "  --firewall   Add egress firewall (only with --docker)"
+        echo "  --docker            Run in Docker container (shell by default, or specify command)"
+        echo "  --firewall          Add egress firewall (only with --docker)"
+        echo "  --account <name>    Use a specific Ckipper account (default: registered default or \$CLAUDE_CONFIG_DIR)"
         echo ""
         echo "Examples:"
         echo "  w myorg/app feature --docker              # shell in container"
@@ -161,6 +184,23 @@ if wt_path in d.get('projects', {}):
     # Validate flag combinations
     if [[ $firewall_mode -eq 1 && $docker_mode -eq 0 ]]; then
         echo "Error: --firewall requires --docker"
+        return 1
+    fi
+
+    # Resolve active Ckipper account (no legacy fallback — error if none).
+    local active_account
+    active_account=$(_w_resolve_account "$cli_account")
+    if [[ -z "$active_account" ]]; then
+        echo "Error: no account selected and no default registered."
+        echo "Run: ckipper list   (then: ckipper default <name>, or pass --account <name>)"
+        return 1
+    fi
+    local active_config_dir
+    active_config_dir=$(jq -r --arg n "$active_account" '.accounts[$n].config_dir // empty' "$CKIPPER_REGISTRY" 2>/dev/null)
+    local active_keychain_service
+    active_keychain_service=$(jq -r --arg n "$active_account" '.accounts[$n].keychain_service // empty' "$CKIPPER_REGISTRY" 2>/dev/null)
+    if [[ -z "$active_config_dir" ]]; then
+        echo "Error: account '$active_account' is not registered. Run: ckipper list"
         return 1
     fi
 
@@ -492,6 +532,7 @@ _w() {
         '(--rm)--list[List all worktrees]' \
         '(--list)--rm[Remove a worktree]' \
         '--rebuild-image[Rebuild ckipper-dev Docker image]' \
+        '--account[Ckipper account to use]:account name:' \
         '1: :->project' \
         '2: :->worktree' \
         '3: :->command' \
