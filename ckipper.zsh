@@ -292,8 +292,42 @@ _ckipper_regenerate_aliases() {
     chmod 644 "$out"
 }
 
-# Stub — implemented in Task 13.
-_ckipper_sync_hooks_for() { :; }
+_ckipper_sync_hooks_for() {
+    local name="$1"
+    _ckipper_check_registry_version || return 1
+    local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
+    [[ -z "$dir" || "$dir" == "null" ]] && return 1
+    mkdir -p "$dir/hooks"
+    cp -a "$CKIPPER_DIR/hooks/." "$dir/hooks/" 2>/dev/null || true
+
+    # Rewrite settings.json hook paths to absolute paths under this account dir.
+    # Consumes the entire prefix (`$HOME/.claude/`, `$HOME/.claude-<name>/`, or `$HOME/.ckipper/`)
+    # plus `hooks/` so we don't end up with `$HOME<dir>/hooks/...` after substitution.
+    if [[ -f "$dir/settings.json" ]] && command -v jq &>/dev/null; then
+        local tmp; tmp=$(mktemp "$dir/.settings.tmp.XXXXXX")
+        jq --arg d "$dir" '
+            (.hooks // {}) as $h |
+            .hooks = ($h | walk(
+                if type == "string" and test("\\$HOME/(\\.claude(-[a-z0-9_-]+)?|\\.ckipper)/hooks/")
+                then sub("\\$HOME/(\\.claude(-[a-z0-9_-]+)?|\\.ckipper)/hooks/"; "\($d)/hooks/")
+                else . end
+            ))
+        ' "$dir/settings.json" > "$tmp" && mv "$tmp" "$dir/settings.json"
+    fi
+}
+
+_ckipper_sync_hooks() {
+    if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
+        echo "No accounts registered."
+        return 0
+    fi
+    _ckipper_check_registry_version || return 1
+    local names; names=$(jq -r '.accounts | keys[]' "$CKIPPER_REGISTRY")
+    while IFS= read -r name; do
+        echo "Syncing hooks → $name"
+        _ckipper_sync_hooks_for "$name"
+    done <<< "$names"
+}
 
 _ckipper_list() {
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
@@ -352,5 +386,4 @@ _ckipper_remove() {
         printf "  security delete-generic-password -s %q\n" "$service"
     fi
 }
-_ckipper_sync_hooks() { echo "ckipper sync-hooks: not yet implemented"; return 1; }
 _ckipper_migrate()    { echo "ckipper migrate: not yet implemented"; return 1; }
