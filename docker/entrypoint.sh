@@ -130,9 +130,16 @@ if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/
             bin_name=$(echo "$pkg" | sed 's|.*/||; s/@.*//')
             bin_path="$uv_bin_dir/$bin_name"
 
-            # Skip install if binary already exists from a previous container run
-            # (persisted via claude-uv-tools volume). Only install if missing.
-            if [ ! -x "$bin_path" ]; then
+            # Install if binary is missing, or reinstall if its virtualenv is
+            # broken (Python symlinks break when the base image updates Python
+            # versions between container runs — the named volume persists the
+            # old venv but the interpreter it points to no longer exists).
+            if [ -x "$bin_path" ]; then
+                if ! timeout 5 "$bin_path" --help &>/dev/null; then
+                    echo "  $name: broken environment detected, reinstalling..."
+                    timeout 60 uv tool install "$pkg" --reinstall 2>/dev/null || true
+                fi
+            else
                 timeout 60 uv tool install "$pkg" 2>/dev/null || true
             fi
 
