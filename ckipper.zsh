@@ -251,10 +251,19 @@ _ckipper_finalize_registration() {
     local name="$1" dir="$2" service="$3" mode="$4"
     local now; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+    _ckipper_init_registry
+
     _ckipper_registry_update '
         .accounts[$n] = {config_dir: $d, keychain_service: (if $s == "" then null else $s end), registered_at: $t}
         | (if .default == null then .default = $n else . end)
     ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"
+
+    # Verify the write actually landed — registry update under chmod -w or other
+    # write failures must propagate so callers (e.g. ckipper migrate) can rollback.
+    if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+        echo "Error: failed to write account '$name' to registry $CKIPPER_REGISTRY" >&2
+        return 1
+    fi
 
     _ckipper_regenerate_aliases
     _ckipper_sync_hooks_for "$name"
@@ -386,4 +395,110 @@ _ckipper_remove() {
         printf "  security delete-generic-password -s %q\n" "$service"
     fi
 }
-_ckipper_migrate()    { echo "ckipper migrate: not yet implemented"; return 1; }
+_ckipper_migrate() {
+    _ckipper_check_registry_version || return 1
+    local legacy_docker="$HOME/.claude/docker"
+    local legacy_claude="$HOME/.claude"
+
+    # ── Precondition 1: no Claude process running ─────────────────
+    if pgrep -f "[c]laude " >/dev/null 2>&1; then
+        echo "Error: a Claude process is currently running. Quit all Claude sessions first." >&2
+        echo "Detected: $(pgrep -af '[c]laude ' | head -3)" >&2
+        return 1
+    fi
+
+    # ── Precondition 2: ~/.claude-personal must not already exist ─
+    if [[ -e "$HOME/.claude-personal" ]]; then
+        echo "Error: $HOME/.claude-personal already exists. Refusing to migrate." >&2
+        echo "If you've already migrated, you're done. Run: ckipper list" >&2
+        return 1
+    fi
+
+    # ── 1. Move ~/.claude/docker → ~/.ckipper/docker if not done ──
+    if [[ -d "$legacy_docker" && ! -d "$CKIPPER_DIR/docker" ]]; then
+        mkdir -p "$CKIPPER_DIR"
+        cp -a "$legacy_docker/." "$CKIPPER_DIR/docker/"
+        echo "Copied $legacy_docker → $CKIPPER_DIR/docker (legacy left intact for one release cycle)"
+    fi
+
+    # ── 2. Adopt ~/.claude as 'personal' if eligible ──────────────
+    if [[ -f "$legacy_claude/.claude.json" || -f "$legacy_claude/settings.json" ]]; then
+        if [[ ! -f "$CKIPPER_REGISTRY" ]] || \
+           ! jq -e '.accounts | length > 0' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+
+            # Show the user what we're about to do.
+            cat <<EOF
+
+Detected existing $legacy_claude with login credentials.
+
+This migration will:
+  1. Rename $legacy_claude → $HOME/.claude-personal (NOT a symlink — bare 'claude' will no longer use this account; use 'claude-personal' instead).
+  2. Register 'personal' in $CKIPPER_REGISTRY.
+  3. Probe macOS Keychain for the matching 'Claude Code-credentials' entry.
+
+If anything fails, the rename is automatically reverted.
+
+EOF
+            read -r "?Proceed? [y/N] " ans
+            if [[ "$ans" != "y" && "$ans" != "Y" ]]; then
+                echo "Aborted."
+                return 1
+            fi
+
+            # ── Precondition 3: probe Keychain entry exists ──────
+            local probed_service="Claude Code-credentials"
+            if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
+                if ! security find-generic-password -s "$probed_service" -w >/dev/null 2>&1; then
+                    echo "Warning: '$probed_service' not found in Keychain."
+                    echo "Listing available Claude Keychain entries:"
+                    _ckipper_keychain_snapshot || return 1
+                    read -r "?Enter the Keychain service for the personal account (or empty to skip): " probed_service
+                    if [[ -n "$probed_service" ]] && ! _ckipper_validate_keychain_service "$probed_service"; then
+                        echo "Invalid Keychain service shape. Aborting."
+                        return 1
+                    fi
+                fi
+            else
+                probed_service=""
+            fi
+
+            # ── Destructive operation with explicit rollback ─────
+            if ! mv "$legacy_claude" "$HOME/.claude-personal" 2>/dev/null; then
+                echo "Error: failed to rename $legacy_claude → $HOME/.claude-personal" >&2
+                echo "(Check permissions on $HOME and that no process holds the directory open.)" >&2
+                return 1
+            fi
+            if ! _ckipper_finalize_registration "personal" "$HOME/.claude-personal" "$probed_service" "migrate"; then
+                # Rollback the rename so the host returns to a clean state.
+                if [[ -d "$HOME/.claude-personal" && ! -e "$legacy_claude" ]]; then
+                    mv "$HOME/.claude-personal" "$legacy_claude" 2>/dev/null
+                    echo "Migration failed — restored $legacy_claude from rollback." >&2
+                fi
+                return 1
+            fi
+        fi
+    fi
+
+    # ── 3. Best-effort cleanup of old Docker image ────────────────
+    if command -v docker >/dev/null 2>&1; then
+        docker rmi claude-dev 2>/dev/null && echo "Removed old claude-dev Docker image."
+    fi
+
+    cat <<EOF
+
+Migration complete.
+
+Next steps:
+  1. Confirm your ~/.zshrc sources the new path:
+       source ~/.ckipper/docker/w-function.zsh
+     (install.sh updates this automatically; if you used a manual install, edit it yourself.)
+  2. Optional: add to ~/.zshrc to enable per-account aliases:
+       [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh
+  3. Restart your shell.
+  4. Run:  ckipper add <work-account-name>   to add additional accounts.
+
+To launch Claude with your personal account, use:  claude-personal
+(Bare 'claude' no longer resolves to your migrated personal account — it will start a fresh login.)
+
+EOF
+}
