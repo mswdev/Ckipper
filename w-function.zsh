@@ -127,19 +127,12 @@ w() {
             echo "Failed to remove worktree. Use --force if it has uncommitted changes."
             return 1
         }
-        # Clean up Claude Code settings for removed worktree
-        WT_PATH="$wt_path" python3 -c "
-import json, os
-claude_config = os.path.expanduser('~/.claude.json')
-wt_path = os.environ['WT_PATH']
-with open(claude_config, 'r') as f:
-    d = json.load(f)
-if wt_path in d.get('projects', {}):
-    del d['projects'][wt_path]
-    with open(claude_config, 'w') as f:
-        json.dump(d, f)
-    print(f'Removed worktree project entry from ~/.claude.json')
-" 2>/dev/null
+        # Clean up Claude Code settings for removed worktree across all registered accounts
+        local _ckipper_dir="${CKIPPER_DIR:-$HOME/.ckipper}"
+        if [[ -f "$_ckipper_dir/docker/cleanup-projects.py" ]]; then
+            CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+                python3 "$_ckipper_dir/docker/cleanup-projects.py" remove "$wt_path" 2>/dev/null || true
+        fi
         return 0
     fi
 
@@ -268,29 +261,14 @@ if wt_path in d.get('projects', {}):
         done
 
         # Sync Claude Code project settings (disabled MCPs, permissions, etc.)
+        # for the active account from the main project entry to the new worktree entry.
         local main_project_path="$projects_dir/$project"
-        MAIN_PATH="$main_project_path" WT_PATH="$wt_path" python3 -c "
-import json, os
-claude_config = os.path.expanduser('~/.claude.json')
-main_path = os.environ['MAIN_PATH']
-wt_path = os.environ['WT_PATH']
-with open(claude_config, 'r') as f:
-    d = json.load(f)
-main = d.get('projects', {}).get(main_path, {})
-if main:
-    keys = ['disabledMcpServers', 'enabledMcpjsonServers', 'disabledMcpjsonServers',
-            'allowedTools', 'hasTrustDialogAccepted', 'hasClaudeMdExternalIncludesApproved',
-            'hasClaudeMdExternalIncludesWarningShown', 'hasCompletedProjectOnboarding']
-    wt = d.setdefault('projects', {}).setdefault(wt_path, {})
-    for k in keys:
-        if k in main:
-            wt[k] = main[k]
-    with open(claude_config, 'w') as f:
-        json.dump(d, f)
-    print('Synced Claude Code settings')
-else:
-    print('No Claude settings found for main project')
-" 2>/dev/null
+        local _ckipper_dir="${CKIPPER_DIR:-$HOME/.ckipper}"
+        if [[ -f "$_ckipper_dir/docker/cleanup-projects.py" ]]; then
+            CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+                python3 "$_ckipper_dir/docker/cleanup-projects.py" sync \
+                "$active_account" "$main_project_path" "$wt_path" 2>/dev/null || true
+        fi
     fi
 
     # -- Docker mode: run in containerized environment --
@@ -310,17 +288,25 @@ else:
             _w_build_image || return 1
         fi
 
-        # Ensure .claude.json exists (Docker would mount as directory if missing)
-        [[ -f "$HOME/.claude.json" ]] || echo '{}' > "$HOME/.claude.json"
+        # Ensure per-account .claude.json exists (Docker would mount as directory if missing)
+        [[ -f "$active_config_dir/.claude.json" ]] || echo '{}' > "$active_config_dir/.claude.json"
 
-        # Extract credentials from macOS Keychain (Claude stores auth there, not on disk)
-        local claude_creds
-        claude_creds=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null) || true
+        # Extract credentials from macOS Keychain (per-account service name)
+        if [[ -n "$active_keychain_service" ]] && \
+           ! _ckipper_validate_keychain_service "$active_keychain_service"; then
+            echo "Error: account '$active_account' has invalid keychain_service in registry."
+            echo "Re-register with: ckipper remove $active_account && ckipper add $active_account --adopt"
+            return 1
+        fi
+        local claude_creds=""
+        if [[ -n "$active_keychain_service" ]]; then
+            claude_creds=$(security find-generic-password -s "$active_keychain_service" -w 2>/dev/null) || true
+        fi
 
         # Extract GitHub token for gh CLI auth inside container
-        # Try .claude.json MCP config first, then fall back to host's gh CLI auth
+        # Try the per-account .claude.json MCP config first, then fall back to host's gh CLI auth
         local gh_token
-        gh_token=$(jq -r '.mcpServers.github.env.GITHUB_PERSONAL_ACCESS_TOKEN // empty' "$HOME/.claude.json" 2>/dev/null) || true
+        gh_token=$(jq -r '.mcpServers.github.env.GITHUB_PERSONAL_ACCESS_TOKEN // empty' "$active_config_dir/.claude.json" 2>/dev/null) || true
         if [[ -z "$gh_token" ]] && command -v gh &>/dev/null; then
             gh_token=$(gh auth token 2>/dev/null) || true
         fi
@@ -332,13 +318,13 @@ else:
             -v "$wt_path:/workspace:rw"
             # Mount main repo .git at same absolute path (resolves worktree .git file)
             -v "$projects_dir/$project/.git:$projects_dir/$project/.git:rw"
-            # Mount Claude auth and config
-            -v "$HOME/.claude:/home/claude/.claude:rw"
-            -v "$HOME/.claude.json:/home/claude/.claude-host.json:ro"
-            # Mount .claude at host path too — plugins store absolute host paths
-            # (e.g. /Users/<user>/.claude/plugins/...) that don't resolve at
-            # the container's /home/claude/.claude. This dual mount makes both work.
-            -v "$HOME/.claude:$HOME/.claude:rw"
+            # Mount per-account Claude config dir at the same host path so plugins'
+            # absolute-path references (e.g. /Users/<user>/.claude-<name>/plugins/...)
+            # resolve inside the container.
+            -v "$active_config_dir:$active_config_dir:rw"
+            # Read-only staging copy of .claude.json (entrypoint copies it to the writable location)
+            -v "$active_config_dir/.claude.json:$active_config_dir/.claude-host.json:ro"
+            -e "CLAUDE_CONFIG_DIR=$active_config_dir"
             # Mount SSH config as staging copy (sanitized by entrypoint)
             -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
             # Forward host's SSH agent (Docker Desktop for Mac).
@@ -449,15 +435,6 @@ else:
 
         "${docker_args[@]}"
         local exit_code=$?
-
-        # Post-session: clean up dangling credentials symlink left by tmpfs credential isolation.
-        # Only remove when no other ckipper-dev containers are running — parallel sessions
-        # share the ~/.claude bind mount, so deleting the symlink would break their credentials.
-        if [[ -L "$HOME/.claude/.credentials.json" ]]; then
-            if ! docker ps --filter ancestor=ckipper-dev --quiet 2>/dev/null | grep -q .; then
-                rm -f "$HOME/.claude/.credentials.json"
-            fi
-        fi
 
         # Post-session: warn if .git/config was modified
         if [[ -n "$git_config_hash" && -f "$git_config" ]]; then
