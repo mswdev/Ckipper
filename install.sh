@@ -58,8 +58,10 @@ mkdir -p "$CKIPPER_DIR/docker"
 cp "$REPO_DIR/docker/Dockerfile" "$CKIPPER_DIR/docker/"
 cp "$REPO_DIR/docker/entrypoint.sh" "$CKIPPER_DIR/docker/"
 cp "$REPO_DIR/docker/init-firewall.sh" "$CKIPPER_DIR/docker/"
+cp "$REPO_DIR/docker/cleanup-projects.py" "$CKIPPER_DIR/docker/"
 chmod +x "$CKIPPER_DIR/docker/entrypoint.sh"
 chmod +x "$CKIPPER_DIR/docker/init-firewall.sh"
+chmod +x "$CKIPPER_DIR/docker/cleanup-projects.py"
 
 # 3. Copy hooks (canonical source for ckipper sync-hooks)
 echo "Copying hooks to $CKIPPER_DIR/hooks/..."

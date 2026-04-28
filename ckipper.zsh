@@ -119,15 +119,17 @@ _ckipper_registry_update() {
             chmod 600 "$CKIPPER_REGISTRY"
         } 9>"$lock"
     else
-        # Fallback for systems without flock (older macOS): mkdir-based lock.
+        # Fallback for systems without flock (the default on macOS): mkdir-based lock.
+        # Make the cleanup trap function-local so we don't clobber caller-installed
+        # INT/TERM rollback handlers (e.g. _ckipper_migrate). The local EXIT trap
+        # still fires whether the function returns normally or is unwound by signal.
+        setopt local_options local_traps
         local lockdir="$CKIPPER_DIR/.registry.lock.d"
         until mkdir "$lockdir" 2>/dev/null; do sleep 0.05; done
-        trap 'rmdir "$lockdir" 2>/dev/null' EXIT INT TERM
+        trap 'rmdir "$lockdir" 2>/dev/null' EXIT
         local tmp; tmp=$(mktemp "$CKIPPER_DIR/.registry.tmp.XXXXXX")
         jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$tmp" && mv "$tmp" "$CKIPPER_REGISTRY"
         chmod 600 "$CKIPPER_REGISTRY"
-        rmdir "$lockdir" 2>/dev/null
-        trap - EXIT INT TERM
     fi
 }
 
@@ -221,9 +223,10 @@ A new account directory was created at $dir.
 
 In this same shell, run:
 
-    CLAUDE_CONFIG_DIR=$dir claude
+    CLAUDE_CONFIG_DIR=$dir command claude
 
 Complete the /login flow with the account you want to register as '$name'.
+('command claude' bypasses the shadow that blocks bare 'claude' once accounts are registered.)
 When done, exit Claude (Ctrl-D) and press enter here to finish registration.
 If you closed the terminal by mistake, recover with: ckipper add $name --adopt
 
