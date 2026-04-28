@@ -96,10 +96,15 @@ cp "$REPO_DIR/settings-hooks.json" "$CKIPPER_DIR/settings-template.json"
 echo "  Settings template deployed. ckipper sync-hooks applies it per-account."
 
 # 7. Add or update source line in .zshrc
-if grep -q "source.*\.claude/docker/w-function.zsh" "$HOME/.zshrc" 2>/dev/null; then
-    sed -i.bak 's|source.*\.claude/docker/w-function\.zsh|source ~/.ckipper/docker/w-function.zsh|' "$HOME/.zshrc"
+# The legacy line could be any of:
+#   source "$HOME/.claude/docker/w-function.zsh"
+#   source ~/.claude/docker/w-function.zsh
+#   source $HOME/.claude/docker/w-function.zsh
+# We rewrite the whole line (consuming any trailing quote) to a canonical quoted form.
+if grep -q '\.claude/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
+    sed -i.bak -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*\.claude/docker/w-function\.zsh["'\'']?[[:space:]]*$|source "$HOME/.ckipper/docker/w-function.zsh"|' "$HOME/.zshrc"
     echo "  Updated ~/.zshrc source line to ~/.ckipper/. Backup at ~/.zshrc.bak."
-elif ! grep -q 'ckipper/docker/w-function.zsh' "$HOME/.zshrc" 2>/dev/null; then
+elif ! grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
     echo '' >> "$HOME/.zshrc"
     echo '# Ckipper — Worktree Manager (w function)' >> "$HOME/.zshrc"
     echo 'source "$HOME/.ckipper/docker/w-function.zsh"' >> "$HOME/.zshrc"
