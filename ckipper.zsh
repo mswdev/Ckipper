@@ -291,6 +291,32 @@ _ckipper_regenerate_aliases() {
         echo "    CLAUDE_CONFIG_DIR=\"\$dir\" command claude \"\$@\""
         echo "}"
         echo ""
+        # Guard: bare 'claude' would default to ~/.claude/ and write to the unsuffixed
+        # 'Claude Code-credentials' Keychain entry — which is the SAME entry the
+        # default account uses. A fresh /login here silently overwrites those creds.
+        # Block bare 'claude' when accounts are registered; users bypass via 'command claude'.
+        echo "claude() {"
+        echo "    if [[ -f \"\$_CKIPPER_REGISTRY\" ]] && jq -e '.accounts | length > 0' \"\$_CKIPPER_REGISTRY\" >/dev/null 2>&1; then"
+        echo "        local default"
+        echo "        default=\$(jq -r '.default // \"\"' \"\$_CKIPPER_REGISTRY\" 2>/dev/null)"
+        echo "        echo \"Refusing to launch bare 'claude' — Ckipper has registered accounts.\" >&2"
+        echo "        echo \"\" >&2"
+        echo "        echo \"Bare 'claude' uses ~/.claude/ and writes to the Keychain entry your\" >&2"
+        echo "        echo \"default account ('\${default:-personal}') is registered against. A fresh\" >&2"
+        echo "        echo \"/login here would silently overwrite those credentials.\" >&2"
+        echo "        echo \"\" >&2"
+        echo "        if [[ -n \"\$default\" ]]; then"
+        echo "            echo \"Use:  claude-\$default   (or: cca \$default)\" >&2"
+        echo "        else"
+        echo "            echo \"Set a default first: ckipper default <name>, then use claude-<name>.\" >&2"
+        echo "        fi"
+        echo "        echo \"\" >&2"
+        echo "        echo \"To bypass (fresh login on purpose):  command claude \\\$@\" >&2"
+        echo "        return 1"
+        echo "    fi"
+        echo "    command claude \"\$@\""
+        echo "}"
+        echo ""
         if [[ -f "$CKIPPER_REGISTRY" ]]; then
             jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)"' "$CKIPPER_REGISTRY" | \
                 while IFS=$'\t' read -r _name _dir; do
