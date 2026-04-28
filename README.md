@@ -115,7 +115,7 @@ If you want concurrent runs of the *same* account, register it twice under two n
 
 On every container start, `entrypoint.sh` automatically:
 
-1. **Copies `.claude.json`** from read-only staging mount to writable location (prevents race condition with host)
+1. **Reads `.claude.json`** from the bind-mounted per-account dir (`$CLAUDE_CONFIG_DIR/.claude.json`) and mutates chrome flags + MCP rewrites in place. Race protection is via the documented "don't run the same account in two sessions" rule.
 2. **Copies and sanitizes SSH config** from read-only `.ssh-host` staging mount — strips macOS-specific `UseKeychain` option that breaks Linux OpenSSH
 3. **Disables Chrome extension checks** via jq (no browser in container)
 4. **Writes OAuth credentials** from `CLAUDE_CREDENTIALS` env var to `.credentials.json`
@@ -159,10 +159,10 @@ Four Claude Code hooks activate inside Docker:
 - GPG signing disabled via `GIT_CONFIG_COUNT` env vars — no file modification, overrides both local and global config, disappears when container exits
 - Post-session `.git/config` tamper detection
 - Credentials cleared from environment before launching the command (invisible to `env` and `/proc/self/environ`)
-- `.claude.json` mounted read-only as staging copy (prevents race condition with host)
+- Per-account `.claude.json` is bind-mounted RW; container mutations propagate to the host file (intentional, gated by the same-account-twice advisory)
 - SSH config mounted read-only as staging copy (`.ssh-host`), copied and sanitized by entrypoint — macOS-specific `UseKeychain` stripped
 - SSH agent forwarded from host via Docker Desktop socket (`/run/host-services/ssh-auth.sock`) — no private keys copied into container
-- `~/.claude` dual-mounted at both `/home/claude/.claude` and the host path (e.g. `/Users/<user>/.claude`) so plugins with hardcoded absolute paths resolve correctly
+- Per-account `~/.claude-<name>` mounted at the same host path inside the container so plugins with hardcoded absolute paths resolve correctly
 - No Docker socket mounted (cannot create sibling containers)
 
 ### Optional Egress Firewall
@@ -279,7 +279,7 @@ After setup, run the comprehensive environment test to verify everything works:
 w <your-project> test-branch --docker claude
 ```
 
-Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It covers 11 sections:
+Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It covers 12 sections:
 
 - Entrypoint verification (env vars, git identity, Chrome disabled, Turbo cache, credential clearing from `/proc/self/environ`)
 - File system access (read, write, delete, ownership, SSH staging mount, config sanitization)

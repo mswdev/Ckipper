@@ -75,11 +75,29 @@ _ckipper_keychain_snapshot() {
     # macOS only. Returns service names of all "Claude Code-credentials*" entries, sorted.
     [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]] && return 0
 
-    # Fail loudly if keychain is locked (timeout protects against GUI prompt blocking).
+    # Pick a timeout binary if available (macOS doesn't ship one; gtimeout from
+    # coreutils is the typical brew install). Fall through to no timeout if neither
+    # is present — better than failing with a misleading "keychain locked" error.
+    local timeout_cmd=""
+    if command -v timeout >/dev/null 2>&1; then
+        timeout_cmd="timeout 10"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        timeout_cmd="gtimeout 10"
+    fi
+
     local out
-    if ! out=$(timeout 10 security dump-keychain 2>/dev/null); then
-        echo "Warning: Keychain may be locked or slow. Unlock it (Keychain Access > File > Unlock) and retry." >&2
-        return 1
+    if [[ -n "$timeout_cmd" ]]; then
+        if ! out=$($timeout_cmd security dump-keychain 2>/dev/null); then
+            echo "Warning: Keychain may be locked or slow. Unlock it (Keychain Access > File > Unlock) and retry." >&2
+            return 1
+        fi
+    else
+        # No timeout available — run without. If keychain is locked the GUI
+        # password prompt will block this, which is a fine failure mode.
+        if ! out=$(security dump-keychain 2>/dev/null); then
+            echo "Warning: 'security dump-keychain' failed. Keychain may be locked." >&2
+            return 1
+        fi
     fi
 
     printf '%s\n' "$out" | \
@@ -427,9 +445,12 @@ _ckipper_migrate() {
     local legacy_claude="$HOME/.claude"
 
     # ── Precondition 1: no Claude process running ─────────────────
-    if pgrep -f "[c]laude " >/dev/null 2>&1; then
+    # Match (a) Claude.app GUI process names, (b) bare 'claude' CLI invocation
+    # (no trailing args), (c) 'claude <args>'. Case-insensitive to catch all forms.
+    if pgrep -if 'claude' >/dev/null 2>&1; then
         echo "Error: a Claude process is currently running. Quit all Claude sessions first." >&2
-        echo "Detected: $(pgrep -af '[c]laude ' | head -3)" >&2
+        echo "Detected:" >&2
+        pgrep -ailf 'claude' 2>/dev/null | head -3 >&2
         return 1
     fi
 
@@ -437,6 +458,17 @@ _ckipper_migrate() {
     if [[ -e "$HOME/.claude-personal" ]]; then
         echo "Error: $HOME/.claude-personal already exists. Refusing to migrate." >&2
         echo "If you've already migrated, you're done. Run: ckipper list" >&2
+        return 1
+    fi
+
+    # ── Precondition 3: ~/.claude must NOT be a symlink ──────────
+    # Some users symlink ~/.claude to a synced location. Renaming a symlink
+    # moves the link, not the target — confusing and probably not what they want.
+    if [[ -L "$legacy_claude" ]]; then
+        local target; target=$(readlink "$legacy_claude")
+        echo "Error: $legacy_claude is a symlink (→ $target). Refusing to migrate." >&2
+        echo "Resolve manually: replace the symlink with the actual directory contents," >&2
+        echo "or migrate the target directly." >&2
         return 1
     fi
 
@@ -489,19 +521,38 @@ EOF
             fi
 
             # ── Destructive operation with explicit rollback ─────
+            # Single rollback function used by both the explicit failure path
+            # AND the INT/TERM trap (Ctrl-C between mv and finalize completion).
+            _ckipper_migrate_rollback() {
+                local why="${1:-rollback}"
+                # Reverse the rename if it succeeded but registration didn't finish.
+                if [[ -d "$HOME/.claude-personal" && ! -e "$legacy_claude" ]]; then
+                    mv "$HOME/.claude-personal" "$legacy_claude" 2>/dev/null
+                    echo "Migration $why — restored $legacy_claude." >&2
+                fi
+                # If a partial registry entry was written, remove it so a re-run isn't blocked.
+                if [[ -f "$CKIPPER_REGISTRY" ]] && \
+                   jq -e '.accounts.personal' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+                    _ckipper_registry_update \
+                        'del(.accounts.personal) | (if .default == "personal" then .default = null else . end)'
+                    echo "Cleaned partial 'personal' entry from $CKIPPER_REGISTRY." >&2
+                fi
+            }
+            trap '_ckipper_migrate_rollback interrupted; trap - INT TERM ERR; return 130' INT TERM
+
             if ! mv "$legacy_claude" "$HOME/.claude-personal" 2>/dev/null; then
+                trap - INT TERM
                 echo "Error: failed to rename $legacy_claude → $HOME/.claude-personal" >&2
                 echo "(Check permissions on $HOME and that no process holds the directory open.)" >&2
                 return 1
             fi
             if ! _ckipper_finalize_registration "personal" "$HOME/.claude-personal" "$probed_service" "migrate"; then
-                # Rollback the rename so the host returns to a clean state.
-                if [[ -d "$HOME/.claude-personal" && ! -e "$legacy_claude" ]]; then
-                    mv "$HOME/.claude-personal" "$legacy_claude" 2>/dev/null
-                    echo "Migration failed — restored $legacy_claude from rollback." >&2
-                fi
+                _ckipper_migrate_rollback failed
+                trap - INT TERM
                 return 1
             fi
+            trap - INT TERM
+            unset -f _ckipper_migrate_rollback
         fi
     fi
 
