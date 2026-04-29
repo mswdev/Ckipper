@@ -12,7 +12,8 @@
 # Adversarial users can defeat any regex-based guard. Treat this hook as a reminder,
 # not a defense. The container sandbox + firewall are the actual security boundary.
 
-[ ! -f /.dockerenv ] && exit 0
+# Skip guardrails when not in Docker (CKIPPER_DOCKERENV overrides path for testing)
+[ ! -f "${CKIPPER_DOCKERENV:-/.dockerenv}" ] && exit 0
 
 INPUT="$(cat)"
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty') || {

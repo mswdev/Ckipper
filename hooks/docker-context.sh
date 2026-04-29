@@ -3,7 +3,8 @@
 # Reminds Claude of constraints so it doesn't accidentally trigger guardrails.
 # No-op on the host.
 
-[ ! -f /.dockerenv ] && exit 0
+# Skip context injection when not in Docker (CKIPPER_DOCKERENV overrides path for testing)
+[ ! -f "${CKIPPER_DOCKERENV:-/.dockerenv}" ] && exit 0
 
 cat <<'CONTEXT'
 You are running inside a Docker container with --dangerously-skip-permissions.

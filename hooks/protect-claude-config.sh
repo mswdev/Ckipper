@@ -4,8 +4,8 @@
 # settings.json (statusLine.command) to execute arbitrary code on the host.
 # Only active in Docker containers — no-op on the host.
 
-# Skip protection when not in Docker
-[ ! -f /.dockerenv ] && exit 0
+# Skip protection when not in Docker (CKIPPER_DOCKERENV overrides path for testing)
+[ ! -f "${CKIPPER_DOCKERENV:-/.dockerenv}" ] && exit 0
 
 INPUT="$(cat)"
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty') || {
