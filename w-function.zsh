@@ -98,6 +98,11 @@ _w_usage() {
 fpath=(~/.zsh/completions $fpath)
 
 if [[ ! -f ~/.zsh/completions/_w ]]; then
+    # Note: `_w()` below is a zsh tab-completion definition embedded in a heredoc.
+    # It uses zsh's _arguments DSL and must remain a single function for tab
+    # completion to work. The 25-line cap in code-style.md does not apply to
+    # zsh completion definitions (this is data written to a completion file,
+    # not maintained shell logic).
     cat > ~/.zsh/completions/_w << 'COMPEOF'
 #compdef w
 
