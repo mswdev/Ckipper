@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Test stub for `security`. Reads scripted responses from env vars.
+case "$1 $2" in
+    "find-generic-password -s")
+        echo "${SECURITY_STUB_PASSWORD:-{\"oauth\":\"fake-token\"}}"
+        exit 0
+        ;;
+    "dump-keychain")
+        echo "${SECURITY_STUB_DUMP:-empty}"
+        exit 0
+        ;;
+    *)
+        echo "Stub received: $*" >&2
+        exit 0
+        ;;
+esac
