@@ -10,7 +10,7 @@ ckipper() {
     shift 2>/dev/null
     case "$cmd" in
         # --help on any subcommand short-circuits to subcommand help
-        add|list|default|remove|sync-hooks|migrate)
+        add|list|default|remove|rename|sync-hooks|migrate)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
                 _ckipper_help_for "$cmd"
                 return 0
@@ -32,6 +32,7 @@ Usage:
   ckipper list                Show registered accounts
   ckipper default <name>      Set the default account
   ckipper remove <name>       Unregister (does not delete the dir)
+  ckipper rename <old> <new>  Rename an account (dir + registry + aliases)
   ckipper sync-hooks          Copy hooks into all registered accounts
   ckipper migrate             One-time migration from legacy layout
 
@@ -58,6 +59,20 @@ EOF
         list)    echo "ckipper list — print registered accounts, default, and last-login email."  ;;
         default) echo "ckipper default <name> — set the default account used when no flag/env is provided." ;;
         remove)  echo "ckipper remove <name> — unregister. Does not delete the dir or Keychain entry." ;;
+        rename)
+            cat <<'EOF'
+ckipper rename <old> <new>
+
+Rename a registered account in place:
+  - Renames ~/.claude-<old>/ → ~/.claude-<new>/
+  - Updates the registry (key + config_dir)
+  - If <old> was the default, makes <new> the default
+  - Regenerates aliases.zsh and re-syncs hooks
+  - Refuses if any Claude session is running (so the dir isn't held open)
+
+Keychain service name is NOT changed — only the dir + registry mapping.
+EOF
+            ;;
         sync-hooks) echo "ckipper sync-hooks — copy ~/.ckipper/hooks/* into each account's <dir>/hooks/, rewrite settings.json paths." ;;
         migrate) echo "ckipper migrate — migrate from legacy ~/.claude/docker/ layout. Idempotent. Refuses if Claude is running." ;;
     esac
@@ -204,7 +219,10 @@ _ckipper_add() {
         return $?
     fi
 
-    # Fresh registration
+    # Fresh registration: ckipper LAUNCHES claude itself (in-place, same TTY) so
+    # there's no shell-deadlock UX where the user has to Ctrl-Z, run a command,
+    # then `fg`. User just /login's and exits Claude (Ctrl-D); ckipper resumes
+    # and finalizes registration.
     if [[ -d "$dir" ]]; then
         echo "Directory $dir already exists. Use --adopt to register it."
         return 1
@@ -221,22 +239,26 @@ _ckipper_add() {
 
 A new account directory was created at $dir.
 
-In this same shell, run:
+About to launch Claude with this account context. Steps:
+  1. Complete the /login flow with the account you want to register as '$name'.
+  2. When done, exit Claude with /quit (or Ctrl-D at the prompt).
+  3. ckipper will resume here and finalize registration.
 
-    CLAUDE_CONFIG_DIR=$dir command claude
-
-Complete the /login flow with the account you want to register as '$name'.
-('command claude' bypasses the shadow that blocks bare 'claude' once accounts are registered.)
-When done, exit Claude (Ctrl-D) and press enter here to finish registration.
-If you closed the terminal by mistake, recover with: ckipper add $name --adopt
-
+Press enter to launch Claude (or type 'skip' to abort and clean up):
 EOF
-    read -r "?Press enter when /login is complete (or type 'skip' to abort): " ack
+    read -r ack
     if [[ "$ack" == "skip" ]]; then
-        echo "Aborted. The directory $dir was created but not registered."
-        echo "To complete registration later: ckipper add $name --adopt"
+        rm -rf "$dir"
+        echo "Aborted. Cleaned up $dir."
         return 1
     fi
+
+    # Launch claude in-place. The user interacts with it directly in this TTY.
+    # Use `command claude` to bypass the bare-claude guard from aliases.zsh.
+    CLAUDE_CONFIG_DIR="$dir" command claude
+    local rc=$?
+    echo ""
+    echo "Claude exited (status $rc). Finalizing registration..."
 
     local after_snapshot
     after_snapshot=$(_ckipper_keychain_snapshot) || return 1
@@ -442,6 +464,77 @@ _ckipper_remove() {
         printf "  security delete-generic-password -s %q\n" "$service"
     fi
 }
+
+_ckipper_rename() {
+    _ckipper_check_registry_version || return 1
+    local old="$1" new="$2"
+    if [[ -z "$old" || -z "$new" ]]; then
+        echo "Usage: ckipper rename <old> <new>"
+        return 1
+    fi
+    if [[ ! "$new" =~ ^[a-z0-9_-]+$ ]]; then
+        echo "New name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)."
+        return 1
+    fi
+    if [[ "$old" == "$new" ]]; then
+        echo "Old and new name are the same. Nothing to do."
+        return 1
+    fi
+    if ! jq -e --arg n "$old" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+        echo "Account '$old' is not registered."
+        return 1
+    fi
+    if jq -e --arg n "$new" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+        echo "Account '$new' is already registered."
+        return 1
+    fi
+
+    local old_dir new_dir
+    old_dir=$(jq -r --arg n "$old" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
+    new_dir="$HOME/.claude-$new"
+    if [[ -e "$new_dir" ]]; then
+        echo "Error: $new_dir already exists. Pick a different name or remove it first."
+        return 1
+    fi
+    if [[ ! -d "$old_dir" ]]; then
+        echo "Error: source directory $old_dir does not exist."
+        return 1
+    fi
+
+    # Refuse if any Claude session is running — they'd be writing to old_dir.
+    if pgrep -if 'claude' >/dev/null 2>&1; then
+        echo "Error: a Claude process is currently running. Quit all Claude sessions first." >&2
+        pgrep -ailf 'claude' 2>/dev/null | head -3 >&2
+        return 1
+    fi
+
+    if ! mv "$old_dir" "$new_dir" 2>/dev/null; then
+        echo "Error: failed to rename $old_dir → $new_dir." >&2
+        return 1
+    fi
+
+    if ! _ckipper_registry_update '
+        .accounts[$new] = .accounts[$old] |
+        .accounts[$new].config_dir = $newdir |
+        del(.accounts[$old]) |
+        (if .default == $old then .default = $new else . end)
+    ' --arg old "$old" --arg new "$new" --arg newdir "$new_dir"; then
+        # Rollback: move dir back.
+        mv "$new_dir" "$old_dir" 2>/dev/null
+        echo "Error: registry write failed; reverted directory rename." >&2
+        return 1
+    fi
+
+    _ckipper_regenerate_aliases
+    _ckipper_sync_hooks_for "$new"   # rewrite per-account settings.json hook paths to the new dir
+
+    echo "Renamed '$old' → '$new'."
+    echo "Directory:    $old_dir → $new_dir"
+    echo "Use:          claude-$new   (or: cca $new)"
+    echo ""
+    echo "Restart your shell (exec zsh) so aliases.zsh picks up the new function name."
+}
+
 _ckipper_migrate() {
     _ckipper_check_registry_version || return 1
     local legacy_docker="$HOME/.claude/docker"
@@ -457,14 +550,7 @@ _ckipper_migrate() {
         return 1
     fi
 
-    # ── Precondition 2: ~/.claude-personal must not already exist ─
-    if [[ -e "$HOME/.claude-personal" ]]; then
-        echo "Error: $HOME/.claude-personal already exists. Refusing to migrate." >&2
-        echo "If you've already migrated, you're done. Run: ckipper list" >&2
-        return 1
-    fi
-
-    # ── Precondition 3: ~/.claude must NOT be a symlink ──────────
+    # ── Precondition 2: ~/.claude must NOT be a symlink ──────────
     # Some users symlink ~/.claude to a synced location. Renaming a symlink
     # moves the link, not the target — confusing and probably not what they want.
     if [[ -L "$legacy_claude" ]]; then
@@ -482,21 +568,51 @@ _ckipper_migrate() {
         echo "Copied $legacy_docker → $CKIPPER_DIR/docker (legacy left intact for one release cycle)"
     fi
 
-    # ── 2. Adopt ~/.claude as 'personal' if eligible ──────────────
-    if [[ -f "$legacy_claude/.claude.json" || -f "$legacy_claude/settings.json" ]]; then
+    # ── 2. Adopt ~/.claude as a registered account ────────────────
+    # Eligible if either ~/.claude/.claude.json or ~/.claude/settings.json exists,
+    # OR ~/.claude.json exists at home root (Claude Code's canonical big-config location).
+    local legacy_homejson="$HOME/.claude.json"
+    if [[ -f "$legacy_claude/.claude.json" || -f "$legacy_claude/settings.json" || -f "$legacy_homejson" ]]; then
         if [[ ! -f "$CKIPPER_REGISTRY" ]] || \
            ! jq -e '.accounts | length > 0' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+
+            # ── Prompt for the account name ──────────────────────
+            local default_name="personal"
+            local name=""
+            while [[ -z "$name" ]]; do
+                read -r "?What name do you want for this migrated account? [$default_name] " name
+                [[ -z "$name" ]] && name="$default_name"
+                if [[ ! "$name" =~ ^[a-z0-9_-]+$ ]]; then
+                    echo "Account name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen). Try again."
+                    name=""
+                fi
+                if [[ -n "$name" && -e "$HOME/.claude-$name" ]]; then
+                    echo "$HOME/.claude-$name already exists. Pick a different name."
+                    name=""
+                fi
+            done
+            local target_dir="$HOME/.claude-$name"
 
             # Show the user what we're about to do.
             cat <<EOF
 
 Detected existing $legacy_claude with login credentials.
+EOF
+            [[ -f "$legacy_homejson" ]] && \
+                echo "Also detected $legacy_homejson (Claude's main config — projects, MCPs, trust state)."
+
+            cat <<EOF
 
 This migration will:
-  1. Rename $legacy_claude → $HOME/.claude-personal (NOT a symlink — bare 'claude' will no longer use this account; use 'claude-personal' instead).
-  2. Register 'personal' in $CKIPPER_REGISTRY.
-  3. Probe macOS Keychain for the matching 'Claude Code-credentials' entry.
+  1. Rename $legacy_claude → $target_dir.
+EOF
+            [[ -f "$legacy_homejson" ]] && \
+                echo "  2. Move $legacy_homejson → $target_dir/.claude.json (preserving any existing inner one as a backup)."
+            cat <<EOF
+  3. Register '$name' in $CKIPPER_REGISTRY.
+  4. Probe macOS Keychain for the matching 'Claude Code-credentials' entry.
 
+NOT a symlink — bare 'claude' will no longer use this account; use 'claude-$name' instead.
 If anything fails, the rename is automatically reverted.
 
 EOF
@@ -506,14 +622,14 @@ EOF
                 return 1
             fi
 
-            # ── Precondition 3: probe Keychain entry exists ──────
+            # ── Precondition: probe Keychain entry exists ───────
             local probed_service="Claude Code-credentials"
             if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
                 if ! security find-generic-password -s "$probed_service" -w >/dev/null 2>&1; then
                     echo "Warning: '$probed_service' not found in Keychain."
                     echo "Listing available Claude Keychain entries:"
                     _ckipper_keychain_snapshot || return 1
-                    read -r "?Enter the Keychain service for the personal account (or empty to skip): " probed_service
+                    read -r "?Enter the Keychain service for the '$name' account (or empty to skip): " probed_service
                     if [[ -n "$probed_service" ]] && ! _ckipper_validate_keychain_service "$probed_service"; then
                         echo "Invalid Keychain service shape. Aborting."
                         return 1
@@ -524,32 +640,64 @@ EOF
             fi
 
             # ── Destructive operation with explicit rollback ─────
-            # Single rollback function used by both the explicit failure path
-            # AND the INT/TERM trap (Ctrl-C between mv and finalize completion).
+            # Tracks every step performed so rollback can undo precisely:
+            #   1 = ~/.claude renamed; 2 = ~/.claude.json moved (inner backed up)
+            local migrate_step=0
+            local moved_homejson_backup=""
             _ckipper_migrate_rollback() {
                 local why="${1:-rollback}"
-                # Reverse the rename if it succeeded but registration didn't finish.
-                if [[ -d "$HOME/.claude-personal" && ! -e "$legacy_claude" ]]; then
-                    mv "$HOME/.claude-personal" "$legacy_claude" 2>/dev/null
+                # Step 2 reverse: restore ~/.claude.json at home root, restore the
+                # inner backup if we made one.
+                if (( migrate_step >= 2 )) && [[ -f "$target_dir/.claude.json" && ! -e "$legacy_homejson" ]]; then
+                    mv "$target_dir/.claude.json" "$legacy_homejson" 2>/dev/null
+                    if [[ -n "$moved_homejson_backup" && -f "$moved_homejson_backup" ]]; then
+                        mv "$moved_homejson_backup" "$target_dir/.claude.json" 2>/dev/null
+                    fi
+                fi
+                # Step 1 reverse: rename target_dir back to legacy_claude.
+                if (( migrate_step >= 1 )) && [[ -d "$target_dir" && ! -e "$legacy_claude" ]]; then
+                    mv "$target_dir" "$legacy_claude" 2>/dev/null
                     echo "Migration $why — restored $legacy_claude." >&2
                 fi
-                # If a partial registry entry was written, remove it so a re-run isn't blocked.
+                # Clean partial registry entry so a re-run isn't blocked.
                 if [[ -f "$CKIPPER_REGISTRY" ]] && \
-                   jq -e '.accounts.personal' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+                   jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
                     _ckipper_registry_update \
-                        'del(.accounts.personal) | (if .default == "personal" then .default = null else . end)'
-                    echo "Cleaned partial 'personal' entry from $CKIPPER_REGISTRY." >&2
+                        'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' \
+                        --arg n "$name"
+                    echo "Cleaned partial '$name' entry from $CKIPPER_REGISTRY." >&2
                 fi
             }
             trap '_ckipper_migrate_rollback interrupted; trap - INT TERM ERR; return 130' INT TERM
 
-            if ! mv "$legacy_claude" "$HOME/.claude-personal" 2>/dev/null; then
+            # Step 1: rename ~/.claude → ~/.claude-<name>
+            if ! mv "$legacy_claude" "$target_dir" 2>/dev/null; then
                 trap - INT TERM
-                echo "Error: failed to rename $legacy_claude → $HOME/.claude-personal" >&2
+                echo "Error: failed to rename $legacy_claude → $target_dir" >&2
                 echo "(Check permissions on $HOME and that no process holds the directory open.)" >&2
                 return 1
             fi
-            if ! _ckipper_finalize_registration "personal" "$HOME/.claude-personal" "$probed_service" "migrate"; then
+            migrate_step=1
+
+            # Step 2: move ~/.claude.json → $target_dir/.claude.json.
+            # If $target_dir already has a .claude.json (Claude wrote one when
+            # CLAUDE_CONFIG_DIR was set in some prior run), back it up — the
+            # home-root file is canonical.
+            if [[ -f "$legacy_homejson" ]]; then
+                if [[ -f "$target_dir/.claude.json" ]]; then
+                    moved_homejson_backup="$target_dir/.claude.json.pre-migrate-backup"
+                    mv "$target_dir/.claude.json" "$moved_homejson_backup"
+                fi
+                if ! mv "$legacy_homejson" "$target_dir/.claude.json" 2>/dev/null; then
+                    _ckipper_migrate_rollback failed
+                    trap - INT TERM
+                    echo "Error: failed to move $legacy_homejson → $target_dir/.claude.json" >&2
+                    return 1
+                fi
+                migrate_step=2
+            fi
+
+            if ! _ckipper_finalize_registration "$name" "$target_dir" "$probed_service" "migrate"; then
                 _ckipper_migrate_rollback failed
                 trap - INT TERM
                 return 1
@@ -564,6 +712,13 @@ EOF
         docker rmi claude-dev 2>/dev/null && echo "Removed old claude-dev Docker image."
     fi
 
+    # Reload `name` from registry for the success-message context (in case migrate
+    # was run for a no-op state and `name` was never set in this scope).
+    local registered_name=""
+    if [[ -f "$CKIPPER_REGISTRY" ]]; then
+        registered_name=$(jq -r '.default // (.accounts | keys[0] // "")' "$CKIPPER_REGISTRY")
+    fi
+
     cat <<EOF
 
 Migration complete.
@@ -572,13 +727,17 @@ Next steps:
   1. Confirm your ~/.zshrc sources the new path:
        source ~/.ckipper/docker/w-function.zsh
      (install.sh updates this automatically; if you used a manual install, edit it yourself.)
-  2. Optional: add to ~/.zshrc to enable per-account aliases:
+  2. Add to ~/.zshrc to enable per-account aliases AND the bare-claude guard:
        [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh
-  3. Restart your shell.
-  4. Run:  ckipper add <work-account-name>   to add additional accounts.
-
-To launch Claude with your personal account, use:  claude-personal
-(Bare 'claude' no longer resolves to your migrated personal account — it will start a fresh login.)
+  3. Restart your shell:  exec zsh
+  4. Run:  ckipper add <other-account-name>   to add additional accounts.
 
 EOF
+    if [[ -n "$registered_name" ]]; then
+        cat <<EOF
+To launch Claude with your migrated account, use:  claude-$registered_name
+(Bare 'claude' no longer resolves to it — the guard in aliases.zsh refuses bare invocation once accounts are registered.)
+
+EOF
+    fi
 }
