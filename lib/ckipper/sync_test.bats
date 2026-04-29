@@ -108,3 +108,61 @@ run_helper() {
     local after_dst; after_dst=$(cat "$to_dir/.claude.json")
     [ "$before_dst" = "$after_dst" ]
 }
+
+# ── _ckipper_sync_settings_keys ───────────────────────────────────────
+
+@test "sync_settings_keys copies matching keys from source settings.json to destination" {
+    local from_dir="$TMP_HOME/.claude-src"
+    local to_dir="$TMP_HOME/.claude-dst"
+    mkdir -p "$from_dir" "$to_dir"
+    printf '{"model":"claude-opus-4-5","enabledPlugins":["myplugin"],"other":"value"}' \
+        > "$from_dir/settings.json"
+    printf '{}' > "$to_dir/settings.json"
+
+    run_helper 'pending_msgs=()
+        _ckipper_sync_settings_keys "src" "'"$from_dir"'" "dst" "'"$to_dir"'" "model,enabledPlugins" "0"'
+
+    [ "$status" -eq 0 ]
+    local dst; dst=$(cat "$to_dir/settings.json")
+    [[ "$dst" =~ "model" ]]
+    [[ "$dst" =~ "enabledPlugins" ]]
+    # The "other" key was not in the sync list — it must not appear in the destination.
+    [[ ! "$dst" =~ '"other"' ]]
+}
+
+@test "sync_settings_keys is a no-op in dry-run mode (no writes)" {
+    local from_dir="$TMP_HOME/.claude-src"
+    local to_dir="$TMP_HOME/.claude-dst"
+    mkdir -p "$from_dir" "$to_dir"
+    printf '{"model":"claude-opus-4-5"}' > "$from_dir/settings.json"
+    printf '{}' > "$to_dir/settings.json"
+
+    local before_dst; before_dst=$(cat "$to_dir/settings.json")
+
+    run_helper 'pending_msgs=()
+        _ckipper_sync_settings_keys "src" "'"$from_dir"'" "dst" "'"$to_dir"'" "model" "1"'
+
+    [ "$status" -eq 0 ]
+    local after_dst; after_dst=$(cat "$to_dir/settings.json")
+    [ "$before_dst" = "$after_dst" ]
+}
+
+# ── _ckipper_sync_print_summary ───────────────────────────────────────
+
+@test "print_summary prints 'Synced' header and lists all pending messages" {
+    run_helper 'pending_msgs=("MCP servers → dst: server1 " "Settings keys → dst: model ")
+        _ckipper_sync_print_summary "dst" "0"'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Synced" ]]
+    [[ "$output" =~ "MCP servers" ]]
+    [[ "$output" =~ "Settings keys" ]]
+}
+
+@test "print_summary prints 'Dry run' header in dry-run mode" {
+    run_helper 'pending_msgs=("MCP servers → dst: server1 ")
+        _ckipper_sync_print_summary "dst" "1"'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Dry run" ]]
+}

@@ -103,3 +103,38 @@ run_helper() {
     [ -f "$target_dir/.claude.json" ]
     [ ! -f "$TMP_HOME/.claude.json" ]
 }
+
+# ── _ckipper_migrate_rollback ─────────────────────────────────────────
+
+@test "rollback restores the target dir to the legacy path when step >= 1" {
+    # Simulate a mid-migration state: target dir was created, no .claude exists.
+    local target_dir="$TMP_HOME/.claude-personal"
+    local legacy_dir="$TMP_HOME/.claude"
+    mkdir -p "$target_dir"
+
+    run_helper "_CKIPPER_MIGRATE_STEP=1; _CKIPPER_MIGRATE_BACKUP=\"\"
+        _ckipper_migrate_rollback \"personal\" \"$target_dir\" \"$legacy_dir\" \"$TMP_HOME/.claude.json\" \"failed\""
+
+    [ "$status" -eq 0 ]
+    # The target dir should be moved back to the legacy location.
+    [ -d "$legacy_dir" ]
+    [ ! -d "$target_dir" ]
+}
+
+@test "rollback is idempotent — running twice on already-restored state is safe" {
+    local target_dir="$TMP_HOME/.claude-personal"
+    local legacy_dir="$TMP_HOME/.claude"
+    mkdir -p "$target_dir"
+
+    # First rollback — restores legacy dir.
+    run_helper "_CKIPPER_MIGRATE_STEP=1; _CKIPPER_MIGRATE_BACKUP=\"\"
+        _ckipper_migrate_rollback \"personal\" \"$target_dir\" \"$legacy_dir\" \"$TMP_HOME/.claude.json\" \"failed\""
+    [ "$status" -eq 0 ]
+    [ -d "$legacy_dir" ]
+
+    # Second rollback — target_dir no longer exists, so no move happens; legacy_dir stays.
+    run_helper "_CKIPPER_MIGRATE_STEP=1; _CKIPPER_MIGRATE_BACKUP=\"\"
+        _ckipper_migrate_rollback \"personal\" \"$target_dir\" \"$legacy_dir\" \"$TMP_HOME/.claude.json\" \"failed\""
+    [ "$status" -eq 0 ]
+    [ -d "$legacy_dir" ]
+}

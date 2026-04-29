@@ -82,3 +82,40 @@ run_helper() {
     [ "$status" -ne 0 ]
     [[ "$output" =~ "FAIL" ]]
 }
+
+# ── _ckipper_doctor_accounts ──────────────────────────────────────────
+
+@test "doctor_accounts emits a WARN when the registry has no accounts" {
+    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_accounts'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "WARN" ]]
+    [[ "$output" =~ "no accounts" ]]
+}
+
+@test "doctor_accounts lists each registered account by name" {
+    local acc_dir="$TMP_HOME/.claude-work"
+    mkdir -p "$acc_dir"
+    echo '{"version":1,"default":"work","accounts":{"work":{"config_dir":"'"$acc_dir"'","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_accounts'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "work" ]]
+}
+
+# ── _ckipper_doctor_tooling ───────────────────────────────────────────
+
+@test "doctor_tooling emits PASS when ckipper dir exists" {
+    # CKIPPER_DIR is already created by setup_isolated_env.
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_tooling'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "PASS" ]]
+    [[ "$output" =~ "exists" ]]
+}

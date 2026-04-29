@@ -122,3 +122,74 @@ run_helper() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "* work" ]]
 }
+
+# ── _ckipper_default ──────────────────────────────────────────────────
+
+@test "default sets the default account in the registry" {
+    echo '{"version":1,"default":null,"accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_ckipper_default "work"'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "work" ]]
+    local val; val=$(jq -r '.default' "$CKIPPER_REGISTRY")
+    [ "$val" = "work" ]
+}
+
+@test "default fails when account is not registered" {
+    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_ckipper_default "nobody"'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "not registered" ]]
+}
+
+# ── _ckipper_remove ───────────────────────────────────────────────────
+
+@test "remove unregisters a known account and exits 0" {
+    echo '{"version":1,"default":null,"accounts":{"tmp":{"config_dir":"/tmp/.claude-tmp","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_ckipper_remove "tmp"'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Unregistered" ]]
+}
+
+@test "remove fails for an account that is not registered" {
+    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_ckipper_remove "nobody"'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "not registered" ]]
+}
+
+# ── _ckipper_rename_validate ──────────────────────────────────────────
+
+@test "rename_validate rejects an empty old name" {
+    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_ckipper_rename_validate "" "newname"'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ [Uu]sage ]]
+}
+
+@test "rename_validate rejects a new name with uppercase letters" {
+    echo '{"version":1,"default":null,"accounts":{"old":{"config_dir":"/tmp/.claude-old","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_ckipper_rename_validate "old" "NewName"'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "must match" ]]
+}
+
+@test "rename_validate rejects rename when old name is not registered" {
+    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_ckipper_rename_validate "ghost" "newname"'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "not registered" ]]
+}
