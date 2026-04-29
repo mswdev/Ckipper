@@ -224,15 +224,23 @@ _ckipper_registry_update() {
         setopt local_options local_traps
         local lockdir="$CKIPPER_DIR/.registry.lock.d"
         local attempts=0
+        local notified=0
         while ! mkdir "$lockdir" 2>/dev/null; do
             (( attempts++ ))
+            # Reassure the user something is happening — silent multi-second
+            # pauses look like a freeze. Print once at ~1.5s in, then again
+            # only if we recover a stale lock below.
+            if (( attempts == 30 && notified == 0 )); then
+                echo "Waiting on registry lock..." >&2
+                notified=1
+            fi
             if (( attempts >= 200 )); then  # 10s
                 local lockdir_age now
                 now=$(date +%s)
                 local mtime; mtime=$(_ckipper_stat_mtime "$lockdir")
                 lockdir_age=$(( now - ${mtime:-$now} ))
                 if (( lockdir_age > 30 )); then
-                    echo "Recovering stale registry lock (age ${lockdir_age}s)" >&2
+                    echo "Cleaning up old lock from a previous session (age ${lockdir_age}s)..." >&2
                     rmdir "$lockdir" 2>/dev/null || rm -rf "$lockdir"
                     attempts=0
                     continue
@@ -349,6 +357,11 @@ _ckipper_add() {
     if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then
         cp "$CKIPPER_DIR/settings-template.json" "$dir/settings.json"
     fi
+    # Deploy hook scripts and rewrite settings.json paths to the per-account
+    # dir BEFORE launching claude. The template ships with $HOME/.claude/hooks
+    # paths; without this rewrite, the /login session inside claude fires hook
+    # errors ("No such file or directory") for paths that don't exist yet.
+    _ckipper_sync_hooks_for "$name" "$dir"
 
     local before_snapshot
     before_snapshot=$(_ckipper_keychain_snapshot) || return 1
@@ -525,10 +538,15 @@ _ckipper_regenerate_aliases() {
 }
 
 _ckipper_sync_hooks_for() {
-    local name="$1"
-    _ckipper_check_registry_version || return 1
-    local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
-    [[ -z "$dir" || "$dir" == "null" ]] && return 1
+    local name="$1" dir="${2:-}"
+    # Allow callers (notably _ckipper_add, which deploys hooks BEFORE the
+    # account exists in the registry) to pass the dir directly. Without an
+    # explicit dir, look it up in the registry.
+    if [[ -z "$dir" ]]; then
+        _ckipper_check_registry_version || return 1
+        dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
+        [[ -z "$dir" || "$dir" == "null" ]] && return 1
+    fi
     mkdir -p "$dir/hooks"
     cp -a "$CKIPPER_DIR/hooks/." "$dir/hooks/" 2>/dev/null || true
 
