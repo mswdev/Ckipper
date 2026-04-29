@@ -1,6 +1,10 @@
 #!/usr/bin/env zsh
 # One-time migration from legacy ~/.claude/docker/ layout.
 
+# Module globals tracking destructive migration steps for rollback.
+typeset -g _CKIPPER_MIGRATE_STEP=0
+typeset -g _CKIPPER_MIGRATE_BACKUP=""
+
 # Check preconditions for migration: no running Claude, no symlinks at key paths.
 #
 # Args:
@@ -144,7 +148,7 @@ _ckipper_migrate_detect_keychain() {
 }
 
 # Execute the rename of ~/.claude to the target dir, then move ~/.claude.json if present.
-# Updates migrate_step and moved_homejson_backup in the caller's scope via namerefs.
+# Updates _CKIPPER_MIGRATE_STEP and _CKIPPER_MIGRATE_BACKUP module globals to track progress.
 #
 # Args:
 #   $1 — legacy_claude path
@@ -153,6 +157,10 @@ _ckipper_migrate_detect_keychain() {
 #
 # Returns:
 #   0 on success; 1 on failure (rollback should be called by the caller).
+#
+# Errors (stderr):
+#   "Error: failed to rename ..." — when mv of the directory fails.
+#   "Error: failed to move ..." — when mv of .claude.json fails.
 _ckipper_migrate_rename_dirs() {
     local legacy_claude="$1" legacy_homejson="$2" target_dir="$3"
     if ! mv "$legacy_claude" "$target_dir" 2>/dev/null; then
@@ -160,17 +168,17 @@ _ckipper_migrate_rename_dirs() {
         echo "(Check permissions on $HOME and that no process holds the directory open.)" >&2
         return 1
     fi
-    migrate_step=1
+    _CKIPPER_MIGRATE_STEP=1
     [[ ! -f "$legacy_homejson" ]] && return 0
     if [[ -f "$target_dir/.claude.json" ]]; then
-        moved_homejson_backup="$target_dir/.claude.json.pre-migrate-backup"
-        mv "$target_dir/.claude.json" "$moved_homejson_backup"
+        _CKIPPER_MIGRATE_BACKUP="$target_dir/.claude.json.pre-migrate-backup"
+        mv "$target_dir/.claude.json" "$_CKIPPER_MIGRATE_BACKUP"
     fi
     if ! mv "$legacy_homejson" "$target_dir/.claude.json" 2>/dev/null; then
         echo "Error: failed to move $legacy_homejson → $target_dir/.claude.json" >&2
         return 1
     fi
-    migrate_step=2
+    _CKIPPER_MIGRATE_STEP=2
 }
 
 # Print the migration success message with next steps.
@@ -268,8 +276,40 @@ _ckipper_migrate() {
     _ckipper_migrate_run "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" "$probed_service"
 }
 
-# Run the destructive migration steps with rollback on failure.
-# Uses a locally-defined rollback function to capture step tracking variables.
+# Undo destructive migration steps on failure or interruption.
+# Reads _CKIPPER_MIGRATE_STEP and _CKIPPER_MIGRATE_BACKUP module globals.
+#
+# Args:
+#   $1 — account name
+#   $2 — target directory
+#   $3 — legacy_claude path
+#   $4 — legacy home json path
+#   $5 — reason label (e.g. "failed", "interrupted")
+#
+# Returns:
+#   0 always.
+_ckipper_migrate_rollback() {
+    local name="$1" target_dir="$2" legacy_claude="$3" legacy_homejson="$4" why="${5:-rollback}"
+    if (( _CKIPPER_MIGRATE_STEP >= 2 )) && [[ -f "$target_dir/.claude.json" && ! -e "$legacy_homejson" ]]; then
+        mv "$target_dir/.claude.json" "$legacy_homejson" 2>/dev/null
+        [[ -n "$_CKIPPER_MIGRATE_BACKUP" && -f "$_CKIPPER_MIGRATE_BACKUP" ]] && \
+            mv "$_CKIPPER_MIGRATE_BACKUP" "$target_dir/.claude.json" 2>/dev/null
+    fi
+    if (( _CKIPPER_MIGRATE_STEP >= 1 )) && [[ -d "$target_dir" && ! -e "$legacy_claude" ]]; then
+        mv "$target_dir" "$legacy_claude" 2>/dev/null
+        echo "Migration $why — restored $legacy_claude." >&2
+    fi
+    if [[ -f "$CKIPPER_REGISTRY" ]] && \
+       jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+        _core_registry_update \
+            'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' \
+            --arg n "$name"
+        echo "Cleaned partial '$name' entry from $CKIPPER_REGISTRY." >&2
+    fi
+    _ckipper_regenerate_aliases 2>/dev/null || true
+}
+
+# Run the destructive migration steps with rollback on failure or interruption.
 #
 # Args:
 #   $1 — account name
@@ -282,32 +322,12 @@ _ckipper_migrate() {
 #   0 on success; 1 on failure (rollback applied).
 _ckipper_migrate_run() {
     local name="$1" target_dir="$2" legacy_claude="$3" legacy_homejson="$4" probed_service="$5"
-    local migrate_step=0 moved_homejson_backup=""
-    local _ckipper_migrate_rollback() {
-        local why="${1:-rollback}"
-        if (( migrate_step >= 2 )) && [[ -f "$target_dir/.claude.json" && ! -e "$legacy_homejson" ]]; then
-            mv "$target_dir/.claude.json" "$legacy_homejson" 2>/dev/null
-            [[ -n "$moved_homejson_backup" && -f "$moved_homejson_backup" ]] && \
-                mv "$moved_homejson_backup" "$target_dir/.claude.json" 2>/dev/null
-        fi
-        if (( migrate_step >= 1 )) && [[ -d "$target_dir" && ! -e "$legacy_claude" ]]; then
-            mv "$target_dir" "$legacy_claude" 2>/dev/null
-            echo "Migration $why — restored $legacy_claude." >&2
-        fi
-        if [[ -f "$CKIPPER_REGISTRY" ]] && \
-           jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
-            _core_registry_update \
-                'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' \
-                --arg n "$name"
-            echo "Cleaned partial '$name' entry from $CKIPPER_REGISTRY." >&2
-        fi
-        _ckipper_regenerate_aliases 2>/dev/null || true
-    }
-    trap '_ckipper_migrate_rollback interrupted; trap - INT TERM HUP QUIT ERR; return 130' INT TERM HUP QUIT
+    _CKIPPER_MIGRATE_STEP=0
+    _CKIPPER_MIGRATE_BACKUP=""
+    trap '_ckipper_migrate_rollback "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" interrupted; trap - INT TERM HUP QUIT; return 130' INT TERM HUP QUIT
     _ckipper_migrate_run_steps "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" "$probed_service"
     local run_rc=$?
     trap - INT TERM HUP QUIT
-    unset -f _ckipper_migrate_rollback
     (( run_rc == 0 )) && _ckipper_migrate_finalize
     return $run_rc
 }
@@ -326,12 +346,12 @@ _ckipper_migrate_run() {
 _ckipper_migrate_run_steps() {
     local name="$1" target_dir="$2" legacy_claude="$3" legacy_homejson="$4" probed_service="$5"
     _ckipper_migrate_rename_dirs "$legacy_claude" "$legacy_homejson" "$target_dir" || {
-        _ckipper_migrate_rollback failed
+        _ckipper_migrate_rollback "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" failed
         return 1
     }
     _ckipper_rewrite_plugin_paths "$legacy_claude/" "$target_dir/"
     if ! _ckipper_finalize_registration "$name" "$target_dir" "$probed_service" "migrate"; then
-        _ckipper_migrate_rollback failed
+        _ckipper_migrate_rollback "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" failed
         return 1
     fi
 }
