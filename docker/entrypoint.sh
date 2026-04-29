@@ -17,8 +17,8 @@ fi
 # prevents concurrent host/container use of the same file.
 if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null; then
     jq '.claudeInChromeDefaultEnabled = false | .cachedChromeExtensionInstalled = false' \
-        "$CLAUDE_CONFIG_DIR/.claude.json" > "$CLAUDE_CONFIG_DIR/.claude.json.tmp" \
-        && mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
+        "$CLAUDE_CONFIG_DIR/.claude.json" >"$CLAUDE_CONFIG_DIR/.claude.json.tmp" &&
+        mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
 fi
 
 # Copy SSH config from staging mount, stripping macOS-specific options.
@@ -37,7 +37,7 @@ fi
 # container-local and disappears when the container exits.
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
     mkdir -p /tmp/claude-creds
-    echo "$CLAUDE_CREDENTIALS" > /tmp/claude-creds/.credentials.json
+    echo "$CLAUDE_CREDENTIALS" >/tmp/claude-creds/.credentials.json
     chmod 700 /tmp/claude-creds
     chmod 600 /tmp/claude-creds/.credentials.json
     # Symlink from the account dir — Claude Code reads $CLAUDE_CONFIG_DIR/.credentials.json
@@ -91,7 +91,7 @@ export TURBO_CACHE_DIR=/workspace/.turbo/cache
 # unsets NO_COLOR to prevent chalk from stripping ANSI codes.
 export FORCE_COLOR=3
 export COLORTERM=truecolor
-cat > "$HOME/.local/bin/bunx" << 'WRAPPER'
+cat >"$HOME/.local/bin/bunx" <<'WRAPPER'
 #!/bin/bash
 export FORCE_COLOR=3
 export COLORTERM=truecolor
@@ -158,13 +158,13 @@ if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null && comm
                 jq --arg n "$name" --arg b "$bin_path" '
                     .mcpServers[$n].command = $b |
                     .mcpServers[$n].args = .mcpServers[$n].args[1:]
-                ' "$CLAUDE_CONFIG_DIR/.claude.json" > "$CLAUDE_CONFIG_DIR/.claude.json.tmp" \
-                    && mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
+                ' "$CLAUDE_CONFIG_DIR/.claude.json" >"$CLAUDE_CONFIG_DIR/.claude.json.tmp" &&
+                    mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
                 echo "  $name -> $bin_path"
             else
                 echo "  $name: binary not found at $bin_path, keeping uvx"
             fi
-        done <<< "$uvx_servers"
+        done <<<"$uvx_servers"
     fi
 fi
 

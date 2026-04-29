@@ -82,7 +82,7 @@ echo "=== Firewall active: $ip_count rules added ==="
 
 # Verification
 echo "=== Verifying firewall ==="
-if curl -s --max-time 5 https://api.anthropic.com > /dev/null 2>&1; then
+if curl -s --max-time 5 https://api.anthropic.com >/dev/null 2>&1; then
     echo "  ok api.anthropic.com: reachable"
 else
     echo "  FAIL api.anthropic.com: BLOCKED (this is a problem)"

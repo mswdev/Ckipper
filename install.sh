@@ -83,7 +83,7 @@ cp "$REPO_DIR/ckipper.zsh" "$CKIPPER_DIR/docker/"
 # 5. Generate w-config.zsh (only if it doesn't exist — never overwrite user customizations)
 # Also preserve accounts.json and aliases.zsh if they already exist (managed by ckipper CLI).
 config_file="$CKIPPER_DIR/docker/w-config.zsh"
-if [[ ! -f "$config_file" ]]; then
+if [[ ! -f $config_file ]]; then
     cp "$REPO_DIR/w-config.zsh.example" "$config_file"
     echo "  Created w-config.zsh with defaults — edit to add your MCP mounts, ports, etc."
 else
@@ -107,9 +107,9 @@ if grep -q '\.claude/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
     sed -i.bak -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*\.claude/docker/w-function\.zsh["'\'']?[[:space:]]*$|source "$HOME/.ckipper/docker/w-function.zsh"|' "$HOME/.zshrc"
     echo "  Updated ~/.zshrc source line to ~/.ckipper/. Backup at ~/.zshrc.bak."
 elif ! grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
-    echo '' >> "$HOME/.zshrc"
-    echo '# Ckipper — Worktree Manager (w function)' >> "$HOME/.zshrc"
-    echo 'source "$HOME/.ckipper/docker/w-function.zsh"' >> "$HOME/.zshrc"
+    echo '' >>"$HOME/.zshrc"
+    echo '# Ckipper — Worktree Manager (w function)' >>"$HOME/.zshrc"
+    echo 'source "$HOME/.ckipper/docker/w-function.zsh"' >>"$HOME/.zshrc"
     echo "  Added w() source line to ~/.zshrc"
 else
     echo "  ~/.zshrc already sources ~/.ckipper/docker/w-function.zsh"
@@ -141,7 +141,7 @@ if [ -z "$existing_hookspath" ] || [ "$existing_hookspath" = "$HOME/.git-hooks" 
 else
     echo "  Skipping core.hooksPath: existing value is '$existing_hookspath' (not overwriting)."
     echo "  If you want Ckipper's hook isolation, set manually:"
-    echo "    git config --global core.hooksPath \"\$HOME/.git-hooks\""
+    echo '    git config --global core.hooksPath "$HOME/.git-hooks"'
 fi
 
 # 11. Print summary

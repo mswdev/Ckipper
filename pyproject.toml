@@ -1,0 +1,22 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "D"]
+ignore = [
+    "D203",  # incompatible with D211 (no blank line before class docstring)
+    "D213",  # incompatible with D212 (multi-line docstring summary on first line)
+    # TODO(phase-4): remove after Task 4.18 adds docstrings to cleanup-projects.py.
+    "D103",
+    # D100 (missing docstring in public module): cleanup-projects.py is a top-level CLI tool
+    # invoked by ckipper, not an importable library. Module docstring optional.
+    "D100",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "docker", "lib"]
+python_files = ["*_test.py"]

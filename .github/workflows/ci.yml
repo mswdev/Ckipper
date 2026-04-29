@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+jobs:
+  lint-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dev tools
+        run: brew install bats-core shellcheck shfmt
+
+      - name: Install Python tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest
+
+      - name: Lint
+        run: make lint
+
+      - name: Test (unit)
+        run: make test-unit
+
+      - name: Verify no sibling cross-imports (lib/w/ -> lib/ckipper/)
+        run: |
+          if [ -d lib/w ]; then
+            ! grep -rE '\b_ckipper_' lib/w/
+          fi
