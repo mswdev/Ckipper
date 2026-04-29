@@ -64,7 +64,7 @@ fi
 # Uses GIT_CONFIG_COUNT instead of git config so we never modify the host's
 # .git/config (mounted rw). Env vars take highest priority, overriding both
 # local and global config, and disappear when the container exits.
-export GIT_CONFIG_COUNT=$GIT_CONFIG_COUNT
+export GIT_CONFIG_COUNT
 export GIT_CONFIG_KEY_0=commit.gpgsign
 export GIT_CONFIG_VALUE_0=false
 export GIT_CONFIG_KEY_1=tag.gpgsign
