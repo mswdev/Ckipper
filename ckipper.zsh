@@ -22,6 +22,18 @@ source "$CKIPPER_REPO_DIR/lib/ckipper/sync.zsh"
 source "$CKIPPER_REPO_DIR/lib/ckipper/doctor.zsh"
 source "$CKIPPER_REPO_DIR/lib/ckipper/migrate.zsh"
 
+# Dispatch a ckipper subcommand or print top-level help.
+#
+# Args:
+#   $1 — subcommand name (add, list, default, remove, rename, sync, sync-hooks,
+#         migrate, doctor, repair-plugins, help, -h, --help, or empty)
+#   $@ — arguments forwarded to the subcommand handler
+#
+# Returns:
+#   0 on success; 1 on unknown subcommand.
+#
+# Errors (stderr):
+#   "Unknown command: <cmd>" — when the subcommand is not recognised.
 ckipper() {
     local cmd="$1"
     shift 2>/dev/null
@@ -39,6 +51,10 @@ ckipper() {
     esac
 }
 
+# Print the top-level ckipper usage summary to stdout.
+#
+# Returns:
+#   0 always.
 _ckipper_help() {
     cat <<'EOF'
 ckipper (pronounced "skipper") — multi-account Claude Code manager

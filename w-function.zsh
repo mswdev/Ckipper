@@ -42,6 +42,18 @@ fi
 (( ${#W_EXTRA_VOLUMES[@]} == 0 )) && W_EXTRA_VOLUMES=()
 (( ${#W_EXTRA_ENV[@]} == 0 )) && W_EXTRA_ENV=()
 
+# Worktree-aware Claude Code launcher.
+#
+# Args:
+#   $1 — project path (relative to ~/Developer), or a flag (--list, --rm, --rebuild-image)
+#   $2 — branch/worktree name (required unless $1 is --list or --rebuild-image)
+#   $@ — optional flags and command: [--docker] [--firewall] [--account <name>] [cmd...]
+#
+# Returns:
+#   0 on success; 1 on usage error or launch failure.
+#
+# Errors (stderr):
+#   "Error: --firewall requires --docker" — when --firewall is passed without --docker.
 w() {
     _w_parse_args "$@"
 
