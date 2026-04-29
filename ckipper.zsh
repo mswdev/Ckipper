@@ -65,10 +65,9 @@ Run `ckipper <subcommand> --help` for per-subcommand details.
 EOF
 }
 
-_ckipper_help_for() {
-    case "$1" in
-        add)
-            cat <<'EOF'
+# Print help text for the 'add' subcommand.
+_help_text_add() {
+    cat <<'EOF'
 ckipper add <name> [--adopt]
 
 Register a new account. <name> must match ^[a-z0-9_-]+$.
@@ -76,12 +75,11 @@ Register a new account. <name> must match ^[a-z0-9_-]+$.
 Without --adopt: creates ~/.claude-<name>/ and walks you through /login.
 With --adopt:    registers an existing populated ~/.claude-<name>/ directory.
 EOF
-            ;;
-        list)    echo "ckipper list — print registered accounts, default, and last-login email."  ;;
-        default) echo "ckipper default <name> — set the default account used when no flag/env is provided." ;;
-        remove)  echo "ckipper remove <name> — unregister. Does not delete the dir or Keychain entry." ;;
-        rename)
-            cat <<'EOF'
+}
+
+# Print help text for the 'rename' subcommand.
+_help_text_rename() {
+    cat <<'EOF'
 ckipper rename <old> <new>
 
 Rename a registered account in place:
@@ -93,10 +91,11 @@ Rename a registered account in place:
 
 Keychain service name is NOT changed — only the dir + registry mapping.
 EOF
-            ;;
-        sync-hooks) echo "ckipper sync-hooks — copy ~/.ckipper/hooks/* into each account's <dir>/hooks/, rewrite settings.json paths." ;;
-        repair-plugins)
-            cat <<'EOF'
+}
+
+# Print help text for the 'repair-plugins' subcommand.
+_help_text_repair_plugins() {
+    cat <<'EOF'
 ckipper repair-plugins <name>
 
 Rewrite stale absolute paths in <account_dir>/plugins/{known_marketplaces,
@@ -106,9 +105,11 @@ Use this when Claude Code shows "Plugin not found in marketplace ..." for
 plugins that were installed before `ckipper migrate` (or before the dir was
 renamed). Backups are written alongside each rewritten file.
 EOF
-            ;;
-        sync)
-            cat <<'EOF'
+}
+
+# Print help text for the 'sync' subcommand.
+_help_text_sync() {
+    cat <<'EOF'
 ckipper sync <from> <to> [options]
 
 Copy state from one registered account to another. Useful for sharing MCP
@@ -133,9 +134,27 @@ Examples:
   ckipper sync personal work --mcp Vibma,github
   ckipper sync personal work --settings statusLine,env --dry-run
 EOF
-            ;;
-        migrate) echo "ckipper migrate — migrate from legacy ~/.claude/docker/ layout. Idempotent. Refuses if Claude is running." ;;
-        doctor) echo "ckipper doctor — run a diagnostic checklist on registered accounts and ckipper tooling." ;;
+}
+
+# Dispatch to the per-subcommand help text printer.
+#
+# Args:
+#   $1 — subcommand name
+#
+# Returns:
+#   0 always.
+_ckipper_help_for() {
+    case "$1" in
+        add)            _help_text_add ;;
+        list)           echo "ckipper list — print registered accounts, default, and last-login email." ;;
+        default)        echo "ckipper default <name> — set the default account used when no flag/env is provided." ;;
+        remove)         echo "ckipper remove <name> — unregister. Does not delete the dir or Keychain entry." ;;
+        rename)         _help_text_rename ;;
+        sync-hooks)     echo "ckipper sync-hooks — copy ~/.ckipper/hooks/* into each account's <dir>/hooks/, rewrite settings.json paths." ;;
+        repair-plugins) _help_text_repair_plugins ;;
+        sync)           _help_text_sync ;;
+        migrate)        echo "ckipper migrate — migrate from legacy ~/.claude/docker/ layout. Idempotent. Refuses if Claude is running." ;;
+        doctor)         echo "ckipper doctor — run a diagnostic checklist on registered accounts and ckipper tooling." ;;
     esac
 }
 
