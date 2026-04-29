@@ -1,8 +1,8 @@
-# Claude Docker Sandbox
+# Ckipper (pronounced "skipper")
 
-Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely. One command to spin up a sandboxed autonomous Claude session on any project.
+Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely, with **first-class multi-account support**: run a personal Claude account in one terminal and a work account in another, fully isolated. One command to spin up a sandboxed autonomous Claude session on any project.
 
-Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, egress firewall, safety hooks, and macOS Keychain auth integration.
+Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, egress firewall, safety hooks, macOS Keychain auth integration, and per-account isolation across credentials, settings, MCP, plugins, and projects.
 
 ## The Problem
 
@@ -29,17 +29,80 @@ This creates a git worktree, spins up a Docker container, and runs Claude inside
 ## Quick Reference
 
 ```bash
-w myorg/myapp feature-x --docker claude        # Claude in Docker (skip-permissions)
-w myorg/myapp feature-x --docker               # shell in Docker container
-w myorg/myapp feature-x --docker --firewall    # Docker + egress firewall
-w myorg/myapp feature-x                        # cd to worktree (no Docker)
-w myorg/myapp feature-x claude                 # run Claude in worktree (no Docker)
-w --list                                       # list all worktrees
-w --rm myorg/myapp feature-x                   # remove worktree + delete branch
-w --rebuild-image                              # rebuild Docker image
+w myorg/myapp feature-x --docker claude              # Claude in Docker (skip-permissions)
+w myorg/myapp feature-x --docker --account work     # use a specific Ckipper account
+w myorg/myapp feature-x --docker                     # shell in Docker container
+w myorg/myapp feature-x --docker --firewall         # Docker + egress firewall
+w myorg/myapp feature-x                              # cd to worktree (no Docker)
+w myorg/myapp feature-x claude                       # run Claude in worktree (no Docker)
+w --list                                             # list all worktrees
+w --rm myorg/myapp feature-x                         # remove worktree + delete branch
+w --rebuild-image                                    # rebuild Docker image
+
+ckipper add <name>                                   # register a Claude account (interactive /login)
+ckipper list                                         # show registered accounts
+ckipper default <name>                               # set the default account
+ckipper rename <old> <new>                           # rename an account in place
+ckipper sync <from> <to>                             # copy MCP/settings between accounts
+ckipper doctor                                       # diagnostic checklist
+ckipper migrate                                      # one-time migration from claude-docker-sandbox
 ```
 
 `<project>` is a relative path under `~/Developer/` (e.g. `Whmoro/orderguard`, `Vibma`). Tab completion is included.
+
+## Multiple accounts (Ckipper's headline feature)
+
+Run a personal Claude account in one terminal and a work account in another, fully isolated. Each gets its own credentials, MCP servers, plugins, projects, and session history.
+
+### Add an account
+
+```bash
+ckipper add work
+```
+
+`ckipper` walks you through `/login` and registers the account. Repeat for every account you want.
+
+### Use an account
+
+```bash
+claude-work                                  # auto-generated launcher
+work                                         # bare-name shortcut (skipped if it would shadow an existing command)
+CLAUDE_CONFIG_DIR=~/.claude-work claude      # raw form
+```
+
+`ckipper add` re-sources `aliases.zsh` in your current shell, so new launchers are usable immediately — no `exec zsh`.
+
+### Inside Docker
+
+```bash
+w myorg/app feature --account work --docker claude
+```
+
+If you're already in a terminal where `CLAUDE_CONFIG_DIR` is set (e.g., via `claude-work`), `w` picks up the account automatically — no flag needed.
+
+### List, default, remove
+
+```bash
+ckipper list
+ckipper default personal
+ckipper remove old-account
+```
+
+### How accounts are stored
+
+- Per-account state lives in `~/.claude-<name>/` (analogous to the legacy `~/.claude/`).
+- The registry mapping accounts to dirs and Keychain services lives at `~/.ckipper/accounts.json` (chmod 600, atomic writes via `flock`).
+- Auto-generated `~/.ckipper/aliases.zsh` defines `claude-<name>` (and a bare `<name>` shortcut, when it doesn't shadow an existing command) per registered account.
+- Hooks under `~/.ckipper/hooks/` are the canonical source — `ckipper sync-hooks` copies them per-account and rewrites `settings.json` paths.
+
+## ⚠️ Don't run the same account in two sessions
+
+Two terminals running the **same** account simultaneously will hit a known OAuth refresh-token race ([upstream issue #24317](https://github.com/anthropics/claude-code/issues/24317)) — symptoms: frequent re-login prompts, lost sessions.
+
+- **Safe:** `claude-personal` in one terminal, `claude-work` in another. Different accounts, different refresh tokens, no race.
+- **Bad:** `claude-personal` in two terminals at once.
+
+If you want concurrent runs of the *same* account, register it twice under two names (`personal-a`, `personal-b`) — though this means re-`/login` for each.
 
 ## What's In the Container
 
@@ -55,7 +118,7 @@ w --rebuild-image                              # rebuild Docker image
 
 On every container start, `entrypoint.sh` automatically:
 
-1. **Copies `.claude.json`** from read-only staging mount to writable location (prevents race condition with host)
+1. **Reads `.claude.json`** from the bind-mounted per-account dir (`$CLAUDE_CONFIG_DIR/.claude.json`) and mutates chrome flags + MCP rewrites in place. Race protection is via the documented "don't run the same account in two sessions" rule.
 2. **Copies and sanitizes SSH config** from read-only `.ssh-host` staging mount — strips macOS-specific `UseKeychain` option that breaks Linux OpenSSH
 3. **Disables Chrome extension checks** via jq (no browser in container)
 4. **Writes OAuth credentials** from `CLAUDE_CREDENTIALS` env var to `.credentials.json`
@@ -99,10 +162,10 @@ Four Claude Code hooks activate inside Docker:
 - GPG signing disabled via `GIT_CONFIG_COUNT` env vars — no file modification, overrides both local and global config, disappears when container exits
 - Post-session `.git/config` tamper detection
 - Credentials cleared from environment before launching the command (invisible to `env` and `/proc/self/environ`)
-- `.claude.json` mounted read-only as staging copy (prevents race condition with host)
+- Per-account `.claude.json` is bind-mounted RW; container mutations propagate to the host file (intentional, gated by the same-account-twice advisory)
 - SSH config mounted read-only as staging copy (`.ssh-host`), copied and sanitized by entrypoint — macOS-specific `UseKeychain` stripped
 - SSH agent forwarded from host via Docker Desktop socket (`/run/host-services/ssh-auth.sock`) — no private keys copied into container
-- `~/.claude` dual-mounted at both `/home/claude/.claude` and the host path (e.g. `/Users/<user>/.claude`) so plugins with hardcoded absolute paths resolve correctly
+- Per-account `~/.claude-<name>` mounted at the same host path inside the container so plugins with hardcoded absolute paths resolve correctly
 - No Docker socket mounted (cannot create sibling containers)
 
 ### Optional Egress Firewall
@@ -124,13 +187,34 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 | MCPs with local files | node/uvx (mounted ro) | Yes (add mount) |
 | Docker-based MCPs | Docker-in-Docker | No (security) |
 
-For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
+For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
 
 Two named Docker volumes support uvx-based MCP servers:
 - **`claude-uv-cache`** — persists the uv package cache (downloaded wheels, git clones) across container restarts
 - **`claude-uv-tools`** — persists pre-installed tool environments and the uv-managed Python interpreter
 
 The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewrites the container's `.claude.json` to invoke the installed binary directly. This eliminates the network freshness check and ephemeral venv creation that cause intermittent MCP startup timeouts.
+
+## Migrating from claude-docker-sandbox
+
+If you've been running this project under its previous name with a single `~/.claude/docker/` install, run:
+
+```bash
+ckipper migrate
+```
+
+This will:
+
+1. Refuse to run if any `claude` process is currently active (quit them first).
+2. Copy `~/.claude/docker/` → `~/.ckipper/`.
+3. Offer to register your existing `~/.claude` as the `personal` account. If you accept: rename `~/.claude` → `~/.claude-personal`, probe Keychain for the matching credential entry, and write the registry. **No symlink is created** — after migration, you launch Claude with `claude-personal` (bare `claude` will start a fresh login).
+4. If anything fails, the rename automatically reverses (rollback).
+
+Then add additional accounts:
+
+```bash
+ckipper add work
+```
 
 ## Setup
 
@@ -146,14 +230,14 @@ The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewri
 
 ```bash
 # Clone the repo
-git clone https://github.com/whmoro/claude-docker-sandbox.git
-cd claude-docker-sandbox
+git clone https://github.com/whmoro/ckipper.git
+cd ckipper
 
 # Run the installer (copies all files, merges hooks, adds source line)
 ./install.sh
 
 # Customize your config
-# Edit ~/.claude/docker/w-config.zsh with your MCP mounts, ports, etc.
+# Edit ~/.ckipper/docker/w-config.zsh with your MCP mounts, ports, etc.
 
 # Build the Docker image (takes a few minutes first time)
 source ~/.zshrc
@@ -167,21 +251,21 @@ w <your-project> test-branch --docker claude
 
 Clone the repo, then open Claude Code and paste this prompt:
 
-> Read the README.md in this repo and run `./install.sh`. Then run `source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test. Show me what's in `~/.claude/docker/w-config.zsh` so I can customize it.
+> Read the README.md in this repo and run `./install.sh`. Then run `source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test. Show me what's in `~/.ckipper/docker/w-config.zsh` so I can customize it.
 
 ### What Gets Installed Where
 
 | Source | Destination | Purpose |
 |---|---|---|
-| `docker/Dockerfile` | `~/.claude/docker/Dockerfile` | Docker image definition |
-| `docker/entrypoint.sh` | `~/.claude/docker/entrypoint.sh` | Container startup + environment setup |
-| `docker/init-firewall.sh` | `~/.claude/docker/init-firewall.sh` | Egress firewall |
-| `hooks/protect-claude-config.sh` | `~/.claude/hooks/protect-claude-config.sh` | Edit/Write guard |
-| `hooks/bash-guardrails.sh` | `~/.claude/hooks/bash-guardrails.sh` | Bash command guard |
-| `hooks/docker-context.sh` | `~/.claude/hooks/docker-context.sh` | Context injection |
-| `hooks/notify-bell.sh` | `~/.claude/hooks/notify-bell.sh` | Notification bell |
-| `w-function.zsh` | `~/.claude/docker/w-function.zsh` | w() function (sourced by .zshrc) |
-| `w-config.zsh.example` | `~/.claude/docker/w-config.zsh` | User config (ports, mounts, env vars) |
+| `docker/Dockerfile` | `~/.ckipper/docker/Dockerfile` | Docker image definition |
+| `docker/entrypoint.sh` | `~/.ckipper/docker/entrypoint.sh` | Container startup + environment setup |
+| `docker/init-firewall.sh` | `~/.ckipper/docker/init-firewall.sh` | Egress firewall |
+| `hooks/protect-claude-config.sh` | `~/.ckipper/hooks/protect-claude-config.sh` | Edit/Write guard |
+| `hooks/bash-guardrails.sh` | `~/.ckipper/hooks/bash-guardrails.sh` | Bash command guard |
+| `hooks/docker-context.sh` | `~/.ckipper/hooks/docker-context.sh` | Context injection |
+| `hooks/notify-bell.sh` | `~/.ckipper/hooks/notify-bell.sh` | Notification bell |
+| `w-function.zsh` | `~/.ckipper/docker/w-function.zsh` | w() function (sourced by .zshrc) |
+| `w-config.zsh.example` | `~/.ckipper/docker/w-config.zsh` | User config (ports, mounts, env vars) |
 | `settings-hooks.json` | Auto-merged into `~/.claude/settings.json` | Hook registration |
 
 ### macOS Keychain Authentication
@@ -198,7 +282,7 @@ After setup, run the comprehensive environment test to verify everything works:
 w <your-project> test-branch --docker claude
 ```
 
-Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It covers 11 sections:
+Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It covers 12 sections:
 
 - Entrypoint verification (env vars, git identity, Chrome disabled, Turbo cache, credential clearing from `/proc/self/environ`)
 - File system access (read, write, delete, ownership, SSH staging mount, config sanitization)
@@ -222,19 +306,19 @@ Edit `docker/init-firewall.sh` → `ALLOWED_DOMAINS` array, then `w --rebuild-im
 
 ### Forwarded Ports
 
-Edit `W_PORTS` in `~/.claude/docker/w-config.zsh`.
+Edit `W_PORTS` in `~/.ckipper/docker/w-config.zsh`.
 
 ### Base Branch
 
-Worktrees are created from `origin/develop`. Search for `develop` in `w-function.zsh` (or `~/.claude/docker/w-function.zsh` if deployed) and change to `main` or your default branch.
+Worktrees are created from `origin/develop`. Search for `develop` in `w-function.zsh` (or `~/.ckipper/docker/w-function.zsh` if deployed) and change to `main` or your default branch.
 
 ### MCP Mounts
 
-Add entries to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`. Format: `"host_path:container_path:mode"`.
+Add entries to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Format: `"host_path:container_path:mode"`.
 
 ### Statusline
 
-If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`:
+If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`:
 - **Config mount** (`~/.config/ccstatusline`, read-only) — theme, widget layout, powerline settings
 - **Cache mount** (`~/.cache/ccstatusline`, read-write) — shares usage API cache with host to avoid 429 rate limits
 
@@ -268,6 +352,55 @@ Ctrl+V image paste does not work inside the container. Claude Code uses `pbpaste
 
 Voice mode requires microphone access, which is unavailable inside the container. Docker Desktop for Mac does not expose the host's microphone to containers. There is no equivalent of the SSH agent forwarding pattern for audio devices on macOS.
 
+## Multi-account Caveats
+
+These apply to the multi-account model in general — they're upstream Claude Code behavior, not Ckipper bugs. Ckipper papers over some of them; others you should know about.
+
+### OAuth refresh token races (upstream)
+
+Two concurrent Claude Code sessions on the same account share a single-use OAuth refresh token. The first to refresh wins; the second gets a 404 and loses authentication. Symptoms: frequent `/login` prompts, lost sessions. References: [#24317](https://github.com/anthropics/claude-code/issues/24317), [#27933](https://github.com/anthropics/claude-code/issues/27933). **Workaround:** different accounts in different terminals (the model Ckipper is built around).
+
+### Credentials silently wiped on failed refresh (upstream)
+
+If a token refresh fails mid-flight (network blip, server error), Claude Code may overwrite the stored credentials with an empty value rather than preserving the old one. Reference: [#29896](https://github.com/anthropics/claude-code/issues/29896). **Recovery:** `claude-<name> /login` again.
+
+### Keychain permission glitches after macOS updates (upstream)
+
+After macOS or Claude Code updates, the Keychain entry can become inaccessible to Claude Code, forcing manual re-`/login` 1–N times per day. Reference: [#19456](https://github.com/anthropics/claude-code/issues/19456). Independent of Ckipper.
+
+### Project-level files are SHARED across accounts (by design)
+
+Files inside a project repo are *not* governed by `CLAUDE_CONFIG_DIR`:
+
+- `<repo>/.claude/settings.json` (committed)
+- `<repo>/.claude/settings.local.json` (gitignored)
+- `<repo>/.mcp.json` (committed, project-scoped MCP servers)
+- `<repo>/CLAUDE.md`
+
+This is usually a feature — your `personal` and `work` accounts working in the same repo see the same project rules and project MCPs. If you don't want that, accounts must work in separate worktrees or separate clones.
+
+### MCP servers are per-account (user-scoped only)
+
+`mcpServers` lives in each account's `.claude.json`. When you `ckipper add <new>`, the new account starts with **zero** user-scoped MCP servers. Two ways to populate:
+
+```bash
+ckipper sync personal work                  # default bundle: mcpServers + plugins + statusLine + env
+ckipper sync personal work --mcp Vibma,github   # only specific MCPs
+ckipper sync personal work --dry-run         # preview before writing
+```
+
+### Plugins and marketplaces are per-account
+
+`enabledPlugins` and `extraKnownMarketplaces` (in `settings.json`) are per-account. The `ckipper sync` default bundle includes them; the `~/.ckipper/plugins/known_marketplaces.json` cache is independent per account dir.
+
+### `~/.claude/settings.local.json` may recreate after migration
+
+Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DIR`, some users observe a stub `~/.claude/settings.local.json` recreating itself (single key: `outputStyle`). It's harmless — `rm -rf ~/.claude` is safe and idempotent. The hook regex blocks writes to `~/.claude/` from inside containers, but the host has no such guard.
+
+### Diagnose anytime
+
+`ckipper doctor` runs a full health check: registry validity, account dir presence, `.claude.json`/`settings.json`/`hooks/` per-account, Keychain entries, `~/.zshrc` source lines, and stub-file presence. Use it after `ckipper migrate` or whenever something looks off.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -287,7 +420,7 @@ Voice mode requires microphone access, which is unavailable inside the container
 | Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `w --rebuild-image` if missing |
 | Branch already checked out | Switch main repo to different branch: `cd ~/Developer/<project> && git checkout develop` |
 | Stale worktree directory | Remove manually: `rm -rf ~/Developer/.worktrees/<project>/<branch>` |
-| Statusline not rendering correctly | Add ccstatusline mounts to `W_EXTRA_VOLUMES` in `~/.claude/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
+| Statusline not rendering correctly | Add ccstatusline mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
 | `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |

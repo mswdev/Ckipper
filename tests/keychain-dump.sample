@@ -1,0 +1,21 @@
+keychain: "/Users/<user>/Library/Keychains/login.keychain-db"
+class: "genp"
+attributes:
+    0x00000007 <blob>="GitHub"
+    "acct"<blob>="<NULL>"
+    "cdat"<timedate>=0x32303234303130313030303030305A00  "20240101000000Z\000"
+    "svce"<blob>="GitHub Desktop"
+keychain: "/Users/<user>/Library/Keychains/login.keychain-db"
+class: "genp"
+attributes:
+    0x00000007 <blob>="Claude Code-credentials"
+    "acct"<blob>="user@example.com"
+    "cdat"<timedate>=0x32303235303130313030303030305A00  "20250101000000Z\000"
+    "svce"<blob>="Claude Code-credentials"
+keychain: "/Users/<user>/Library/Keychains/login.keychain-db"
+class: "genp"
+attributes:
+    0x00000007 <blob>="Slack"
+    "acct"<blob>="<NULL>"
+    "cdat"<timedate>=0x32303234303130313030303030305A00  "20240101000000Z\000"
+    "svce"<blob>="com.tinyspeck.slackmacgap"

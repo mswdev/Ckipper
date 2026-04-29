@@ -7,12 +7,12 @@
 #   w <project> <branch-name> --docker --firewall  Docker + egress firewall
 #   w --list                                       list all worktrees
 #   w --rm <project> <branch-name>                 remove worktree + delete branch
-#   w --rebuild-image                              rebuild claude-dev Docker image
+#   w --rebuild-image                              rebuild ckipper-dev Docker image
 #
 # <project> is a path relative to ~/Developer (e.g. "Whmoro/orderguard", "my-app")
 #
 # ── CUSTOMIZATION ────────────────────────────────────────────────
-# Edit ~/.claude/docker/w-config.zsh to customize:
+# Edit ~/.ckipper/docker/w-config.zsh to customize:
 #   - W_PORTS: dev server ports to forward
 #   - W_EXTRA_VOLUMES: MCP server mounts and other volume mounts
 #   - W_EXTRA_ENV: extra environment variables for the container
@@ -22,7 +22,7 @@
 # ─────────────────────────────────────────────────────────────────
 
 # Source user config (ports, extra volumes, extra env vars)
-_w_config="$HOME/.claude/docker/w-config.zsh"
+_w_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/w-config.zsh"
 if [[ -f "$_w_config" ]]; then
     source "$_w_config"
 fi
@@ -32,13 +32,33 @@ fi
 (( ${#W_EXTRA_ENV[@]} == 0 )) && W_EXTRA_ENV=()
 
 _w_build_image() {
-    local docker_dir="$HOME/.claude/docker"
+    local docker_dir="${CKIPPER_DIR:-$HOME/.ckipper}/docker"
     if [[ ! -f "$docker_dir/Dockerfile" ]]; then
         echo "Dockerfile not found: $docker_dir/Dockerfile"
         return 1
     fi
-    echo "Building claude-dev Docker image..."
-    docker build --build-arg "CACHEBUST=$(date +%s)" -t claude-dev "$docker_dir"
+    echo "Building ckipper-dev Docker image..."
+    docker build --build-arg "CACHEBUST=$(date +%s)" -t ckipper-dev "$docker_dir"
+}
+
+_w_resolve_account() {
+    local cli_account="$1"
+    if [[ -n "$cli_account" ]]; then
+        echo "$cli_account"; return 0
+    fi
+    if [[ -n "$CLAUDE_CONFIG_DIR" && -f "$CKIPPER_REGISTRY" ]]; then
+        local matched
+        matched=$(jq -r --arg d "$CLAUDE_CONFIG_DIR" \
+            '.accounts | to_entries[] | select(.value.config_dir == $d) | .key' \
+            "$CKIPPER_REGISTRY" | head -1)
+        [[ -n "$matched" ]] && { echo "$matched"; return 0; }
+    fi
+    if [[ -f "$CKIPPER_REGISTRY" ]]; then
+        local default
+        default=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
+        [[ -n "$default" ]] && { echo "$default"; return 0; }
+    fi
+    return 0
 }
 
 w() {
@@ -107,19 +127,12 @@ w() {
             echo "Failed to remove worktree. Use --force if it has uncommitted changes."
             return 1
         }
-        # Clean up Claude Code settings for removed worktree
-        WT_PATH="$wt_path" python3 -c "
-import json, os
-claude_config = os.path.expanduser('~/.claude.json')
-wt_path = os.environ['WT_PATH']
-with open(claude_config, 'r') as f:
-    d = json.load(f)
-if wt_path in d.get('projects', {}):
-    del d['projects'][wt_path]
-    with open(claude_config, 'w') as f:
-        json.dump(d, f)
-    print(f'Removed worktree project entry from ~/.claude.json')
-" 2>/dev/null
+        # Clean up Claude Code settings for removed worktree across all registered accounts
+        local _ckipper_dir="${CKIPPER_DIR:-$HOME/.ckipper}"
+        if [[ -f "$_ckipper_dir/docker/cleanup-projects.py" ]]; then
+            CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+                python3 "$_ckipper_dir/docker/cleanup-projects.py" remove "$wt_path" 2>/dev/null || true
+        fi
         return 0
     fi
 
@@ -131,12 +144,14 @@ if wt_path in d.get('projects', {}):
     # Parse flags
     local docker_mode=0
     local firewall_mode=0
+    local cli_account=""
     local command=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --docker) docker_mode=1; shift ;;
+            --docker)   docker_mode=1; shift ;;
             --firewall) firewall_mode=1; shift ;;
-            *) command+=("$1"); shift ;;
+            --account)  cli_account="$2"; shift 2 ;;
+            *)          command+=("$1"); shift ;;
         esac
     done
 
@@ -148,8 +163,9 @@ if wt_path in d.get('projects', {}):
         echo "       w --rebuild-image"
         echo ""
         echo "Flags:"
-        echo "  --docker     Run in Docker container (shell by default, or specify command)"
-        echo "  --firewall   Add egress firewall (only with --docker)"
+        echo "  --docker            Run in Docker container (shell by default, or specify command)"
+        echo "  --firewall          Add egress firewall (only with --docker)"
+        echo "  --account <name>    Use a specific Ckipper account (default: registered default or \$CLAUDE_CONFIG_DIR)"
         echo ""
         echo "Examples:"
         echo "  w myorg/app feature --docker              # shell in container"
@@ -161,6 +177,23 @@ if wt_path in d.get('projects', {}):
     # Validate flag combinations
     if [[ $firewall_mode -eq 1 && $docker_mode -eq 0 ]]; then
         echo "Error: --firewall requires --docker"
+        return 1
+    fi
+
+    # Resolve active Ckipper account (no legacy fallback — error if none).
+    local active_account
+    active_account=$(_w_resolve_account "$cli_account")
+    if [[ -z "$active_account" ]]; then
+        echo "Error: no account selected and no default registered."
+        echo "Run: ckipper list   (then: ckipper default <name>, or pass --account <name>)"
+        return 1
+    fi
+    local active_config_dir
+    active_config_dir=$(jq -r --arg n "$active_account" '.accounts[$n].config_dir // empty' "$CKIPPER_REGISTRY" 2>/dev/null)
+    local active_keychain_service
+    active_keychain_service=$(jq -r --arg n "$active_account" '.accounts[$n].keychain_service // empty' "$CKIPPER_REGISTRY" 2>/dev/null)
+    if [[ -z "$active_config_dir" ]]; then
+        echo "Error: account '$active_account' is not registered. Run: ckipper list"
         return 1
     fi
 
@@ -228,29 +261,14 @@ if wt_path in d.get('projects', {}):
         done
 
         # Sync Claude Code project settings (disabled MCPs, permissions, etc.)
+        # for the active account from the main project entry to the new worktree entry.
         local main_project_path="$projects_dir/$project"
-        MAIN_PATH="$main_project_path" WT_PATH="$wt_path" python3 -c "
-import json, os
-claude_config = os.path.expanduser('~/.claude.json')
-main_path = os.environ['MAIN_PATH']
-wt_path = os.environ['WT_PATH']
-with open(claude_config, 'r') as f:
-    d = json.load(f)
-main = d.get('projects', {}).get(main_path, {})
-if main:
-    keys = ['disabledMcpServers', 'enabledMcpjsonServers', 'disabledMcpjsonServers',
-            'allowedTools', 'hasTrustDialogAccepted', 'hasClaudeMdExternalIncludesApproved',
-            'hasClaudeMdExternalIncludesWarningShown', 'hasCompletedProjectOnboarding']
-    wt = d.setdefault('projects', {}).setdefault(wt_path, {})
-    for k in keys:
-        if k in main:
-            wt[k] = main[k]
-    with open(claude_config, 'w') as f:
-        json.dump(d, f)
-    print('Synced Claude Code settings')
-else:
-    print('No Claude settings found for main project')
-" 2>/dev/null
+        local _ckipper_dir="${CKIPPER_DIR:-$HOME/.ckipper}"
+        if [[ -f "$_ckipper_dir/docker/cleanup-projects.py" ]]; then
+            CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+                python3 "$_ckipper_dir/docker/cleanup-projects.py" sync \
+                "$active_account" "$main_project_path" "$wt_path" 2>/dev/null || true
+        fi
     fi
 
     # -- Docker mode: run in containerized environment --
@@ -266,21 +284,29 @@ else:
         fi
 
         # Ensure Docker image exists
-        if ! docker image inspect claude-dev > /dev/null 2>&1; then
+        if ! docker image inspect ckipper-dev > /dev/null 2>&1; then
             _w_build_image || return 1
         fi
 
-        # Ensure .claude.json exists (Docker would mount as directory if missing)
-        [[ -f "$HOME/.claude.json" ]] || echo '{}' > "$HOME/.claude.json"
+        # Ensure per-account .claude.json exists (Docker would mount as directory if missing)
+        [[ -f "$active_config_dir/.claude.json" ]] || echo '{}' > "$active_config_dir/.claude.json"
 
-        # Extract credentials from macOS Keychain (Claude stores auth there, not on disk)
-        local claude_creds
-        claude_creds=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null) || true
+        # Extract credentials from macOS Keychain (per-account service name)
+        if [[ -n "$active_keychain_service" ]] && \
+           ! _ckipper_validate_keychain_service "$active_keychain_service"; then
+            echo "Error: account '$active_account' has invalid keychain_service in registry."
+            echo "Re-register with: ckipper remove $active_account && ckipper add $active_account --adopt"
+            return 1
+        fi
+        local claude_creds=""
+        if [[ -n "$active_keychain_service" ]]; then
+            claude_creds=$(security find-generic-password -s "$active_keychain_service" -w 2>/dev/null) || true
+        fi
 
         # Extract GitHub token for gh CLI auth inside container
-        # Try .claude.json MCP config first, then fall back to host's gh CLI auth
+        # Try the per-account .claude.json MCP config first, then fall back to host's gh CLI auth
         local gh_token
-        gh_token=$(jq -r '.mcpServers.github.env.GITHUB_PERSONAL_ACCESS_TOKEN // empty' "$HOME/.claude.json" 2>/dev/null) || true
+        gh_token=$(jq -r '.mcpServers.github.env.GITHUB_PERSONAL_ACCESS_TOKEN // empty' "$active_config_dir/.claude.json" 2>/dev/null) || true
         if [[ -z "$gh_token" ]] && command -v gh &>/dev/null; then
             gh_token=$(gh auth token 2>/dev/null) || true
         fi
@@ -292,13 +318,13 @@ else:
             -v "$wt_path:/workspace:rw"
             # Mount main repo .git at same absolute path (resolves worktree .git file)
             -v "$projects_dir/$project/.git:$projects_dir/$project/.git:rw"
-            # Mount Claude auth and config
-            -v "$HOME/.claude:/home/claude/.claude:rw"
-            -v "$HOME/.claude.json:/home/claude/.claude-host.json:ro"
-            # Mount .claude at host path too — plugins store absolute host paths
-            # (e.g. /Users/<user>/.claude/plugins/...) that don't resolve at
-            # the container's /home/claude/.claude. This dual mount makes both work.
-            -v "$HOME/.claude:$HOME/.claude:rw"
+            # Mount per-account Claude config dir at the same host path so plugins'
+            # absolute-path references (e.g. /Users/<user>/.claude-<name>/plugins/...)
+            # resolve inside the container. Host-vs-container races on .claude.json
+            # are prevented by the "don't run the same account in two sessions" rule
+            # (see README #24317 note) — no read-only staging mount needed.
+            -v "$active_config_dir:$active_config_dir:rw"
+            -e "CLAUDE_CONFIG_DIR=$active_config_dir"
             # Mount SSH config as staging copy (sanitized by entrypoint)
             -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
             # Forward host's SSH agent (Docker Desktop for Mac).
@@ -375,7 +401,7 @@ else:
             docker_args+=( --cap-add=NET_ADMIN -e ENABLE_FIREWALL=1 )
         fi
 
-        docker_args+=( claude-dev )
+        docker_args+=( ckipper-dev )
 
         # If "claude" is the command, expand it to the full skip-permissions invocation
         # and auto-name the session after the worktree branch
@@ -409,15 +435,6 @@ else:
 
         "${docker_args[@]}"
         local exit_code=$?
-
-        # Post-session: clean up dangling credentials symlink left by tmpfs credential isolation.
-        # Only remove when no other claude-dev containers are running — parallel sessions
-        # share the ~/.claude bind mount, so deleting the symlink would break their credentials.
-        if [[ -L "$HOME/.claude/.credentials.json" ]]; then
-            if ! docker ps --filter ancestor=claude-dev --quiet 2>/dev/null | grep -q .; then
-                rm -f "$HOME/.claude/.credentials.json"
-            fi
-        fi
 
         # Post-session: warn if .git/config was modified
         if [[ -n "$git_config_hash" && -f "$git_config" ]]; then
@@ -491,7 +508,8 @@ _w() {
     _arguments -C \
         '(--rm)--list[List all worktrees]' \
         '(--list)--rm[Remove a worktree]' \
-        '--rebuild-image[Rebuild claude-dev Docker image]' \
+        '--rebuild-image[Rebuild ckipper-dev Docker image]' \
+        '--account[Ckipper account to use]:account name:' \
         '1: :->project' \
         '2: :->worktree' \
         '3: :->command' \
@@ -546,3 +564,7 @@ _w() {
 _w "$@"
 COMPEOF
 fi
+
+# Source ckipper subcommand dispatcher (if deployed)
+[[ -f "${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper.zsh" ]] && \
+    source "${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper.zsh"
