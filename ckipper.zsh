@@ -10,7 +10,7 @@ ckipper() {
     shift 2>/dev/null
     case "$cmd" in
         # --help on any subcommand short-circuits to subcommand help
-        add|list|default|remove|rename|sync-hooks|migrate)
+        add|list|default|remove|rename|sync|sync-hooks|migrate|doctor)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
                 _ckipper_help_for "$cmd"
                 return 0
@@ -33,8 +33,10 @@ Usage:
   ckipper default <name>      Set the default account
   ckipper remove <name>       Unregister (does not delete the dir)
   ckipper rename <old> <new>  Rename an account (dir + registry + aliases)
+  ckipper sync <from> <to>    Copy MCP/settings from one account to another
   ckipper sync-hooks          Copy hooks into all registered accounts
   ckipper migrate             One-time migration from legacy layout
+  ckipper doctor              Diagnostic check of registered accounts and tooling
 
 Companion commands (sourced via aliases.zsh):
   cca <name> [args...]        Run claude with account <name> (one-off)
@@ -74,7 +76,35 @@ Keychain service name is NOT changed — only the dir + registry mapping.
 EOF
             ;;
         sync-hooks) echo "ckipper sync-hooks — copy ~/.ckipper/hooks/* into each account's <dir>/hooks/, rewrite settings.json paths." ;;
+        sync)
+            cat <<'EOF'
+ckipper sync <from> <to> [options]
+
+Copy state from one registered account to another. Useful for sharing MCP
+servers, plugin lists, status line, env vars, etc. across accounts without
+having to re-configure each.
+
+By default (no flags) syncs a sensible bundle: mcpServers + enabledPlugins +
+extraKnownMarketplaces + statusLine + env.
+
+Options:
+  --mcp [name1,name2,...]    Sync mcpServers. Without arg: all servers.
+                             With arg: only the named servers.
+  --settings <key1,key2,...> Sync specific top-level keys from settings.json.
+                             Comma-separated. Examples: enabledPlugins,
+                             extraKnownMarketplaces, statusLine, env, model.
+  --all                      Sync the default bundle (same as no flags).
+  --dry-run                  Show what would change without writing.
+
+Examples:
+  ckipper sync personal work
+  ckipper sync personal work --mcp
+  ckipper sync personal work --mcp Vibma,github
+  ckipper sync personal work --settings statusLine,env --dry-run
+EOF
+            ;;
         migrate) echo "ckipper migrate — migrate from legacy ~/.claude/docker/ layout. Idempotent. Refuses if Claude is running." ;;
+        doctor) echo "ckipper doctor — run a diagnostic checklist on registered accounts and ckipper tooling." ;;
     esac
 }
 
@@ -535,6 +565,258 @@ _ckipper_rename() {
     echo "Restart your shell (exec zsh) so aliases.zsh picks up the new function name."
 }
 
+# Validates that an account exists in the registry. Echoes its config_dir on success.
+_ckipper_account_dir() {
+    local name="$1"
+    if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+        echo "Account '$name' is not registered." >&2
+        return 1
+    fi
+    jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY"
+}
+
+_ckipper_sync() {
+    _ckipper_check_registry_version || return 1
+    local from="$1" to="$2"
+    shift 2 2>/dev/null
+    if [[ -z "$from" || -z "$to" ]]; then
+        echo "Usage: ckipper sync <from> <to> [--mcp [names]] [--settings keys] [--all] [--dry-run]"
+        return 1
+    fi
+    if [[ "$from" == "$to" ]]; then
+        echo "<from> and <to> must differ."
+        return 1
+    fi
+
+    local from_dir to_dir
+    from_dir=$(_ckipper_account_dir "$from") || return 1
+    to_dir=$(_ckipper_account_dir "$to") || return 1
+    if [[ ! -f "$from_dir/.claude.json" ]]; then
+        echo "Source has no .claude.json: $from_dir"; return 1
+    fi
+    if [[ ! -f "$to_dir/.claude.json" ]]; then
+        echo "Destination has no .claude.json: $to_dir"; return 1
+    fi
+
+    # Parse flags. The argparse here is intentionally minimal — order matters,
+    # but each flag is well-formed and easy to read.
+    local mode_mcp=0 mcp_names="" mode_settings=0 settings_keys="" dry_run=0 mode_all=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --mcp)
+                mode_mcp=1
+                if [[ -n "$2" && "$2" != --* ]]; then mcp_names="$2"; shift; fi
+                shift ;;
+            --settings)
+                mode_settings=1
+                if [[ -n "$2" && "$2" != --* ]]; then settings_keys="$2"; shift; fi
+                shift ;;
+            --all)        mode_all=1; shift ;;
+            --dry-run)    dry_run=1; shift ;;
+            *) echo "Unknown flag: $1"; return 1 ;;
+        esac
+    done
+
+    # Default bundle when no specific flags were passed: mcpServers + a useful
+    # selection of settings.json keys.
+    if (( mode_mcp == 0 && mode_settings == 0 )); then
+        mode_all=1
+    fi
+    if (( mode_all )); then
+        mode_mcp=1
+        mode_settings=1
+        [[ -z "$settings_keys" ]] && \
+            settings_keys="enabledPlugins,extraKnownMarketplaces,statusLine,env,model"
+    fi
+
+    local pending_msgs=()
+
+    # ── MCP sync ─────────────────────────────────────────────────
+    if (( mode_mcp )); then
+        local mcp_filter
+        if [[ -z "$mcp_names" ]]; then
+            mcp_filter='.mcpServers // {}'
+        else
+            # Build a jq object containing only the named servers, e.g. {Vibma: ..., github: ...}
+            local jq_array
+            jq_array=$(echo "$mcp_names" | jq -R 'split(",") | map(. | gsub("^\\s+|\\s+$"; ""))')
+            mcp_filter='.mcpServers // {} | with_entries(select(.key as $k | '"$jq_array"' | index($k)))'
+        fi
+        local servers
+        servers=$(jq "$mcp_filter" "$from_dir/.claude.json")
+        local server_keys
+        server_keys=$(echo "$servers" | jq -r 'keys[]?' | tr '\n' ' ')
+        if [[ -z "$server_keys" || "$server_keys" == " " ]]; then
+            pending_msgs+=("MCP: nothing to sync (no matching servers in $from)")
+        else
+            pending_msgs+=("MCP servers → $to: $server_keys")
+            if (( ! dry_run )); then
+                local tmp; tmp=$(mktemp "$to_dir/.claude.json.tmp.XXXXXX")
+                jq --argjson new "$servers" '.mcpServers = (.mcpServers // {}) + $new' \
+                    "$to_dir/.claude.json" > "$tmp" && mv "$tmp" "$to_dir/.claude.json"
+            fi
+        fi
+    fi
+
+    # ── settings.json key sync ───────────────────────────────────
+    if (( mode_settings )) && [[ -n "$settings_keys" ]]; then
+        if [[ ! -f "$from_dir/settings.json" ]]; then
+            pending_msgs+=("Settings: $from has no settings.json (skipping)")
+        else
+            # Build a jq subset object with only the requested keys (skipping missing ones).
+            local jq_keys
+            jq_keys=$(echo "$settings_keys" | jq -R 'split(",") | map(. | gsub("^\\s+|\\s+$"; ""))')
+            local subset
+            subset=$(jq --argjson keys "$jq_keys" \
+                'with_entries(select(.key as $k | $keys | index($k)))' \
+                "$from_dir/settings.json")
+            local copied_keys
+            copied_keys=$(echo "$subset" | jq -r 'keys[]?' | tr '\n' ' ')
+            if [[ -z "$copied_keys" || "$copied_keys" == " " ]]; then
+                pending_msgs+=("Settings: no matching keys in $from/settings.json")
+            else
+                pending_msgs+=("Settings keys → $to: $copied_keys")
+                if (( ! dry_run )); then
+                    if [[ ! -f "$to_dir/settings.json" ]]; then
+                        echo '{}' > "$to_dir/settings.json"
+                    fi
+                    local tmp; tmp=$(mktemp "$to_dir/settings.json.tmp.XXXXXX")
+                    jq --argjson new "$subset" '. + $new' \
+                        "$to_dir/settings.json" > "$tmp" && mv "$tmp" "$to_dir/settings.json"
+                fi
+            fi
+        fi
+    fi
+
+    if (( dry_run )); then
+        echo "Dry run — would apply:"
+    else
+        echo "Synced:"
+    fi
+    for m in "${pending_msgs[@]}"; do
+        echo "  - $m"
+    done
+
+    if (( ! dry_run )); then
+        echo ""
+        echo "Restart any running '$to' Claude session for changes to take effect."
+    fi
+}
+
+_ckipper_doctor() {
+    local fail=0 warn=0
+    local check() {
+        local sym="$1" msg="$2"
+        case "$sym" in
+            PASS) printf "  \033[32m[PASS]\033[0m %s\n" "$msg" ;;
+            WARN) printf "  \033[33m[WARN]\033[0m %s\n" "$msg"; (( warn++ )) ;;
+            FAIL) printf "  \033[31m[FAIL]\033[0m %s\n" "$msg"; (( fail++ )) ;;
+            INFO) printf "  [INFO] %s\n" "$msg" ;;
+        esac
+    }
+    # Locally-scoped function for color output. zsh function nesting works at runtime.
+
+    echo "── Tooling ───────────────────────────────────────────"
+    if [[ -d "$CKIPPER_DIR" ]]; then check PASS "$CKIPPER_DIR exists"; else check FAIL "$CKIPPER_DIR is missing — run install.sh"; fi
+    if [[ -f "$CKIPPER_DIR/docker/w-function.zsh" ]]; then check PASS "w-function.zsh deployed"; else check FAIL "w-function.zsh missing in $CKIPPER_DIR/docker/"; fi
+    if [[ -f "$CKIPPER_DIR/docker/ckipper.zsh" ]]; then check PASS "ckipper.zsh deployed"; else check FAIL "ckipper.zsh missing in $CKIPPER_DIR/docker/"; fi
+    if [[ -f "$CKIPPER_DIR/docker/cleanup-projects.py" ]]; then check PASS "cleanup-projects.py deployed"; else check WARN "cleanup-projects.py missing — w --rm cleanup will silently skip"; fi
+    if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then check PASS "settings-template.json deployed"; else check WARN "settings-template.json missing — ckipper add will skip seeding settings.json"; fi
+    if [[ -d "$CKIPPER_DIR/hooks" ]] && (( $(ls -1 "$CKIPPER_DIR/hooks" 2>/dev/null | wc -l) >= 4 )); then
+        check PASS "hooks/ has 4+ files"
+    else
+        check WARN "hooks/ is missing or has fewer than 4 hook files"
+    fi
+
+    echo ""
+    echo "── Registry ──────────────────────────────────────────"
+    if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
+        check INFO "No registry yet — no accounts registered. Run: ckipper migrate (or ckipper add <name>)"
+        return 0
+    fi
+    local v; v=$(jq -r '.version // 0' "$CKIPPER_REGISTRY" 2>/dev/null)
+    if [[ "$v" == "$CKIPPER_REGISTRY_VERSION" ]]; then check PASS "registry version $v matches expected"
+    else check FAIL "registry version $v != expected $CKIPPER_REGISTRY_VERSION"; fi
+    local perms; perms=$(stat -f '%Lp' "$CKIPPER_REGISTRY" 2>/dev/null)
+    if [[ "$perms" == "600" ]]; then check PASS "registry permissions 600"
+    else check WARN "registry permissions $perms (expected 600)"; fi
+
+    local default_acc; default_acc=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
+    [[ -n "$default_acc" ]] && check INFO "default account: $default_acc" || check WARN "no default account set — w/ckipper-add will require --account"
+
+    echo ""
+    echo "── Per-account state ────────────────────────────────"
+    local names; names=$(jq -r '.accounts | keys[]?' "$CKIPPER_REGISTRY")
+    if [[ -z "$names" ]]; then
+        check WARN "registry has no accounts"
+    else
+        while IFS= read -r name; do
+            echo ""
+            echo "  Account: $name"
+            local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
+            local svc; svc=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
+            if [[ -d "$dir" ]]; then check PASS "    dir exists: $dir"
+            else check FAIL "    dir missing: $dir"; fi
+            if [[ -f "$dir/.claude.json" ]]; then
+                local email proj_count mcp_count
+                email=$(jq -r '.oauthAccount.emailAddress // "(none)"' "$dir/.claude.json" 2>/dev/null)
+                proj_count=$(jq '.projects | length // 0' "$dir/.claude.json" 2>/dev/null)
+                mcp_count=$(jq '.mcpServers | length // 0' "$dir/.claude.json" 2>/dev/null)
+                check PASS "    .claude.json: oauth=$email, projects=$proj_count, mcps=$mcp_count"
+            else
+                check WARN "    .claude.json missing in $dir"
+            fi
+            if [[ -f "$dir/settings.json" ]]; then check PASS "    settings.json present"; else check WARN "    settings.json missing"; fi
+            if [[ -d "$dir/hooks" ]]; then check PASS "    hooks/ deployed"; else check WARN "    hooks/ missing — run: ckipper sync-hooks"; fi
+            # Keychain check (macOS only)
+            if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
+                if [[ -z "$svc" ]]; then
+                    check INFO "    keychain_service: null (account uses on-disk credentials)"
+                elif ! _ckipper_validate_keychain_service "$svc"; then
+                    check FAIL "    keychain_service has invalid shape: $svc"
+                elif security find-generic-password -s "$svc" >/dev/null 2>&1; then
+                    check PASS "    keychain entry present: $svc"
+                else
+                    check WARN "    keychain entry NOT FOUND: $svc — re-run /login with: claude-$name"
+                fi
+            fi
+        done <<< "$names"
+    fi
+
+    echo ""
+    echo "── Aliases & shell integration ──────────────────────"
+    if [[ -f "$CKIPPER_DIR/aliases.zsh" ]]; then check PASS "aliases.zsh exists at $CKIPPER_DIR/aliases.zsh"
+    else check WARN "aliases.zsh missing — will be regenerated on next add/remove"; fi
+    if grep -q 'ckipper/aliases.zsh' "$HOME/.zshrc" 2>/dev/null; then check PASS "~/.zshrc sources aliases.zsh"
+    else check WARN "~/.zshrc does NOT source aliases.zsh — add: [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh"; fi
+    if grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then check PASS "~/.zshrc sources w-function.zsh"
+    else check FAIL "~/.zshrc does NOT source w-function.zsh — re-run install.sh"; fi
+
+    echo ""
+    echo "── Stub files (cosmetic) ────────────────────────────"
+    if [[ -d "$HOME/.claude" ]]; then
+        local stub_count; stub_count=$(ls -1A "$HOME/.claude" 2>/dev/null | wc -l | tr -d ' ')
+        check WARN "~/.claude exists ($stub_count files) — Claude Code may have recreated it. Safe to: rm -rf ~/.claude"
+    else
+        check PASS "~/.claude (stub dir) is absent"
+    fi
+    if [[ -f "$HOME/.claude.json" ]]; then check WARN "~/.claude.json exists at home root — should have been migrated. If you ran migrate, this is leftover."
+    else check PASS "~/.claude.json (home root) is absent"; fi
+
+    echo ""
+    echo "──────────────────────────────────────────────────────"
+    if (( fail > 0 )); then
+        printf "Result: \033[31m%d FAIL\033[0m, \033[33m%d WARN\033[0m\n" "$fail" "$warn"
+        return 1
+    elif (( warn > 0 )); then
+        printf "Result: \033[33m%d WARN\033[0m\n" "$warn"
+        return 0
+    else
+        printf "Result: \033[32mall checks passed\033[0m\n"
+        return 0
+    fi
+}
+
 _ckipper_migrate() {
     _ckipper_check_registry_version || return 1
     local legacy_docker="$HOME/.claude/docker"
@@ -572,6 +854,24 @@ _ckipper_migrate() {
     # Eligible if either ~/.claude/.claude.json or ~/.claude/settings.json exists,
     # OR ~/.claude.json exists at home root (Claude Code's canonical big-config location).
     local legacy_homejson="$HOME/.claude.json"
+    local has_inner_state=0 has_homejson=0
+    [[ -f "$legacy_claude/.claude.json" || -f "$legacy_claude/settings.json" ]] && has_inner_state=1
+    [[ -f "$legacy_homejson" ]] && has_homejson=1
+
+    if (( has_inner_state == 0 && has_homejson == 0 )); then
+        local has_registry=0
+        [[ -f "$CKIPPER_REGISTRY" ]] && jq -e '.accounts | length > 0' "$CKIPPER_REGISTRY" >/dev/null 2>&1 && has_registry=1
+        if (( has_registry )); then
+            echo "Nothing to migrate: no $legacy_claude state and no $legacy_homejson at home root."
+            echo "($CKIPPER_REGISTRY already has registered accounts — you're likely already migrated.)"
+            echo "Run: ckipper list"
+        else
+            echo "Nothing to migrate: no $legacy_claude/.claude.json, no $legacy_claude/settings.json, no $legacy_homejson."
+            echo "If this is a fresh setup, register an account directly: ckipper add <name>"
+        fi
+        return 0
+    fi
+
     if [[ -f "$legacy_claude/.claude.json" || -f "$legacy_claude/settings.json" || -f "$legacy_homejson" ]]; then
         if [[ ! -f "$CKIPPER_REGISTRY" ]] || \
            ! jq -e '.accounts | length > 0' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then

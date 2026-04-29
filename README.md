@@ -39,9 +39,12 @@ w --list                                             # list all worktrees
 w --rm myorg/myapp feature-x                         # remove worktree + delete branch
 w --rebuild-image                                    # rebuild Docker image
 
-ckipper add <name>                                   # register a Claude account
+ckipper add <name>                                   # register a Claude account (interactive /login)
 ckipper list                                         # show registered accounts
 ckipper default <name>                               # set the default account
+ckipper rename <old> <new>                           # rename an account in place
+ckipper sync <from> <to>                             # copy MCP/settings between accounts
+ckipper doctor                                       # diagnostic checklist
 ckipper migrate                                      # one-time migration from claude-docker-sandbox
 ```
 
@@ -348,6 +351,55 @@ Ctrl+V image paste does not work inside the container. Claude Code uses `pbpaste
 ### Voice Mode (`/voice`)
 
 Voice mode requires microphone access, which is unavailable inside the container. Docker Desktop for Mac does not expose the host's microphone to containers. There is no equivalent of the SSH agent forwarding pattern for audio devices on macOS.
+
+## Multi-account Caveats
+
+These apply to the multi-account model in general — they're upstream Claude Code behavior, not Ckipper bugs. Ckipper papers over some of them; others you should know about.
+
+### OAuth refresh token races (upstream)
+
+Two concurrent Claude Code sessions on the same account share a single-use OAuth refresh token. The first to refresh wins; the second gets a 404 and loses authentication. Symptoms: frequent `/login` prompts, lost sessions. References: [#24317](https://github.com/anthropics/claude-code/issues/24317), [#27933](https://github.com/anthropics/claude-code/issues/27933). **Workaround:** different accounts in different terminals (the model Ckipper is built around).
+
+### Credentials silently wiped on failed refresh (upstream)
+
+If a token refresh fails mid-flight (network blip, server error), Claude Code may overwrite the stored credentials with an empty value rather than preserving the old one. Reference: [#29896](https://github.com/anthropics/claude-code/issues/29896). **Recovery:** `claude-<name> /login` again.
+
+### Keychain permission glitches after macOS updates (upstream)
+
+After macOS or Claude Code updates, the Keychain entry can become inaccessible to Claude Code, forcing manual re-`/login` 1–N times per day. Reference: [#19456](https://github.com/anthropics/claude-code/issues/19456). Independent of Ckipper.
+
+### Project-level files are SHARED across accounts (by design)
+
+Files inside a project repo are *not* governed by `CLAUDE_CONFIG_DIR`:
+
+- `<repo>/.claude/settings.json` (committed)
+- `<repo>/.claude/settings.local.json` (gitignored)
+- `<repo>/.mcp.json` (committed, project-scoped MCP servers)
+- `<repo>/CLAUDE.md`
+
+This is usually a feature — your `personal` and `work` accounts working in the same repo see the same project rules and project MCPs. If you don't want that, accounts must work in separate worktrees or separate clones.
+
+### MCP servers are per-account (user-scoped only)
+
+`mcpServers` lives in each account's `.claude.json`. When you `ckipper add <new>`, the new account starts with **zero** user-scoped MCP servers. Two ways to populate:
+
+```bash
+ckipper sync personal work                  # default bundle: mcpServers + plugins + statusLine + env
+ckipper sync personal work --mcp Vibma,github   # only specific MCPs
+ckipper sync personal work --dry-run         # preview before writing
+```
+
+### Plugins and marketplaces are per-account
+
+`enabledPlugins` and `extraKnownMarketplaces` (in `settings.json`) are per-account. The `ckipper sync` default bundle includes them; the `~/.ckipper/plugins/known_marketplaces.json` cache is independent per account dir.
+
+### `~/.claude/settings.local.json` may recreate after migration
+
+Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DIR`, some users observe a stub `~/.claude/settings.local.json` recreating itself (single key: `outputStyle`). It's harmless — `rm -rf ~/.claude` is safe and idempotent. The hook regex blocks writes to `~/.claude/` from inside containers, but the host has no such guard.
+
+### Diagnose anytime
+
+`ckipper doctor` runs a full health check: registry validity, account dir presence, `.claude.json`/`settings.json`/`hooks/` per-account, Keychain entries, `~/.zshrc` source lines, and stub-file presence. Use it after `ckipper migrate` or whenever something looks off.
 
 ## Troubleshooting
 
