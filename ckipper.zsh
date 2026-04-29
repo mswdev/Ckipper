@@ -10,7 +10,7 @@ ckipper() {
     shift 2>/dev/null
     case "$cmd" in
         # --help on any subcommand short-circuits to subcommand help
-        add|list|default|remove|rename|sync|sync-hooks|migrate|doctor)
+        add|list|default|remove|rename|sync|sync-hooks|migrate|doctor|repair-plugins)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
                 _ckipper_help_for "$cmd"
                 return 0
@@ -37,6 +37,7 @@ Usage:
   ckipper sync-hooks          Copy hooks into all registered accounts
   ckipper migrate             One-time migration from legacy layout
   ckipper doctor              Diagnostic check of registered accounts and tooling
+  ckipper repair-plugins <n>  Rewrite stale ~/.claude/ paths in plugin metadata
 
 Companion commands (sourced via aliases.zsh):
   claude-<name> [args...]     Auto-generated launcher per registered account
@@ -77,6 +78,18 @@ Keychain service name is NOT changed — only the dir + registry mapping.
 EOF
             ;;
         sync-hooks) echo "ckipper sync-hooks — copy ~/.ckipper/hooks/* into each account's <dir>/hooks/, rewrite settings.json paths." ;;
+        repair-plugins)
+            cat <<'EOF'
+ckipper repair-plugins <name>
+
+Rewrite stale absolute paths in <account_dir>/plugins/{known_marketplaces,
+installed_plugins}.json from $HOME/.claude/... to the account's actual dir.
+
+Use this when Claude Code shows "Plugin not found in marketplace ..." for
+plugins that were installed before `ckipper migrate` (or before the dir was
+renamed). Backups are written alongside each rewritten file.
+EOF
+            ;;
         sync)
             cat <<'EOF'
 ckipper sync <from> <to> [options]
@@ -158,6 +171,36 @@ _ckipper_stat_perms() {
     else
         stat -c '%a' "$1" 2>/dev/null
     fi
+}
+
+# Rewrite stale absolute paths embedded in Claude Code's plugin metadata files
+# (known_marketplaces.json, installed_plugins.json). After moving an account
+# directory (legacy ~/.claude → ~/.claude-<name>), the plugin cache files on
+# disk have moved with the rename, but the JSON metadata still has the old
+# absolute paths baked in — Claude Code then fails to resolve plugins with
+# "Plugin not found in marketplace ..." errors.
+#
+# $1 = old prefix (must end with `/`), e.g. "$HOME/.claude/"
+# $2 = new prefix (must end with `/`), e.g. "$HOME/.claude-personal/"
+# Idempotent: if neither file contains the old prefix, this is a no-op.
+_ckipper_rewrite_plugin_paths() {
+    local old="$1" new="$2"
+    [[ -z "$old" || -z "$new" || "$old" != */ || "$new" != */ ]] && return 1
+    [[ "$old" == "$new" ]] && return 0
+    local f rewrote=0
+    for f in plugins/known_marketplaces.json plugins/installed_plugins.json; do
+        local fp="$new$f"
+        [[ -f "$fp" ]] || continue
+        grep -q -- "$old" "$fp" 2>/dev/null || continue
+        cp "$fp" "$fp.pre-rewrite-backup-$(date +%s)"
+        if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
+            sed -i '' "s|$old|$new|g" "$fp"
+        else
+            sed -i "s|$old|$new|g" "$fp"
+        fi
+        rewrote=1
+    done
+    return 0
 }
 
 # Cross-platform stat for mtime in seconds since epoch.
@@ -579,6 +622,48 @@ _ckipper_sync_hooks() {
     done <<< "$names"
 }
 
+_ckipper_repair_plugins() {
+    local name="$1"
+    if [[ -z "$name" ]]; then
+        echo "Usage: ckipper repair-plugins <name>"
+        return 1
+    fi
+    _ckipper_check_registry_version || return 1
+    local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir // empty' "$CKIPPER_REGISTRY")
+    if [[ -z "$dir" ]]; then
+        echo "Account '$name' is not registered. Run: ckipper list"
+        return 1
+    fi
+    if [[ ! -d "$dir" ]]; then
+        echo "Account dir does not exist: $dir"
+        return 1
+    fi
+
+    # Detect what stale prefix the metadata is using. Almost always the legacy
+    # ~/.claude/, but a previously-renamed account could carry an older suffix.
+    local stale_prefix=""
+    local f
+    for f in plugins/known_marketplaces.json plugins/installed_plugins.json; do
+        [[ -f "$dir/$f" ]] || continue
+        # Combined declare+assign on one line: zsh 5.9 emits "var=''" to stdout
+        # when `local var` and `var=$(...)` are split across two lines inside a
+        # `for` loop body. Trivia that mostly bites diagnostic helpers like this.
+        local hit=$(grep -oE "$HOME/\.claude(-[a-z0-9_-]+)?/" "$dir/$f" 2>/dev/null | sort -u | grep -v "^$dir/$" | head -1)
+        if [[ -n "$hit" ]]; then
+            stale_prefix="$hit"
+            break
+        fi
+    done
+    if [[ -z "$stale_prefix" ]]; then
+        echo "No stale paths found in $dir/plugins/. Nothing to repair."
+        return 0
+    fi
+    echo "Rewriting plugin metadata for '$name':"
+    echo "  $stale_prefix → $dir/"
+    _ckipper_rewrite_plugin_paths "$stale_prefix" "$dir/"
+    echo "Done. Backups saved alongside each rewritten file (.pre-rewrite-backup-<ts>)."
+}
+
 _ckipper_list() {
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
         echo "No accounts registered. Run: ckipper add <name>"
@@ -921,21 +1006,36 @@ _ckipper_doctor() {
         while IFS= read -r name; do
             echo ""
             echo "  Account: $name"
-            local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
-            local svc; svc=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
+            # Combined declare+assign: zsh 5.9 leaks "var=''" to stdout when the
+            # `local x; x=$(...)` form runs inside a `while` loop body.
+            local dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
+            local svc=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
             if [[ -d "$dir" ]]; then check PASS "    dir exists: $dir"
             else check FAIL "    dir missing: $dir"; fi
             if [[ -f "$dir/.claude.json" ]]; then
-                local email proj_count mcp_count
-                email=$(jq -r '.oauthAccount.emailAddress // "(none)"' "$dir/.claude.json" 2>/dev/null)
-                proj_count=$(jq '.projects | length // 0' "$dir/.claude.json" 2>/dev/null)
-                mcp_count=$(jq '.mcpServers | length // 0' "$dir/.claude.json" 2>/dev/null)
+                local email=$(jq -r '.oauthAccount.emailAddress // "(none)"' "$dir/.claude.json" 2>/dev/null)
+                local proj_count=$(jq '.projects | length // 0' "$dir/.claude.json" 2>/dev/null)
+                local mcp_count=$(jq '.mcpServers | length // 0' "$dir/.claude.json" 2>/dev/null)
                 check PASS "    .claude.json: oauth=$email, projects=$proj_count, mcps=$mcp_count"
             else
                 check WARN "    .claude.json missing in $dir"
             fi
             if [[ -f "$dir/settings.json" ]]; then check PASS "    settings.json present"; else check WARN "    settings.json missing"; fi
             if [[ -d "$dir/hooks" ]]; then check PASS "    hooks/ deployed"; else check WARN "    hooks/ missing — run: ckipper sync-hooks"; fi
+            # Stale plugin-metadata paths: a sign that ckipper migrate moved
+            # the account dir without rewriting absolute paths inside
+            # plugins/{known_marketplaces,installed_plugins}.json. Symptom is
+            # "Plugin not found in marketplace ..." in the Claude Code UI.
+            local stale_pm=0
+            for pm in known_marketplaces.json installed_plugins.json; do
+                [[ -f "$dir/plugins/$pm" ]] || continue
+                if grep -q -- "$HOME/.claude/" "$dir/plugins/$pm" 2>/dev/null; then
+                    stale_pm=1
+                fi
+            done
+            if (( stale_pm )); then
+                check WARN "    plugins/*.json has stale ~/.claude/ paths — plugins will fail to load. Repair: ckipper repair-plugins $name"
+            fi
             # Keychain check (macOS only)
             if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
                 if [[ -z "$svc" ]]; then
@@ -1174,6 +1274,13 @@ EOF
                 fi
                 migrate_step=2
             fi
+
+            # Step 2.5: rewrite stale absolute paths in plugin metadata.
+            # Without this, Claude Code raises "Plugin not found in marketplace"
+            # for every previously-installed plugin, because installed_plugins.json
+            # and known_marketplaces.json still reference $legacy_claude/...
+            # (which no longer exists post-rename).
+            _ckipper_rewrite_plugin_paths "$legacy_claude/" "$target_dir/"
 
             if ! _ckipper_finalize_registration "$name" "$target_dir" "$probed_service" "migrate"; then
                 _ckipper_migrate_rollback failed
