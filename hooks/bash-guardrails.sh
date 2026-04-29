@@ -3,11 +3,22 @@
 # Catches accidental destructive commands. Not adversarial-proof, but
 # prevents the most common "oops" scenarios.
 # No-op on the host.
+#
+# NOTE: This hook is a UX guardrail, NOT a security boundary. The pattern matching
+# is best-effort and can be bypassed by:
+#   - compound commands: bash -c 'rm -rf /path'
+#   - heredocs: cat <<'EOF' > target ...
+#   - command substitution / eval / dynamic strings
+# Adversarial users can defeat any regex-based guard. Treat this hook as a reminder,
+# not a defense. The container sandbox + firewall are the actual security boundary.
 
 [ ! -f /.dockerenv ] && exit 0
 
-INPUT=$(cat)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+INPUT="$(cat)"
+CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty') || {
+    echo "Error: hook input is not valid JSON; failing closed" >&2
+    exit 2
+}
 
 # Normalize: collapse whitespace, strip leading sudo
 NORMALIZED=$(echo "$CMD" | sed 's/^[[:space:]]*sudo[[:space:]]*//' | tr -s ' ')

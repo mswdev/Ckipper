@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Constants
+readonly CREDENTIALS_MAX_BYTES=1000000
+readonly GIT_CONFIG_COUNT=2
+
 # Require CLAUDE_CONFIG_DIR — Ckipper's account context. No silent fallback.
 if [ -z "$CLAUDE_CONFIG_DIR" ]; then
     echo "Error: CLAUDE_CONFIG_DIR is not set inside the container." >&2
@@ -36,8 +40,12 @@ fi
 # leakage to the host filesystem). The tmpfs mount at /tmp/claude-creds is
 # container-local and disappears when the container exits.
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
+    if [ "${#CLAUDE_CREDENTIALS}" -gt "$CREDENTIALS_MAX_BYTES" ]; then
+        echo "Error: CLAUDE_CREDENTIALS exceeds 1MB; refusing to write" >&2
+        exit 1
+    fi
     mkdir -p /tmp/claude-creds
-    echo "$CLAUDE_CREDENTIALS" >/tmp/claude-creds/.credentials.json
+    printf '%s' "$CLAUDE_CREDENTIALS" >/tmp/claude-creds/.credentials.json
     chmod 700 /tmp/claude-creds
     chmod 600 /tmp/claude-creds/.credentials.json
     # Symlink from the account dir — Claude Code reads $CLAUDE_CONFIG_DIR/.credentials.json
@@ -56,7 +64,7 @@ fi
 # Uses GIT_CONFIG_COUNT instead of git config so we never modify the host's
 # .git/config (mounted rw). Env vars take highest priority, overriding both
 # local and global config, and disappear when the container exits.
-export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_COUNT=$GIT_CONFIG_COUNT
 export GIT_CONFIG_KEY_0=commit.gpgsign
 export GIT_CONFIG_VALUE_0=false
 export GIT_CONFIG_KEY_1=tag.gpgsign

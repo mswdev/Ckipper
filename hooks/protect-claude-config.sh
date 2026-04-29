@@ -7,8 +7,11 @@
 # Skip protection when not in Docker
 [ ! -f /.dockerenv ] && exit 0
 
-INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+INPUT="$(cat)"
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty') || {
+    echo "Error: hook input is not valid JSON; failing closed" >&2
+    exit 2
+}
 
 # Block Claude state subset under ~/.claude or any per-account ~/.claude-<name>.
 # Note: ~/.claude-host.json is the read-only staging mount and is intentionally

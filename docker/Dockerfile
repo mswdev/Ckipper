@@ -37,13 +37,19 @@ ENV CHROMIUM_FLAGS="--no-sandbox"
 ENV PUPPETEER_CHROMIUM_ARGS="--no-sandbox"
 
 # Install uv/uvx (Python package runner — needed for Python-based MCP servers)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+# TODO(public-release): pin SHA256 checksum of installer.
+RUN curl -LsSf https://astral.sh/uv/install.sh -o /tmp/install.sh && \
+    sh /tmp/install.sh && \
+    rm /tmp/install.sh \
     && cp /root/.local/bin/uv /usr/local/bin/uv \
     && cp /root/.local/bin/uvx /usr/local/bin/uvx \
     && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
 
 # Install Claude Code via native installer
-RUN curl -fsSL https://claude.ai/install.sh | bash \
+# TODO(public-release): pin SHA256 checksum of installer.
+RUN curl -fsSL https://claude.ai/install.sh -o /tmp/install.sh && \
+    bash /tmp/install.sh && \
+    rm /tmp/install.sh \
     && cp /root/.local/bin/claude /usr/local/bin/claude \
     && chmod +x /usr/local/bin/claude
 
@@ -58,7 +64,10 @@ RUN userdel -r node 2>/dev/null; groupdel node 2>/dev/null; \
     && chown -R claude:claude /home/claude/.local /home/claude/.ssh /home/claude/.config /home/claude/.cache /home/claude/.uv-tools
 
 # Install bun (fast JS runtime — needed for bunx-based statusline commands and general use)
-RUN curl -fsSL https://bun.sh/install | bash \
+# TODO(public-release): pin SHA256 checksum of installer.
+RUN curl -fsSL https://bun.sh/install -o /tmp/install.sh && \
+    bash /tmp/install.sh && \
+    rm /tmp/install.sh \
     && cp /root/.bun/bin/bun /usr/local/bin/bun \
     && cp /root/.bun/bin/bunx /usr/local/bin/bunx \
     && chmod +x /usr/local/bin/bun /usr/local/bin/bunx

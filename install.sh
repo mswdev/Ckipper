@@ -32,17 +32,17 @@ fi
 
 # 1. Check prerequisites
 echo "Checking prerequisites..."
-missing=()
-command -v docker &>/dev/null || missing+=("docker (install Docker Desktop)")
-command -v jq &>/dev/null || missing+=("jq (brew install jq)")
-command -v git &>/dev/null || missing+=("git")
+missing_dependencies=()
+command -v docker &>/dev/null || missing_dependencies+=("docker (install Docker Desktop)")
+command -v jq &>/dev/null || missing_dependencies+=("jq (brew install jq)")
+command -v git &>/dev/null || missing_dependencies+=("git")
 if [[ "$(uname)" == "Darwin" ]]; then
-    command -v security &>/dev/null || missing+=("security (macOS Keychain CLI)")
+    command -v security &>/dev/null || missing_dependencies+=("security (macOS Keychain CLI)")
 fi
 
-if [[ ${#missing[@]} -gt 0 ]]; then
+if [[ ${#missing_dependencies[@]} -gt 0 ]]; then
     echo "Missing prerequisites:"
-    for dep in "${missing[@]}"; do
+    for dep in "${missing_dependencies[@]}"; do
         echo "  - $dep"
     done
     echo ""
