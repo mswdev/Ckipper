@@ -130,10 +130,19 @@ if grep -q '^w()' "$HOME/.zshrc" 2>/dev/null || grep -q '^_w_build_image()' "$HO
     echo "(Search for '_w_build_image()' or 'w()' and remove everything through the 'COMPEOF' line)"
 fi
 
-# 10. Set up git hooks path
+# 10. Set up git hooks path (only if user hasn't already configured a different one,
+# e.g. for husky, pre-commit, or another tool — never silently clobber)
 echo "Configuring git hooks path..."
 mkdir -p "$HOME/.git-hooks"
-git config --global core.hooksPath "$HOME/.git-hooks"
+existing_hookspath=$(git config --global --get core.hooksPath 2>/dev/null || true)
+if [ -z "$existing_hookspath" ] || [ "$existing_hookspath" = "$HOME/.git-hooks" ]; then
+    git config --global core.hooksPath "$HOME/.git-hooks"
+    echo "  Set core.hooksPath = $HOME/.git-hooks"
+else
+    echo "  Skipping core.hooksPath: existing value is '$existing_hookspath' (not overwriting)."
+    echo "  If you want Ckipper's hook isolation, set manually:"
+    echo "    git config --global core.hooksPath \"\$HOME/.git-hooks\""
+fi
 
 # 11. Print summary
 echo ""

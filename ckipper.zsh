@@ -150,52 +150,139 @@ _ckipper_keychain_snapshot() {
         sort -u
 }
 
-# Atomic registry write under flock. $1 = jq filter; remaining args are jq args (e.g. --arg).
+# Cross-platform stat for permissions: BSD (macOS) uses -f, GNU/Linux uses -c.
+_ckipper_stat_perms() {
+    if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
+        stat -f '%Lp' "$1" 2>/dev/null
+    else
+        stat -c '%a' "$1" 2>/dev/null
+    fi
+}
+
+# Cross-platform stat for mtime in seconds since epoch.
+_ckipper_stat_mtime() {
+    if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
+        stat -f '%m' "$1" 2>/dev/null
+    else
+        stat -c '%Y' "$1" 2>/dev/null
+    fi
+}
+
+# Detect running Claude processes that would conflict with destructive operations.
+# Matches: 'claude' CLI (basename), 'Claude' (Claude.app main process). Avoids matching
+# vim files named 'claude-*', tmux sessions, or Claude Helper subprocesses (the parent
+# Claude.app being killed will cascade to those).
+_ckipper_running_claude_processes() {
+    pgrep -lx claude 2>/dev/null
+    pgrep -lx Claude 2>/dev/null
+}
+
+# Refuse with a clear message if any Claude process is running.
+_ckipper_assert_no_running_claude() {
+    local found
+    found=$(_ckipper_running_claude_processes)
+    if [[ -n "$found" ]]; then
+        echo "Error: Claude process(es) detected. Quit them first:" >&2
+        echo "$found" | sed 's/^/  /' >&2
+        echo "(Set CKIPPER_FORCE=1 to bypass this check, but expect inconsistent state.)" >&2
+        if [[ "$CKIPPER_FORCE" == "1" ]]; then
+            echo "CKIPPER_FORCE=1 set — proceeding despite running Claude." >&2
+            return 0
+        fi
+        return 1
+    fi
+    return 0
+}
+
+# Atomic registry write under flock (or mkdir-fallback). $1 = jq filter.
+# Returns 0 on successful jq+write, 1 on jq error or write failure.
+# A jq error() call inside the filter (used for atomic-collision-checks like
+# _ckipper_finalize_registration) propagates as a non-zero exit here.
 _ckipper_registry_update() {
     local jq_filter="$1"; shift
     local lock="$CKIPPER_DIR/.registry.lock"
     mkdir -p "$CKIPPER_DIR"
     : > "$lock"
+    local rc=1
     if command -v flock >/dev/null 2>&1; then
         {
             flock -x 9
             local tmp; tmp=$(mktemp "$CKIPPER_DIR/.registry.tmp.XXXXXX")
-            jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$tmp" && mv "$tmp" "$CKIPPER_REGISTRY"
-            chmod 600 "$CKIPPER_REGISTRY"
+            if jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$tmp" 2>/dev/null; then
+                mv "$tmp" "$CKIPPER_REGISTRY"
+                chmod 600 "$CKIPPER_REGISTRY"
+                rc=0
+            else
+                rm -f "$tmp"
+            fi
         } 9>"$lock"
     else
-        # Fallback for systems without flock (the default on macOS): mkdir-based lock.
-        # Make the cleanup trap function-local so we don't clobber caller-installed
-        # INT/TERM rollback handlers (e.g. _ckipper_migrate). The local EXIT trap
-        # still fires whether the function returns normally or is unwound by signal.
+        # Fallback for systems without flock (the default on macOS): mkdir-based lock,
+        # with stale-lock recovery so a SIGKILL'd ckipper doesn't permanently brick
+        # subsequent invocations.
         setopt local_options local_traps
         local lockdir="$CKIPPER_DIR/.registry.lock.d"
-        until mkdir "$lockdir" 2>/dev/null; do sleep 0.05; done
+        local attempts=0
+        while ! mkdir "$lockdir" 2>/dev/null; do
+            (( attempts++ ))
+            if (( attempts >= 200 )); then  # 10s
+                local lockdir_age now
+                now=$(date +%s)
+                local mtime; mtime=$(_ckipper_stat_mtime "$lockdir")
+                lockdir_age=$(( now - ${mtime:-$now} ))
+                if (( lockdir_age > 30 )); then
+                    echo "Recovering stale registry lock (age ${lockdir_age}s)" >&2
+                    rmdir "$lockdir" 2>/dev/null || rm -rf "$lockdir"
+                    attempts=0
+                    continue
+                fi
+                echo "Registry lock held by another process for ${lockdir_age}s. Try again shortly." >&2
+                return 1
+            fi
+            sleep 0.05
+        done
         trap 'rmdir "$lockdir" 2>/dev/null' EXIT
         local tmp; tmp=$(mktemp "$CKIPPER_DIR/.registry.tmp.XXXXXX")
-        jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$tmp" && mv "$tmp" "$CKIPPER_REGISTRY"
-        chmod 600 "$CKIPPER_REGISTRY"
+        if jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$tmp" 2>/dev/null; then
+            mv "$tmp" "$CKIPPER_REGISTRY"
+            chmod 600 "$CKIPPER_REGISTRY"
+            rc=0
+        else
+            rm -f "$tmp"
+        fi
     fi
+    return $rc
 }
 
-# Initialize an empty registry with version field.
+# Initialize an empty registry with version field. Idempotent under concurrency
+# via atomic create (mv -n) — two concurrent ckipper init's won't clobber each other.
 _ckipper_init_registry() {
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
         mkdir -p "$CKIPPER_DIR"
-        cat > "$CKIPPER_REGISTRY" <<EOF
+        local tmp; tmp=$(mktemp "$CKIPPER_DIR/.registry.init.XXXXXX")
+        cat > "$tmp" <<EOF
 {"version": $CKIPPER_REGISTRY_VERSION, "default": null, "accounts": {}}
 EOF
-        chmod 600 "$CKIPPER_REGISTRY"
+        # mv -n (no-clobber): if another writer beat us, leave their file alone.
+        mv -n "$tmp" "$CKIPPER_REGISTRY" 2>/dev/null || rm -f "$tmp"
+        [[ -f "$CKIPPER_REGISTRY" ]] && chmod 600 "$CKIPPER_REGISTRY"
     fi
 }
 
-# Refuse to operate on a registry whose version we don't understand.
+# Refuse to operate on a registry whose version we don't understand OR whose schema
+# is corrupt (e.g. user manually edited and turned .accounts into an array).
 _ckipper_check_registry_version() {
     [[ ! -f "$CKIPPER_REGISTRY" ]] && return 0
     local v
-    v=$(jq -r '.version // 0' "$CKIPPER_REGISTRY")
+    v=$(jq -r '.version // 0' "$CKIPPER_REGISTRY" 2>/dev/null)
     if (( v != CKIPPER_REGISTRY_VERSION )); then
         echo "Error: registry version $v not supported (this ckipper expects $CKIPPER_REGISTRY_VERSION). Update ckipper or restore from backup." >&2
+        return 1
+    fi
+    if ! jq -e '.accounts | type == "object"' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+        echo "Error: $CKIPPER_REGISTRY is corrupt (.accounts is not an object)." >&2
+        echo "Backup and re-init manually:" >&2
+        echo "  mv $CKIPPER_REGISTRY $CKIPPER_REGISTRY.corrupt-\$(date +%s)" >&2
         return 1
     fi
 }
@@ -326,15 +413,29 @@ _ckipper_finalize_registration() {
 
     _ckipper_init_registry
 
-    _ckipper_registry_update '
-        .accounts[$n] = {config_dir: $d, keychain_service: (if $s == "" then null else $s end), registered_at: $t}
-        | (if .default == null then .default = $n else . end)
-    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"
-
-    # Verify the write actually landed — registry update under chmod -w or other
-    # write failures must propagate so callers (e.g. ckipper migrate) can rollback.
-    if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
-        echo "Error: failed to write account '$name' to registry $CKIPPER_REGISTRY" >&2
+    # Atomic insert under lock: jq errors out if the name OR the config_dir is already
+    # claimed. Replaces the prior pattern of "pre-check + unguarded write" which had
+    # a TOCTOU under concurrent ckipper add invocations.
+    if ! _ckipper_registry_update '
+        if (.accounts | has($n)) then
+            error("ALREADY_REGISTERED")
+        elif ([.accounts[].config_dir] | any(. == $d)) then
+            error("CONFIG_DIR_IN_USE")
+        else
+            .accounts[$n] = {config_dir: $d, keychain_service: (if $s == "" then null else $s end), registered_at: $t}
+            | (if .default == null then .default = $n else . end)
+        end
+    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"; then
+        # The most likely causes are (a) registry write failure (perms/disk),
+        # (b) jq error from one of the assertions above. Distinguish best-effort
+        # by re-checking state.
+        if jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+            echo "Error: account '$name' already exists in registry (race detected)." >&2
+        elif jq -e --arg d "$dir" '[.accounts[].config_dir] | any(. == $d)' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+            echo "Error: config dir '$dir' is already claimed by another registered account." >&2
+        else
+            echo "Error: failed to write account '$name' to registry $CKIPPER_REGISTRY" >&2
+        fi
         return 1
     fi
 
@@ -396,7 +497,9 @@ _ckipper_regenerate_aliases() {
                     echo "claude-$_name() { CLAUDE_CONFIG_DIR=\"$_dir\" command claude \"\$@\"; }"
                 done
         fi
-    } > "$out"
+    } > "$out.tmp"
+    # Atomic install — readers in other shells never see a partial file.
+    mv "$out.tmp" "$out"
     chmod 644 "$out"
 }
 
@@ -532,11 +635,7 @@ _ckipper_rename() {
     fi
 
     # Refuse if any Claude session is running — they'd be writing to old_dir.
-    if pgrep -if 'claude' >/dev/null 2>&1; then
-        echo "Error: a Claude process is currently running. Quit all Claude sessions first." >&2
-        pgrep -ailf 'claude' 2>/dev/null | head -3 >&2
-        return 1
-    fi
+    _ckipper_assert_no_running_claude || return 1
 
     if ! mv "$old_dir" "$new_dir" 2>/dev/null; then
         echo "Error: failed to rename $old_dir → $new_dir." >&2
@@ -627,6 +726,20 @@ _ckipper_sync() {
         mode_settings=1
         [[ -z "$settings_keys" ]] && \
             settings_keys="enabledPlugins,extraKnownMarketplaces,statusLine,env,model"
+    fi
+
+    # If a Claude session is running, sync's writes can race with its writes
+    # to the same .claude.json. Warn (but don't refuse) unless --dry-run.
+    if (( ! dry_run )); then
+        local running_procs
+        running_procs=$(_ckipper_running_claude_processes)
+        if [[ -n "$running_procs" ]]; then
+            echo "Warning: Claude is currently running. If a session uses '$to' or '$from'," >&2
+            echo "sync may race with its writes (Claude doesn't lock these files)." >&2
+            echo "$running_procs" | sed 's/^/  /' >&2
+            read -r "?Continue anyway? [y/N] " ans
+            [[ "$ans" != "y" && "$ans" != "Y" ]] && { echo "Aborted."; return 1; }
+        fi
     fi
 
     local pending_msgs=()
@@ -737,12 +850,18 @@ _ckipper_doctor() {
     local v; v=$(jq -r '.version // 0' "$CKIPPER_REGISTRY" 2>/dev/null)
     if [[ "$v" == "$CKIPPER_REGISTRY_VERSION" ]]; then check PASS "registry version $v matches expected"
     else check FAIL "registry version $v != expected $CKIPPER_REGISTRY_VERSION"; fi
-    local perms; perms=$(stat -f '%Lp' "$CKIPPER_REGISTRY" 2>/dev/null)
+    local perms; perms=$(_ckipper_stat_perms "$CKIPPER_REGISTRY")
     if [[ "$perms" == "600" ]]; then check PASS "registry permissions 600"
     else check WARN "registry permissions $perms (expected 600)"; fi
 
     local default_acc; default_acc=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
-    [[ -n "$default_acc" ]] && check INFO "default account: $default_acc" || check WARN "no default account set — w/ckipper-add will require --account"
+    if [[ -z "$default_acc" ]]; then
+        check WARN "no default account set — w/ckipper-add will require --account"
+    elif jq -e --arg n "$default_acc" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+        check INFO "default account: $default_acc"
+    else
+        check FAIL "default account '$default_acc' is NOT in registry — fix with: ckipper default <existing-account>"
+    fi
 
     echo ""
     echo "── Per-account state ────────────────────────────────"
@@ -823,14 +942,7 @@ _ckipper_migrate() {
     local legacy_claude="$HOME/.claude"
 
     # ── Precondition 1: no Claude process running ─────────────────
-    # Match (a) Claude.app GUI process names, (b) bare 'claude' CLI invocation
-    # (no trailing args), (c) 'claude <args>'. Case-insensitive to catch all forms.
-    if pgrep -if 'claude' >/dev/null 2>&1; then
-        echo "Error: a Claude process is currently running. Quit all Claude sessions first." >&2
-        echo "Detected:" >&2
-        pgrep -ailf 'claude' 2>/dev/null | head -3 >&2
-        return 1
-    fi
+    _ckipper_assert_no_running_claude || return 1
 
     # ── Precondition 2: ~/.claude must NOT be a symlink ──────────
     # Some users symlink ~/.claude to a synced location. Renaming a symlink
@@ -839,6 +951,18 @@ _ckipper_migrate() {
         local target; target=$(readlink "$legacy_claude")
         echo "Error: $legacy_claude is a symlink (→ $target). Refusing to migrate." >&2
         echo "Resolve manually: replace the symlink with the actual directory contents," >&2
+        echo "or migrate the target directly." >&2
+        return 1
+    fi
+
+    # ── Precondition 3: ~/.claude.json must NOT be a symlink ──────
+    # Same reasoning — Dropbox/iCloud users symlink this for cross-machine sync.
+    # mv on a symlink moves the link itself, breaking the sync target.
+    local legacy_homejson_check="$HOME/.claude.json"
+    if [[ -L "$legacy_homejson_check" ]]; then
+        local target; target=$(readlink "$legacy_homejson_check")
+        echo "Error: $legacy_homejson_check is a symlink (→ $target). Refusing to migrate." >&2
+        echo "Resolve manually: replace the symlink with the actual file contents," >&2
         echo "or migrate the target directly." >&2
         return 1
     fi
@@ -967,12 +1091,17 @@ EOF
                         --arg n "$name"
                     echo "Cleaned partial '$name' entry from $CKIPPER_REGISTRY." >&2
                 fi
+                # Regenerate aliases.zsh so it reflects the post-rollback registry
+                # (otherwise it would still define claude-<name>() pointing into a
+                # dir that no longer exists).
+                _ckipper_regenerate_aliases 2>/dev/null || true
             }
-            trap '_ckipper_migrate_rollback interrupted; trap - INT TERM ERR; return 130' INT TERM
+            # HUP catches Terminal.app window-close mid-migrate; QUIT catches Ctrl-\.
+            trap '_ckipper_migrate_rollback interrupted; trap - INT TERM HUP QUIT ERR; return 130' INT TERM HUP QUIT
 
             # Step 1: rename ~/.claude → ~/.claude-<name>
             if ! mv "$legacy_claude" "$target_dir" 2>/dev/null; then
-                trap - INT TERM
+                trap - INT TERM HUP QUIT
                 echo "Error: failed to rename $legacy_claude → $target_dir" >&2
                 echo "(Check permissions on $HOME and that no process holds the directory open.)" >&2
                 return 1
@@ -990,7 +1119,7 @@ EOF
                 fi
                 if ! mv "$legacy_homejson" "$target_dir/.claude.json" 2>/dev/null; then
                     _ckipper_migrate_rollback failed
-                    trap - INT TERM
+                    trap - INT TERM HUP QUIT
                     echo "Error: failed to move $legacy_homejson → $target_dir/.claude.json" >&2
                     return 1
                 fi
@@ -999,10 +1128,10 @@ EOF
 
             if ! _ckipper_finalize_registration "$name" "$target_dir" "$probed_service" "migrate"; then
                 _ckipper_migrate_rollback failed
-                trap - INT TERM
+                trap - INT TERM HUP QUIT
                 return 1
             fi
-            trap - INT TERM
+            trap - INT TERM HUP QUIT
             unset -f _ckipper_migrate_rollback
         fi
     fi
@@ -1041,3 +1170,6 @@ To launch Claude with your migrated account, use:  claude-$registered_name
 EOF
     fi
 }
+
+# Short alias: 'ck' for 'ckipper'.
+ck() { ckipper "$@"; }
