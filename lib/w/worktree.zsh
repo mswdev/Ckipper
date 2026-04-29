@@ -21,7 +21,7 @@ _w_list_worktrees() {
             [[ "$after_first" == "$rel" ]] && continue
 
             local branch
-            _w_get_project_and_branch "$project" "$after_first" project branch
+            IFS=$'\t' read -r project branch < <(_w_get_project_and_branch "$project" "$after_first")
 
             if [[ "$project" != "$previous_project_for_grouping" ]]; then
                 previous_project_for_grouping="$project"
@@ -31,30 +31,27 @@ _w_list_worktrees() {
         done
 }
 
-# Set the caller's project and branch variables from path components.
+# Resolve project and branch from path components for nested-project worktrees.
 #
 # Args:
 #   $1 — initial project name (first path component)
 #   $2 — path after the first component
-#   $3 — variable name to receive the resolved project
-#   $4 — variable name to receive the resolved branch
 #
-# Returns: 0 always.
+# Returns: 0 always. Prints "<project>\t<branch>" (tab-separated) to stdout.
+#
+# Caller usage:
+#   IFS=$'\t' read -r project branch < <(_w_get_project_and_branch "$proj" "$rest")
 _w_get_project_and_branch() {
     local initial_project="$1"
     local after_first="$2"
-    local out_project_var="$3"
-    local out_branch_var="$4"
 
     local second="${after_first%%/*}"
     local rest="${after_first#*/}"
 
     if [[ -d "$W_PROJECTS_DIR/$initial_project/$second/.git" ]]; then
-        eval "$out_project_var=\"$initial_project/$second\""
-        eval "$out_branch_var=\"$rest\""
+        printf '%s\t%s' "$initial_project/$second" "$rest"
     else
-        eval "$out_project_var=\"$initial_project\""
-        eval "$out_branch_var=\"$after_first\""
+        printf '%s\t%s' "$initial_project" "$after_first"
     fi
 }
 
