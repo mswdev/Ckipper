@@ -81,7 +81,11 @@ run_helper() {
     printf '{"mcpServers":{}}' > "$to_dir/.claude.json"
 
     run_helper 'pending_msgs=()
-        _ckipper_sync_mcp_servers "'"$from_dir"'" "dst" "'"$to_dir"'" "" "0"
+        typeset -gA _CKIPPER_SYNC_CTX
+        _CKIPPER_SYNC_CTX[from_dir]="'"$from_dir"'"
+        _CKIPPER_SYNC_CTX[to_dir]="'"$to_dir"'"
+        _CKIPPER_SYNC_CTX[dry_run]="0"
+        _ckipper_sync_mcp_servers "dst" ""
         echo "${pending_msgs[@]}"'
 
     [ "$status" -eq 0 ]
@@ -101,7 +105,11 @@ run_helper() {
     local before_dst; before_dst=$(cat "$to_dir/.claude.json")
 
     run_helper 'pending_msgs=()
-        _ckipper_sync_mcp_servers "'"$from_dir"'" "dst" "'"$to_dir"'" "" "1"'
+        typeset -gA _CKIPPER_SYNC_CTX
+        _CKIPPER_SYNC_CTX[from_dir]="'"$from_dir"'"
+        _CKIPPER_SYNC_CTX[to_dir]="'"$to_dir"'"
+        _CKIPPER_SYNC_CTX[dry_run]="1"
+        _ckipper_sync_mcp_servers "dst" ""'
 
     [ "$status" -eq 0 ]
     # Destination must be unchanged in dry-run mode.
@@ -120,7 +128,11 @@ run_helper() {
     printf '{}' > "$to_dir/settings.json"
 
     run_helper 'pending_msgs=()
-        _ckipper_sync_settings_keys "src" "'"$from_dir"'" "dst" "'"$to_dir"'" "model,enabledPlugins" "0"'
+        typeset -gA _CKIPPER_SYNC_CTX
+        _CKIPPER_SYNC_CTX[from_dir]="'"$from_dir"'"
+        _CKIPPER_SYNC_CTX[to_dir]="'"$to_dir"'"
+        _CKIPPER_SYNC_CTX[dry_run]="0"
+        _ckipper_sync_settings_keys "src" "dst" "model,enabledPlugins"'
 
     [ "$status" -eq 0 ]
     local dst; dst=$(cat "$to_dir/settings.json")
@@ -140,7 +152,11 @@ run_helper() {
     local before_dst; before_dst=$(cat "$to_dir/settings.json")
 
     run_helper 'pending_msgs=()
-        _ckipper_sync_settings_keys "src" "'"$from_dir"'" "dst" "'"$to_dir"'" "model" "1"'
+        typeset -gA _CKIPPER_SYNC_CTX
+        _CKIPPER_SYNC_CTX[from_dir]="'"$from_dir"'"
+        _CKIPPER_SYNC_CTX[to_dir]="'"$to_dir"'"
+        _CKIPPER_SYNC_CTX[dry_run]="1"
+        _ckipper_sync_settings_keys "src" "dst" "model"'
 
     [ "$status" -eq 0 ]
     local after_dst; after_dst=$(cat "$to_dir/settings.json")

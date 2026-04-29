@@ -1,6 +1,11 @@
 #!/usr/bin/env zsh
 # Account settings sync subcommand: sync MCP servers and settings.json keys between accounts.
 
+# Module-level context for the in-progress sync operation.
+# Populated by _ckipper_sync before any helper reads it.
+# Fields: from_dir, to_dir, dry_run
+typeset -gA _CKIPPER_SYNC_CTX
+
 # Parse sync subcommand flags into named variables in the caller's scope.
 # Populates: mode_mcp, mcp_names, mode_settings, settings_keys, dry_run, mode_all.
 #
@@ -60,18 +65,19 @@ _ckipper_sync_warn_running_claude() {
 }
 
 # Sync MCP servers from one account to another. Appends a summary line to pending_msgs.
+# Reads from_dir, to_dir, and dry_run from _CKIPPER_SYNC_CTX module global.
 #
 # Args:
-#   $1 — from account config directory
-#   $2 — to account name (for message)
-#   $3 — to account config directory
-#   $4 — comma-separated MCP server names to sync (empty = all)
-#   $5 — dry_run flag (1 = dry run, 0 = write)
+#   $1 — to account name (for message)
+#   $2 — comma-separated MCP server names to sync (empty = all)
 #
 # Returns:
 #   0 always.
 _ckipper_sync_mcp_servers() {
-    local from_dir="$1" to="$2" to_dir="$3" mcp_names="$4" dry_run="$5"
+    local to="$1" mcp_names="$2"
+    local from_dir="${_CKIPPER_SYNC_CTX[from_dir]}"
+    local to_dir="${_CKIPPER_SYNC_CTX[to_dir]}"
+    local dry_run="${_CKIPPER_SYNC_CTX[dry_run]}"
     local mcp_filter
     if [[ -z "$mcp_names" ]]; then
         mcp_filter='.mcpServers // {}'
@@ -94,19 +100,20 @@ _ckipper_sync_mcp_servers() {
 }
 
 # Sync settings.json keys from one account to another. Appends summary line to pending_msgs.
+# Reads from_dir, to_dir, and dry_run from _CKIPPER_SYNC_CTX module global.
 #
 # Args:
 #   $1 — from account name (for message)
-#   $2 — from account config directory
-#   $3 — to account name (for message)
-#   $4 — to account config directory
-#   $5 — comma-separated settings keys to sync
-#   $6 — dry_run flag (1 = dry run, 0 = write)
+#   $2 — to account name (for message)
+#   $3 — comma-separated settings keys to sync
 #
 # Returns:
 #   0 always.
 _ckipper_sync_settings_keys() {
-    local from="$1" from_dir="$2" to="$3" to_dir="$4" settings_keys="$5" dry_run="$6"
+    local from="$1" to="$2" settings_keys="$3"
+    local from_dir="${_CKIPPER_SYNC_CTX[from_dir]}"
+    local to_dir="${_CKIPPER_SYNC_CTX[to_dir]}"
+    local dry_run="${_CKIPPER_SYNC_CTX[dry_run]}"
     if [[ ! -f "$from_dir/settings.json" ]]; then
         pending_msgs+=("Settings: $from has no settings.json (skipping)")
         return 0
@@ -204,10 +211,13 @@ _ckipper_sync() {
     if (( ! dry_run )); then
         _ckipper_sync_warn_running_claude "$from" "$to" || return 1
     fi
+    _CKIPPER_SYNC_CTX[from_dir]="$from_dir"
+    _CKIPPER_SYNC_CTX[to_dir]="$to_dir"
+    _CKIPPER_SYNC_CTX[dry_run]="$dry_run"
     local pending_msgs=()
     (( mode_mcp )) && \
-        _ckipper_sync_mcp_servers "$from_dir" "$to" "$to_dir" "$mcp_names" "$dry_run"
+        _ckipper_sync_mcp_servers "$to" "$mcp_names"
     (( mode_settings && ${#settings_keys} > 0 )) && \
-        _ckipper_sync_settings_keys "$from" "$from_dir" "$to" "$to_dir" "$settings_keys" "$dry_run"
+        _ckipper_sync_settings_keys "$from" "$to" "$settings_keys"
     _ckipper_sync_print_summary "$to" "$dry_run"
 }

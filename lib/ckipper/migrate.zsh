@@ -5,6 +5,11 @@
 typeset -g _CKIPPER_MIGRATE_STEP=0
 typeset -g _CKIPPER_MIGRATE_BACKUP=""
 
+# Module-level context for the in-progress migration.
+# Populated by _ckipper_migrate before any helper reads it.
+# Fields: name, target_dir, legacy_claude, legacy_homejson, probed_service
+typeset -gA _CKIPPER_MIGRATE_CTX
+
 # Check preconditions for migration: no running Claude, no symlinks at key paths.
 #
 # Args:
@@ -83,17 +88,15 @@ _ckipper_migrate_prompt_account_name() {
 }
 
 # Display the migration plan and prompt for user confirmation.
-#
-# Args:
-#   $1 — legacy_claude path
-#   $2 — legacy home json path
-#   $3 — target directory
-#   $4 — account name
+# Reads legacy_claude, legacy_homejson, target_dir, and name from _CKIPPER_MIGRATE_CTX.
 #
 # Returns:
 #   0 if user confirms; 1 if user aborts.
 _ckipper_migrate_confirm_plan() {
-    local legacy_claude="$1" legacy_homejson="$2" target_dir="$3" name="$4"
+    local legacy_claude="${_CKIPPER_MIGRATE_CTX[legacy_claude]}"
+    local legacy_homejson="${_CKIPPER_MIGRATE_CTX[legacy_homejson]}"
+    local target_dir="${_CKIPPER_MIGRATE_CTX[target_dir]}"
+    local name="${_CKIPPER_MIGRATE_CTX[name]}"
     cat <<EOF
 
 Detected existing $legacy_claude with login credentials.
@@ -270,26 +273,31 @@ _ckipper_migrate() {
     (( state_rc == 2 )) && { _ckipper_migrate_finalize; return 0; }
     local name; name=$(_ckipper_migrate_prompt_account_name)
     local target_dir="$HOME/.claude-$name"
-    _ckipper_migrate_confirm_plan "$legacy_claude" "$legacy_homejson" "$target_dir" "$name" || return 1
+    _CKIPPER_MIGRATE_CTX[name]="$name"
+    _CKIPPER_MIGRATE_CTX[target_dir]="$target_dir"
+    _CKIPPER_MIGRATE_CTX[legacy_claude]="$legacy_claude"
+    _CKIPPER_MIGRATE_CTX[legacy_homejson]="$legacy_homejson"
+    _ckipper_migrate_confirm_plan || return 1
     local probed_service
     probed_service=$(_ckipper_migrate_detect_keychain) || return 1
-    _ckipper_migrate_run "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" "$probed_service"
+    _CKIPPER_MIGRATE_CTX[probed_service]="$probed_service"
+    _ckipper_migrate_run
 }
 
 # Undo destructive migration steps on failure or interruption.
-# Reads _CKIPPER_MIGRATE_STEP and _CKIPPER_MIGRATE_BACKUP module globals.
+# Reads _CKIPPER_MIGRATE_STEP, _CKIPPER_MIGRATE_BACKUP, and _CKIPPER_MIGRATE_CTX module globals.
 #
 # Args:
-#   $1 — account name
-#   $2 — target directory
-#   $3 — legacy_claude path
-#   $4 — legacy home json path
-#   $5 — reason label (e.g. "failed", "interrupted")
+#   $1 — reason label (e.g. "failed", "interrupted"); defaults to "rollback"
 #
 # Returns:
 #   0 always.
 _ckipper_migrate_rollback() {
-    local name="$1" target_dir="$2" legacy_claude="$3" legacy_homejson="$4" why="${5:-rollback}"
+    local why="${1:-rollback}"
+    local name="${_CKIPPER_MIGRATE_CTX[name]}"
+    local target_dir="${_CKIPPER_MIGRATE_CTX[target_dir]}"
+    local legacy_claude="${_CKIPPER_MIGRATE_CTX[legacy_claude]}"
+    local legacy_homejson="${_CKIPPER_MIGRATE_CTX[legacy_homejson]}"
     if (( _CKIPPER_MIGRATE_STEP >= 2 )) && [[ -f "$target_dir/.claude.json" && ! -e "$legacy_homejson" ]]; then
         mv "$target_dir/.claude.json" "$legacy_homejson" 2>/dev/null
         [[ -n "$_CKIPPER_MIGRATE_BACKUP" && -f "$_CKIPPER_MIGRATE_BACKUP" ]] && \
@@ -310,22 +318,15 @@ _ckipper_migrate_rollback() {
 }
 
 # Run the destructive migration steps with rollback on failure or interruption.
-#
-# Args:
-#   $1 — account name
-#   $2 — target directory
-#   $3 — legacy_claude path
-#   $4 — legacy home json path
-#   $5 — probed keychain service (may be empty)
+# Reads all context from _CKIPPER_MIGRATE_CTX module global.
 #
 # Returns:
 #   0 on success; 1 on failure (rollback applied).
 _ckipper_migrate_run() {
-    local name="$1" target_dir="$2" legacy_claude="$3" legacy_homejson="$4" probed_service="$5"
     _CKIPPER_MIGRATE_STEP=0
     _CKIPPER_MIGRATE_BACKUP=""
-    trap '_ckipper_migrate_rollback "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" interrupted; trap - INT TERM HUP QUIT; return 130' INT TERM HUP QUIT
-    _ckipper_migrate_run_steps "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" "$probed_service"
+    trap '_ckipper_migrate_rollback interrupted; trap - INT TERM HUP QUIT; return 130' INT TERM HUP QUIT
+    _ckipper_migrate_run_steps
     local run_rc=$?
     trap - INT TERM HUP QUIT
     (( run_rc == 0 )) && _ckipper_migrate_finalize
@@ -333,25 +334,26 @@ _ckipper_migrate_run() {
 }
 
 # Execute the actual migration rename and register steps (called from _ckipper_migrate_run).
-#
-# Args:
-#   $1 — account name
-#   $2 — target directory
-#   $3 — legacy_claude path
-#   $4 — legacy home json path
-#   $5 — probed keychain service (may be empty)
+# Reads all context from _CKIPPER_MIGRATE_CTX module global.
 #
 # Returns:
 #   0 on success; 1 on failure (_ckipper_migrate_rollback should be called by caller).
 _ckipper_migrate_run_steps() {
-    local name="$1" target_dir="$2" legacy_claude="$3" legacy_homejson="$4" probed_service="$5"
+    local name="${_CKIPPER_MIGRATE_CTX[name]}"
+    local target_dir="${_CKIPPER_MIGRATE_CTX[target_dir]}"
+    local legacy_claude="${_CKIPPER_MIGRATE_CTX[legacy_claude]}"
+    local legacy_homejson="${_CKIPPER_MIGRATE_CTX[legacy_homejson]}"
+    local probed_service="${_CKIPPER_MIGRATE_CTX[probed_service]}"
     _ckipper_migrate_rename_dirs "$legacy_claude" "$legacy_homejson" "$target_dir" || {
-        _ckipper_migrate_rollback "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" failed
+        _ckipper_migrate_rollback failed
         return 1
     }
     _ckipper_rewrite_plugin_paths "$legacy_claude/" "$target_dir/"
-    if ! _ckipper_finalize_registration "$name" "$target_dir" "$probed_service" "migrate"; then
-        _ckipper_migrate_rollback "$name" "$target_dir" "$legacy_claude" "$legacy_homejson" failed
+    _CKIPPER_FINALIZE_CTX[name]="$name"
+    _CKIPPER_FINALIZE_CTX[dir]="$target_dir"
+    _CKIPPER_FINALIZE_CTX[service]="$probed_service"
+    if ! _ckipper_finalize_registration "migrate"; then
+        _ckipper_migrate_rollback failed
         return 1
     fi
 }

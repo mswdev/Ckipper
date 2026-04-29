@@ -1,6 +1,16 @@
 #!/usr/bin/env zsh
 # Account lifecycle subcommands: add, finalize_registration, remove, rename, list, default, bare_alias_safe.
 
+# Module-level context for the in-progress registration.
+# Populated by callers before invoking _ckipper_finalize_registration.
+# Fields: name, dir, service
+typeset -gA _CKIPPER_FINALIZE_CTX
+
+# Module-level context for the in-progress rename.
+# Populated by _ckipper_rename before invoking _ckipper_rename_perform.
+# Fields: old_dir, new_dir
+typeset -gA _CKIPPER_RENAME_CTX
+
 # Validate the account name and --adopt flag from `ckipper add` arguments.
 # Prints error messages to stdout and returns non-zero on failure.
 #
@@ -44,7 +54,10 @@ _ckipper_add_adopt_flow() {
     if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
         _ckipper_add_pick_keychain_entry "$name" picked || return 1
     fi
-    _ckipper_finalize_registration "$name" "$dir" "$picked" "adopt"
+    _CKIPPER_FINALIZE_CTX[name]="$name"
+    _CKIPPER_FINALIZE_CTX[dir]="$dir"
+    _CKIPPER_FINALIZE_CTX[service]="$picked"
+    _ckipper_finalize_registration "adopt"
 }
 
 # Prompt the user to pick a Keychain entry from the available candidates.
@@ -103,7 +116,10 @@ _ckipper_add_fresh_flow() {
         <(printf '%s\n' "$before_snapshot") \
         <(printf '%s\n' "$after_snapshot") | head -1)
     _ckipper_add_check_credentials "$name" "$dir" "$new_service" || return 1
-    _ckipper_finalize_registration "$name" "$dir" "$new_service" "fresh"
+    _CKIPPER_FINALIZE_CTX[name]="$name"
+    _CKIPPER_FINALIZE_CTX[dir]="$dir"
+    _CKIPPER_FINALIZE_CTX[service]="$new_service"
+    _ckipper_finalize_registration "fresh"
 }
 
 # Display the fresh-add instructions, prompt for confirmation, and launch Claude.
@@ -194,17 +210,18 @@ _ckipper_add() {
 
 # Write the account entry to the registry and regenerate aliases atomically.
 # On collision, diagnoses the cause and prints an appropriate error.
+# Reads name, dir, and service from _CKIPPER_FINALIZE_CTX module global.
 #
 # Args:
-#   $1 — account name
-#   $2 — account config directory
-#   $3 — keychain service name (may be empty)
-#   $4 — registration mode: "fresh", "adopt", or "migrate"
+#   $1 — registration mode: "fresh", "adopt", or "migrate"
 #
 # Returns:
 #   0 on success; 1 on registry collision or write failure.
 _ckipper_finalize_registration() {
-    local name="$1" dir="$2" service="$3" mode="$4"
+    local mode="$1"
+    local name="${_CKIPPER_FINALIZE_CTX[name]}"
+    local dir="${_CKIPPER_FINALIZE_CTX[dir]}"
+    local service="${_CKIPPER_FINALIZE_CTX[service]}"
     local now; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     _core_registry_init
     if ! _core_registry_update '
@@ -395,17 +412,18 @@ _ckipper_rename_validate() {
 
 # Perform the directory move and registry update for `ckipper rename`.
 # Rolls back the directory rename if the registry write fails.
+# Reads old_dir and new_dir from _CKIPPER_RENAME_CTX module global.
 #
 # Args:
 #   $1 — old account name
 #   $2 — new account name
-#   $3 — old config directory path
-#   $4 — new config directory path
 #
 # Returns:
 #   0 on success; 1 on directory move or registry write failure.
 _ckipper_rename_perform() {
-    local old="$1" new="$2" old_dir="$3" new_dir="$4"
+    local old="$1" new="$2"
+    local old_dir="${_CKIPPER_RENAME_CTX[old_dir]}"
+    local new_dir="${_CKIPPER_RENAME_CTX[new_dir]}"
     if [[ -e "$new_dir" ]]; then
         echo "Error: $new_dir already exists. Pick a different name or remove it first."
         return 1
@@ -446,7 +464,9 @@ _ckipper_rename() {
     local old_dir new_dir
     old_dir=$(jq -r --arg n "$old" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
     new_dir="$HOME/.claude-$new"
-    _ckipper_rename_perform "$old" "$new" "$old_dir" "$new_dir" || return 1
+    _CKIPPER_RENAME_CTX[old_dir]="$old_dir"
+    _CKIPPER_RENAME_CTX[new_dir]="$new_dir"
+    _ckipper_rename_perform "$old" "$new" || return 1
     # Drop old-name launcher functions from the calling shell.
     unset -f "claude-$old" 2>/dev/null
     unset -f "$old" 2>/dev/null

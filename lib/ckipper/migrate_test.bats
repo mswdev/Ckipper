@@ -113,7 +113,12 @@ run_helper() {
     mkdir -p "$target_dir"
 
     run_helper "_CKIPPER_MIGRATE_STEP=1; _CKIPPER_MIGRATE_BACKUP=\"\"
-        _ckipper_migrate_rollback \"personal\" \"$target_dir\" \"$legacy_dir\" \"$TMP_HOME/.claude.json\" \"failed\""
+        typeset -gA _CKIPPER_MIGRATE_CTX
+        _CKIPPER_MIGRATE_CTX[name]=\"personal\"
+        _CKIPPER_MIGRATE_CTX[target_dir]=\"$target_dir\"
+        _CKIPPER_MIGRATE_CTX[legacy_claude]=\"$legacy_dir\"
+        _CKIPPER_MIGRATE_CTX[legacy_homejson]=\"$TMP_HOME/.claude.json\"
+        _ckipper_migrate_rollback \"failed\""
 
     [ "$status" -eq 0 ]
     # The target dir should be moved back to the legacy location.
@@ -128,13 +133,23 @@ run_helper() {
 
     # First rollback — restores legacy dir.
     run_helper "_CKIPPER_MIGRATE_STEP=1; _CKIPPER_MIGRATE_BACKUP=\"\"
-        _ckipper_migrate_rollback \"personal\" \"$target_dir\" \"$legacy_dir\" \"$TMP_HOME/.claude.json\" \"failed\""
+        typeset -gA _CKIPPER_MIGRATE_CTX
+        _CKIPPER_MIGRATE_CTX[name]=\"personal\"
+        _CKIPPER_MIGRATE_CTX[target_dir]=\"$target_dir\"
+        _CKIPPER_MIGRATE_CTX[legacy_claude]=\"$legacy_dir\"
+        _CKIPPER_MIGRATE_CTX[legacy_homejson]=\"$TMP_HOME/.claude.json\"
+        _ckipper_migrate_rollback \"failed\""
     [ "$status" -eq 0 ]
     [ -d "$legacy_dir" ]
 
     # Second rollback — target_dir no longer exists, so no move happens; legacy_dir stays.
     run_helper "_CKIPPER_MIGRATE_STEP=1; _CKIPPER_MIGRATE_BACKUP=\"\"
-        _ckipper_migrate_rollback \"personal\" \"$target_dir\" \"$legacy_dir\" \"$TMP_HOME/.claude.json\" \"failed\""
+        typeset -gA _CKIPPER_MIGRATE_CTX
+        _CKIPPER_MIGRATE_CTX[name]=\"personal\"
+        _CKIPPER_MIGRATE_CTX[target_dir]=\"$target_dir\"
+        _CKIPPER_MIGRATE_CTX[legacy_claude]=\"$legacy_dir\"
+        _CKIPPER_MIGRATE_CTX[legacy_homejson]=\"$TMP_HOME/.claude.json\"
+        _ckipper_migrate_rollback \"failed\""
     [ "$status" -eq 0 ]
     [ -d "$legacy_dir" ]
 }
