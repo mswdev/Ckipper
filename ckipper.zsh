@@ -39,8 +39,9 @@ Usage:
   ckipper doctor              Diagnostic check of registered accounts and tooling
 
 Companion commands (sourced via aliases.zsh):
-  cca <name> [args...]        Run claude with account <name> (one-off)
-  claude-<name> [args...]     Auto-generated alias per registered account
+  claude-<name> [args...]     Auto-generated launcher per registered account
+  <name> [args...]            Bare-name shortcut (skipped if it would shadow an
+                              existing command, builtin, alias, or reserved word)
 
 Run `ckipper <subcommand> --help` for per-subcommand details.
 EOF
@@ -443,7 +444,22 @@ _ckipper_finalize_registration() {
     _ckipper_sync_hooks_for "$name"
 
     echo "Registered '$name' (mode: $mode)."
-    echo "Use it via: claude-$name   or   cca $name"
+    if _ckipper_bare_alias_safe "$name"; then
+        echo "Use it via: claude-$name   (or just: $name)"
+    else
+        echo "Use it via: claude-$name"
+    fi
+}
+
+# Returns 0 if $1 is safe to use as a bare-alias function name (no clash with
+# any existing PATH command, shell builtin, alias, or reserved word). Existing
+# shell *functions* are not a clash — we expect to redefine those.
+_ckipper_bare_alias_safe() {
+    local n="$1"
+    (( ${+commands[$n]} || ${+builtins[$n]} || ${+aliases[$n]} )) && return 1
+    local what; what=$(whence -w "$n" 2>/dev/null | awk '{print $2}')
+    [[ "$what" == "reserved" ]] && return 1
+    return 0
 }
 
 _ckipper_regenerate_aliases() {
@@ -455,15 +471,6 @@ _ckipper_regenerate_aliases() {
         echo "# Regenerated whenever an account is added or removed."
         echo ""
         echo "_CKIPPER_REGISTRY=\"\${CKIPPER_DIR:-\$HOME/.ckipper}/accounts.json\""
-        echo ""
-        echo "cca() {"
-        echo "    local name=\"\$1\"; shift"
-        echo "    if [[ -z \"\$name\" ]]; then echo \"Usage: cca <name> [args...]\"; return 1; fi"
-        echo "    local dir"
-        echo "    dir=\$(jq -r --arg n \"\$name\" '.accounts[\$n].config_dir // empty' \"\$_CKIPPER_REGISTRY\" 2>/dev/null)"
-        echo "    if [[ -z \"\$dir\" ]]; then echo \"Unknown account: \$name. Run: ckipper list\"; return 1; fi"
-        echo "    CLAUDE_CONFIG_DIR=\"\$dir\" command claude \"\$@\""
-        echo "}"
         echo ""
         # Guard: bare 'claude' would default to ~/.claude/ and write to the unsuffixed
         # 'Claude Code-credentials' Keychain entry — which is the SAME entry the
@@ -480,7 +487,7 @@ _ckipper_regenerate_aliases() {
         echo "        echo \"/login here would silently overwrite those credentials.\" >&2"
         echo "        echo \"\" >&2"
         echo "        if [[ -n \"\$default\" ]]; then"
-        echo "            echo \"Use:  claude-\$default   (or: cca \$default)\" >&2"
+        echo "            echo \"Use:  claude-\$default\" >&2"
         echo "        else"
         echo "            echo \"Set a default first: ckipper default <name>, then use claude-<name>.\" >&2"
         echo "        fi"
@@ -495,12 +502,26 @@ _ckipper_regenerate_aliases() {
             jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)"' "$CKIPPER_REGISTRY" | \
                 while IFS=$'\t' read -r _name _dir; do
                     echo "claude-$_name() { CLAUDE_CONFIG_DIR=\"$_dir\" command claude \"\$@\"; }"
+                    # Bare-name shortcut: also generate `<name>` so users can
+                    # type the account name directly. Skip if it would shadow
+                    # a real binary, builtin, alias, or reserved word.
+                    if _ckipper_bare_alias_safe "$_name"; then
+                        echo "$_name() { CLAUDE_CONFIG_DIR=\"$_dir\" command claude \"\$@\"; }"
+                    else
+                        echo "# Bare-name alias '$_name' skipped (would shadow existing command)."
+                    fi
                 done
         fi
     } > "$out.tmp"
     # Atomic install — readers in other shells never see a partial file.
     mv "$out.tmp" "$out"
     chmod 644 "$out"
+
+    # Re-source in the calling shell so newly-registered accounts are usable
+    # immediately without the user having to `exec zsh`. Function definitions
+    # from a sourced file are global by default in zsh, so this works even
+    # though we're sourcing inside a function.
+    source "$out"
 }
 
 _ckipper_sync_hooks_for() {
@@ -563,7 +584,8 @@ _ckipper_list() {
     echo ""
     echo "* = default. Run: ckipper default <name>"
     echo ""
-    echo "Reminder: do not run the same account in two sessions concurrently — see #24317."
+    echo "Tip: don't run the same account in two terminals at once — Claude's OAuth refresh"
+    echo "is single-use, so the second session gets logged out. Use a different account instead."
 }
 _ckipper_default() {
     _ckipper_check_registry_version || return 1
@@ -588,6 +610,10 @@ _ckipper_remove() {
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
     local service; service=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
     _ckipper_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"
+    # Drop the now-stale launcher functions from the calling shell (regenerate
+    # only redefines what's still in the registry; it can't unset removed entries).
+    unset -f "claude-$name" 2>/dev/null
+    unset -f "$name" 2>/dev/null
     _ckipper_regenerate_aliases
     echo "Unregistered '$name'."
     echo ""
@@ -654,14 +680,19 @@ _ckipper_rename() {
         return 1
     fi
 
+    # Drop old-name launcher functions from the calling shell.
+    unset -f "claude-$old" 2>/dev/null
+    unset -f "$old" 2>/dev/null
     _ckipper_regenerate_aliases
     _ckipper_sync_hooks_for "$new"   # rewrite per-account settings.json hook paths to the new dir
 
     echo "Renamed '$old' → '$new'."
     echo "Directory:    $old_dir → $new_dir"
-    echo "Use:          claude-$new   (or: cca $new)"
-    echo ""
-    echo "Restart your shell (exec zsh) so aliases.zsh picks up the new function name."
+    if _ckipper_bare_alias_safe "$new"; then
+        echo "Use:          claude-$new   (or just: $new)"
+    else
+        echo "Use:          claude-$new"
+    fi
 }
 
 # Validates that an account exists in the registry. Echoes its config_dir on success.

@@ -64,13 +64,13 @@ ckipper add work
 
 ### Use an account
 
-Three ways:
-
 ```bash
-claude-work                                  # auto-generated alias (preferred)
-cca work                                     # one-off dispatcher (claude-config-as)
+claude-work                                  # auto-generated launcher
+work                                         # bare-name shortcut (skipped if it would shadow an existing command)
 CLAUDE_CONFIG_DIR=~/.claude-work claude      # raw form
 ```
+
+`ckipper add` re-sources `aliases.zsh` in your current shell, so new launchers are usable immediately — no `exec zsh`.
 
 ### Inside Docker
 
@@ -92,7 +92,7 @@ ckipper remove old-account
 
 - Per-account state lives in `~/.claude-<name>/` (analogous to the legacy `~/.claude/`).
 - The registry mapping accounts to dirs and Keychain services lives at `~/.ckipper/accounts.json` (chmod 600, atomic writes via `flock`).
-- Auto-generated `~/.ckipper/aliases.zsh` defines `cca` and one `claude-<name>` function per registered account.
+- Auto-generated `~/.ckipper/aliases.zsh` defines `claude-<name>` (and a bare `<name>` shortcut, when it doesn't shadow an existing command) per registered account.
 - Hooks under `~/.ckipper/hooks/` are the canonical source — `ckipper sync-hooks` copies them per-account and rewrites `settings.json` paths.
 
 ## ⚠️ Don't run the same account in two sessions

@@ -24,7 +24,7 @@ Each Claude account is a `CLAUDE_CONFIG_DIR=~/.claude-<name>/` directory — ana
 
 `w` resolves the active account in priority order: `--account <name>` > `CLAUDE_CONFIG_DIR` env (matched against registry) > registered default. **No legacy fallback** — if no account resolves, `w` errors out and tells you to register one. Inside the container, the entrypoint requires `CLAUDE_CONFIG_DIR` and exits 1 if unset (no silent fallback).
 
-Companion shell layer: `~/.ckipper/aliases.zsh` is auto-regenerated on every `ckipper add` / `remove` and contains a `cca <name>` dispatcher plus one `claude-<name>` function per registered account. The file is self-contained — sourcing only `aliases.zsh` (without `ckipper.zsh` or `w-function.zsh`) yields a working setup.
+Companion shell layer: `~/.ckipper/aliases.zsh` is auto-regenerated on every `ckipper add` / `remove` / `rename`, then re-sourced into the calling shell so new launchers work immediately. It contains a `claude-<name>` function per registered account, plus a bare `<name>` shortcut when that name doesn't shadow a PATH binary, builtin, alias, or reserved word (see `_ckipper_bare_alias_safe`). The file is self-contained — sourcing only `aliases.zsh` (without `ckipper.zsh` or `w-function.zsh`) yields a working setup.
 
 `settings-template.json` is **seed-only**. After an account is registered, its `settings.json` diverges (per-account hooks, paths). Re-running `ckipper sync-hooks` refreshes hook paths and copies the canonical `~/.ckipper/hooks/*` into each account; it does not re-apply the template wholesale.
 

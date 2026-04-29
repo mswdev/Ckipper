@@ -117,7 +117,7 @@ fi
 
 # 8. Print (do not auto-append) the optional aliases.zsh source line
 echo ""
-echo "Optional: enable per-account aliases (claude-<name>, cca <name>) by adding to ~/.zshrc:"
+echo "Optional: enable per-account launchers (claude-<name> and bare <name>) by adding to ~/.zshrc:"
 echo "    [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh"
 echo ""
 
