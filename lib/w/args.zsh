@@ -7,7 +7,7 @@
 #   W_FLAG_LIST           — true if --list
 #   W_FLAG_REBUILD_IMAGE  — true if --rebuild-image
 #   W_FLAG_RM             — true if --rm
-#   W_FLAG_FORCE          — --force flag for --rm
+#   W_FLAG_FORCE          — true if --force (with --rm)
 #   W_FLAG_DOCKER         — true if --docker
 #   W_FLAG_FIREWALL       — true if --firewall
 #   W_PROJECT             — first positional arg (project path)
@@ -19,18 +19,7 @@
 #
 # Returns: 0 always (validation is done by the dispatcher).
 _w_parse_args() {
-    W_FLAG_LIST=false
-    W_FLAG_REBUILD_IMAGE=false
-    W_FLAG_RM=false
-    W_FLAG_FORCE=false
-    W_FLAG_DOCKER=false
-    W_FLAG_FIREWALL=false
-    W_PROJECT=""
-    W_BRANCH=""
-    W_CLI_ACCOUNT=""
-    W_COMMAND=()
-    W_PROJECTS_DIR="$HOME/Developer"
-    W_WORKTREES_DIR="$HOME/Developer/.worktrees"
+    _w_reset_globals
 
     if [[ "$1" == "--list" ]]; then
         W_FLAG_LIST=true
@@ -43,17 +32,55 @@ _w_parse_args() {
     fi
 
     if [[ "$1" == "--rm" ]]; then
-        W_FLAG_RM=true
-        shift
-        if [[ "$1" == "--force" || "$1" == "-f" ]]; then
-            W_FLAG_FORCE=true
-            shift
-        fi
-        W_PROJECT="$1"
-        W_BRANCH="$2"
+        _w_parse_rm_args "$@"
         return 0
     fi
 
+    _w_parse_run_args "$@"
+}
+
+# Reset all W_* globals to their default values.
+#
+# Returns: 0 always.
+_w_reset_globals() {
+    W_FLAG_LIST=false
+    W_FLAG_REBUILD_IMAGE=false
+    W_FLAG_RM=false
+    W_FLAG_FORCE=false
+    W_FLAG_DOCKER=false
+    W_FLAG_FIREWALL=false
+    W_PROJECT=""
+    W_BRANCH=""
+    W_CLI_ACCOUNT=""
+    W_COMMAND=()
+    W_PROJECTS_DIR="$HOME/Developer"
+    W_WORKTREES_DIR="$HOME/Developer/.worktrees"
+}
+
+# Parse --rm [--force] <project> <branch> args.
+#
+# Args:
+#   $@ — original args starting with --rm
+#
+# Returns: 0 always.
+_w_parse_rm_args() {
+    W_FLAG_RM=true
+    shift
+    if [[ "$1" == "--force" || "$1" == "-f" ]]; then
+        W_FLAG_FORCE=true
+        shift
+    fi
+    W_PROJECT="$1"
+    W_BRANCH="$2"
+}
+
+# Parse the normal run args: project branch [flags...] [command...].
+#
+# Args:
+#   $@ — original args (project is $1, branch is $2)
+#
+# Returns: 0 always.
+_w_parse_run_args() {
     W_PROJECT="$1"
     W_BRANCH="$2"
     shift 2 2>/dev/null

@@ -12,6 +12,9 @@
 #   3. Registry default
 #
 # Returns: 0 on success; 1 if no account found or account not in registry.
+# Errors (stderr):
+#   "Error: no account selected and no default registered." — when no account can be resolved
+#   "Error: account '<name>' is not registered. Run: ckipper list" — when account missing from registry
 _w_resolve_account() {
     local candidate
     candidate=$(_w_find_account_name)
@@ -39,7 +42,10 @@ _w_resolve_account() {
 }
 
 # Return the account name to use, without side effects.
-# Tries: CLI flag → env match → registry default.
+#
+# Resolution order: CLI flag → env match → registry default.
+#
+# Returns: 0 always (prints account name to stdout, or empty string if none found).
 _w_find_account_name() {
     if [[ -n "$W_CLI_ACCOUNT" ]]; then
         echo "$W_CLI_ACCOUNT"

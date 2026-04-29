@@ -1,6 +1,8 @@
 #!/usr/bin/env zsh
 # Docker mode execution for w(). Builds docker run args and launches the container.
 
+readonly SHASUM_BITS=256
+
 # Run the worktree in a Docker container.
 #
 # Reads globals: W_WT_PATH, W_PROJECTS_DIR, W_PROJECT, W_BRANCH, W_COMMAND,
@@ -15,7 +17,7 @@ _w_run_docker_mode() {
     _w_docker_validate_keychain || return 1
 
     local claude_creds gh_token
-    claude_creds=$(_w_docker_extract_credentials)
+    claude_creds=$(_w_docker_extract_credentials) || return 1
     gh_token=$(_w_docker_extract_gh_token)
 
     local -a W_DOCKER_ARGS
@@ -32,6 +34,11 @@ _w_run_docker_mode() {
 }
 
 # Validate Docker is installed and daemon is running.
+#
+# Returns: 0 if docker is available and running; 1 otherwise.
+# Errors (stderr):
+#   "Error: docker is not installed or not in PATH" — when docker binary is missing
+#   "Error: Docker daemon is not running. Start Docker Desktop first." — when daemon is down
 _w_docker_check_prerequisites() {
     if ! command -v docker &>/dev/null; then
         echo "Error: docker is not installed or not in PATH"
@@ -47,6 +54,11 @@ _w_docker_check_prerequisites() {
 }
 
 # Validate the active account's keychain service name if set.
+#
+# Reads: W_ACTIVE_KEYCHAIN_SERVICE, W_ACTIVE_ACCOUNT globals.
+# Returns: 0 if valid or no keychain service is configured; 1 on invalid service.
+# Errors (stderr):
+#   "Error: account '<name>' has invalid keychain_service in registry." — on validation failure
 _w_docker_validate_keychain() {
     if [[ -n "$W_ACTIVE_KEYCHAIN_SERVICE" ]] && \
        ! _core_keychain_validate "$W_ACTIVE_KEYCHAIN_SERVICE"; then
@@ -56,16 +68,39 @@ _w_docker_validate_keychain() {
     fi
 }
 
-# Extract Claude credentials from macOS Keychain (prints to stdout).
+# Extract Claude credentials from macOS Keychain and validate they are valid JSON.
+#
+# Reads: W_ACTIVE_KEYCHAIN_SERVICE global.
+# Returns: 0 on success (prints credentials to stdout, or empty string if no service).
+#   1 if credentials are present but not valid JSON.
+# Errors (stderr):
+#   "Error: Claude credentials from Keychain are not valid JSON. ..." — on invalid JSON
 _w_docker_extract_credentials() {
-    local creds=""
-    if [[ -n "$W_ACTIVE_KEYCHAIN_SERVICE" ]]; then
-        creds=$(security find-generic-password -s "$W_ACTIVE_KEYCHAIN_SERVICE" -w 2>/dev/null) || true
+    if [[ -z "$W_ACTIVE_KEYCHAIN_SERVICE" ]]; then
+        echo ""
+        return 0
     fi
+
+    local creds
+    creds=$(security find-generic-password -s "$W_ACTIVE_KEYCHAIN_SERVICE" -w 2>/dev/null) || true
+
+    if [[ -z "$creds" ]]; then
+        echo ""
+        return 0
+    fi
+
+    if ! echo "$creds" | jq -e empty >/dev/null 2>&1; then
+        echo "Error: Claude credentials from Keychain are not valid JSON. Re-run: ckipper add $W_ACTIVE_ACCOUNT --adopt" >&2
+        return 1
+    fi
+
     echo "$creds"
 }
 
 # Extract GitHub token for gh CLI auth inside container (prints to stdout).
+#
+# Reads: W_ACTIVE_CONFIG_DIR global.
+# Returns: 0 always (prints empty string if no token found).
 _w_docker_extract_gh_token() {
     local token
     token=$(jq -r '.mcpServers.github.env.GITHUB_PERSONAL_ACCESS_TOKEN // empty' \
@@ -77,6 +112,11 @@ _w_docker_extract_gh_token() {
 }
 
 # Build the base docker run argument array into W_DOCKER_ARGS.
+#
+# Reads: W_WT_PATH, W_PROJECTS_DIR, W_PROJECT, W_ACTIVE_CONFIG_DIR,
+#   W_EXTRA_VOLUMES globals.
+# Sets: W_DOCKER_ARGS (initialised from scratch).
+# Returns: 0 always.
 _w_docker_build_base_args() {
     W_DOCKER_ARGS=(
         docker run --rm -it
@@ -102,6 +142,13 @@ _w_docker_build_base_args() {
 }
 
 # Add credentials, gh token, and extra env vars to W_DOCKER_ARGS.
+#
+# Args:
+#   $1 — claude_creds: Claude credentials string (may be empty)
+#   $2 — gh_token: GitHub personal access token (may be empty)
+#
+# Reads: W_EXTRA_ENV global. Appends to W_DOCKER_ARGS.
+# Returns: 0 always.
 _w_docker_add_optional_args() {
     local claude_creds="$1"
     local gh_token="$2"
@@ -124,6 +171,9 @@ _w_docker_add_optional_args() {
 }
 
 # If the command is "claude", expand to full skip-permissions invocation.
+#
+# Reads and appends to W_COMMAND and W_DOCKER_ARGS.
+# Returns: 0 always.
 _w_docker_expand_command() {
     if [[ ${#W_COMMAND[@]} -gt 0 && "${W_COMMAND[1]}" == "claude" ]]; then
         W_COMMAND=(claude --dangerously-skip-permissions "/rename $W_BRANCH")
@@ -134,6 +184,9 @@ _w_docker_expand_command() {
 }
 
 # Print the startup banner.
+#
+# Reads: W_COMMAND, W_FLAG_FIREWALL, W_WT_PATH, W_RESOLVED_PORTS globals.
+# Returns: 0 always.
 _w_docker_print_banner() {
     local mode_label="Docker"
     [[ ${#W_COMMAND[@]} -gt 0 ]] && mode_label+=": ${W_COMMAND[1]}"
@@ -144,10 +197,13 @@ _w_docker_print_banner() {
 }
 
 # Snapshot git state, run docker, then check for post-session tampering.
+#
+# Reads: W_DOCKER_ARGS, W_PROJECTS_DIR, W_PROJECT globals.
+# Returns: exit code of the docker run invocation.
 _w_docker_snapshot_and_run() {
     local git_config="$W_PROJECTS_DIR/$W_PROJECT/.git/config"
     local git_config_hash=""
-    [[ -f "$git_config" ]] && git_config_hash=$(shasum -a 256 "$git_config" | cut -d' ' -f1)
+    [[ -f "$git_config" ]] && git_config_hash=$(shasum -a "$SHASUM_BITS" "$git_config" | cut -d' ' -f1)
 
     local git_worktrees_dir="$W_PROJECTS_DIR/$W_PROJECT/.git/worktrees"
     local -a worktrees_before=()
@@ -165,12 +221,18 @@ _w_docker_snapshot_and_run() {
 }
 
 # Warn if .git/config was modified during the session.
+#
+# Args:
+#   $1 — path to .git/config
+#   $2 — sha256 hash of config before session (may be empty)
+#
+# Returns: 0 always.
 _w_docker_check_git_config_tampering() {
     local git_config="$1"
     local original_hash="$2"
     if [[ -n "$original_hash" && -f "$git_config" ]]; then
         local new_hash
-        new_hash=$(shasum -a 256 "$git_config" | cut -d' ' -f1)
+        new_hash=$(shasum -a "$SHASUM_BITS" "$git_config" | cut -d' ' -f1)
         if [[ "$original_hash" != "$new_hash" ]]; then
             echo ""
             echo "WARNING: .git/config was modified during the Docker session!"
@@ -180,6 +242,12 @@ _w_docker_check_git_config_tampering() {
 }
 
 # Warn if any worktree metadata was destroyed during the session.
+#
+# Args:
+#   $1 — path to .git/worktrees directory
+#   $@ — worktree names present before the session
+#
+# Returns: 0 always.
 _w_docker_check_worktree_destruction() {
     local git_worktrees_dir="$1"
     shift

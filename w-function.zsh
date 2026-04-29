@@ -71,6 +71,9 @@ w() {
     fi
 }
 
+# Print usage information for the w() command.
+#
+# Returns: 0 always.
 _w_usage() {
     echo "Usage: w <project> <worktree> [--docker [--firewall] [cmd...]]"
     echo "       w <project> <worktree> [command...]"
