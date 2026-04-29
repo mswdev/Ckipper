@@ -196,12 +196,12 @@ _ckipper_add_check_credentials() {
 #   0 on success; 1 on validation or registration failure.
 _ckipper_add() {
     _core_registry_check_version || return 1
-    local name="$1" adopt=0
-    [[ "$2" == "--adopt" ]] && adopt=1
+    local name="$1" should_adopt="false"
+    [[ "$2" == "--adopt" ]] && should_adopt="true"
     _core_registry_init
     _ckipper_add_validate_name "$name" || return 1
     local dir="$HOME/.claude-$name"
-    if (( adopt )); then
+    if [[ "$should_adopt" = "true" ]]; then
         _ckipper_add_adopt_flow "$name" "$dir"
         return $?
     fi

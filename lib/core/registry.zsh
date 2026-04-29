@@ -91,12 +91,12 @@ _core_registry_check_stale_lock() {
 #   0 when lock is acquired; 1 on timeout.
 _core_registry_acquire_mkdir_lock() {
     local lockdir="$1"
-    local attempts=0 notified=0
+    local attempts=0 has_notified="false"
     while ! mkdir "$lockdir" 2>/dev/null; do
         (( attempts++ ))
-        if (( attempts == LOCK_NOTIFY_THRESHOLD_ATTEMPTS && notified == 0 )); then
+        if (( attempts == LOCK_NOTIFY_THRESHOLD_ATTEMPTS )) && [[ "$has_notified" = "false" ]]; then
             echo "Waiting on registry lock..." >&2
-            notified=1
+            has_notified="true"
         fi
         local stale_rc
         _core_registry_check_stale_lock "$lockdir" "$attempts"; stale_rc=$?

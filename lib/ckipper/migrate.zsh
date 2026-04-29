@@ -51,10 +51,10 @@ _ckipper_migrate_preflight() {
 #   0 always.
 _ckipper_migrate_print_no_op() {
     local legacy_claude="$1" legacy_homejson="$2"
-    local has_registry=0
+    local has_registry="false"
     [[ -f "$CKIPPER_REGISTRY" ]] && \
-        jq -e '.accounts | length > 0' "$CKIPPER_REGISTRY" >/dev/null 2>&1 && has_registry=1
-    if (( has_registry )); then
+        jq -e '.accounts | length > 0' "$CKIPPER_REGISTRY" >/dev/null 2>&1 && has_registry="true"
+    if [[ "$has_registry" = "true" ]]; then
         echo "Nothing to migrate: no $legacy_claude state and no $legacy_homejson at home root."
         echo "($CKIPPER_REGISTRY already has registered accounts — you're likely already migrated.)"
         echo "Run: ckipper list"
@@ -241,10 +241,10 @@ _ckipper_migrate_copy_docker() {
 #   0 if migration is needed; 1 if no state; 2 if already migrated.
 _ckipper_migrate_check_state() {
     local legacy_claude="$1" legacy_homejson="$2"
-    local has_inner_state=0 has_homejson=0
-    [[ -f "$legacy_claude/.claude.json" || -f "$legacy_claude/settings.json" ]] && has_inner_state=1
-    [[ -f "$legacy_homejson" ]] && has_homejson=1
-    (( has_inner_state == 0 && has_homejson == 0 )) && return 1
+    local has_inner_state="false" has_homejson="false"
+    [[ -f "$legacy_claude/.claude.json" || -f "$legacy_claude/settings.json" ]] && has_inner_state="true"
+    [[ -f "$legacy_homejson" ]] && has_homejson="true"
+    [[ "$has_inner_state" = "false" && "$has_homejson" = "false" ]] && return 1
     [[ -f "$CKIPPER_REGISTRY" ]] && \
         jq -e '.accounts | length > 0' "$CKIPPER_REGISTRY" >/dev/null 2>&1 && return 2
     return 0

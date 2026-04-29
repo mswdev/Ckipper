@@ -7,7 +7,7 @@
 typeset -gA _CKIPPER_SYNC_CTX
 
 # Parse sync subcommand flags into named variables in the caller's scope.
-# Populates: mode_mcp, mcp_names, mode_settings, settings_keys, dry_run, mode_all.
+# Populates: mode_mcp, mcp_names, mode_settings, settings_keys, is_dry_run, mode_all.
 #
 # Args:
 #   $@ — remaining args after <from> and <to> have been shifted
@@ -15,28 +15,28 @@ typeset -gA _CKIPPER_SYNC_CTX
 # Returns:
 #   0 on success; 1 on unknown flag.
 _ckipper_sync_parse_flags() {
-    mode_mcp=0; mcp_names=""; mode_settings=0; settings_keys=""; dry_run=0; mode_all=0
+    mode_mcp="false"; mcp_names=""; mode_settings="false"; settings_keys=""; is_dry_run="false"; mode_all="false"
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --mcp)
-                mode_mcp=1
+                mode_mcp="true"
                 if [[ -n "$2" && "$2" != --* ]]; then mcp_names="$2"; shift; fi
                 shift ;;
             --settings)
-                mode_settings=1
+                mode_settings="true"
                 if [[ -n "$2" && "$2" != --* ]]; then settings_keys="$2"; shift; fi
                 shift ;;
-            --all)     mode_all=1; shift ;;
-            --dry-run) dry_run=1; shift ;;
+            --all)     mode_all="true"; shift ;;
+            --dry-run) is_dry_run="true"; shift ;;
             *) echo "Unknown flag: $1"; return 1 ;;
         esac
     done
-    if (( mode_mcp == 0 && mode_settings == 0 )); then
-        mode_all=1
+    if [[ "$mode_mcp" = "false" && "$mode_settings" = "false" ]]; then
+        mode_all="true"
     fi
-    if (( mode_all )); then
-        mode_mcp=1
-        mode_settings=1
+    if [[ "$mode_all" = "true" ]]; then
+        mode_mcp="true"
+        mode_settings="true"
         [[ -z "$settings_keys" ]] && \
             settings_keys="enabledPlugins,extraKnownMarketplaces,statusLine,env,model"
     fi
@@ -93,7 +93,7 @@ _ckipper_sync_mcp_servers() {
         return 0
     fi
     pending_msgs+=("MCP servers → $to: $server_keys")
-    (( dry_run )) && return 0
+    [[ "$dry_run" = "true" ]] && return 0
     local sync_tmpfile; sync_tmpfile=$(mktemp "$to_dir/.claude.json.tmp.XXXXXX")
     jq --argjson new "$servers" '.mcpServers = (.mcpServers // {}) + $new' \
         "$to_dir/.claude.json" > "$sync_tmpfile" && mv "$sync_tmpfile" "$to_dir/.claude.json"
@@ -127,7 +127,7 @@ _ckipper_sync_settings_keys() {
         return 0
     fi
     pending_msgs+=("Settings keys → $to: $copied_keys")
-    (( dry_run )) && return 0
+    [[ "$dry_run" = "true" ]] && return 0
     [[ ! -f "$to_dir/settings.json" ]] && echo '{}' > "$to_dir/settings.json"
     local sync_tmpfile; sync_tmpfile=$(mktemp "$to_dir/settings.json.tmp.XXXXXX")
     jq --argjson new "$subset" '. + $new' \
@@ -138,13 +138,13 @@ _ckipper_sync_settings_keys() {
 #
 # Args:
 #   $1 — to account name
-#   $2 — dry_run flag (1 = dry run, 0 = write)
+#   $2 — is_dry_run flag ("true" = dry run, "false" = write)
 #
 # Returns:
 #   0 always.
 _ckipper_sync_print_summary() {
-    local to="$1" dry_run="$2"
-    if (( dry_run )); then
+    local to="$1" is_dry_run="$2"
+    if [[ "$is_dry_run" = "true" ]]; then
         echo "Dry run — would apply:"
     else
         echo "Synced:"
@@ -153,7 +153,7 @@ _ckipper_sync_print_summary() {
     for m in "${pending_msgs[@]}"; do
         echo "  - $m"
     done
-    if (( ! dry_run )); then
+    if [[ "$is_dry_run" != "true" ]]; then
         echo ""
         echo "Restart any running '$to' Claude session for changes to take effect."
     fi
@@ -206,18 +206,18 @@ _ckipper_sync() {
     [[ "$from" == "$to" ]] && { echo "<from> and <to> must differ."; return 1; }
     local dirs_line; dirs_line=$(_ckipper_sync_resolve_dirs "$from" "$to") || return 1
     local from_dir="${dirs_line%%	*}" to_dir="${dirs_line##*	}"
-    local mode_mcp mcp_names mode_settings settings_keys dry_run mode_all
+    local mode_mcp mcp_names mode_settings settings_keys is_dry_run mode_all
     _ckipper_sync_parse_flags "$@" || return 1
-    if (( ! dry_run )); then
+    if [[ "$is_dry_run" != "true" ]]; then
         _ckipper_sync_warn_running_claude "$from" "$to" || return 1
     fi
     _CKIPPER_SYNC_CTX[from_dir]="$from_dir"
     _CKIPPER_SYNC_CTX[to_dir]="$to_dir"
-    _CKIPPER_SYNC_CTX[dry_run]="$dry_run"
+    _CKIPPER_SYNC_CTX[dry_run]="$is_dry_run"
     local pending_msgs=()
-    (( mode_mcp )) && \
+    [[ "$mode_mcp" = "true" ]] && \
         _ckipper_sync_mcp_servers "$to" "$mcp_names"
-    (( mode_settings && ${#settings_keys} > 0 )) && \
+    [[ "$mode_settings" = "true" && ${#settings_keys} -gt 0 ]] && \
         _ckipper_sync_settings_keys "$from" "$to" "$settings_keys"
-    _ckipper_sync_print_summary "$to" "$dry_run"
+    _ckipper_sync_print_summary "$to" "$is_dry_run"
 }

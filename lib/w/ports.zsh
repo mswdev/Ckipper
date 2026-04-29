@@ -26,12 +26,12 @@ _w_resolve_ports() {
 _w_bind_port() {
     local port="$1"
     local host_port=$port
-    local is_bound=0
+    local is_bound="false"
 
     for (( i=0; i<MAX_PORT_FALLBACK_ATTEMPTS; i++ )); do
         if ! lsof -i :"$host_port" -P -n &>/dev/null; then
             W_DOCKER_ARGS+=( -p "127.0.0.1:$host_port:$port" )
-            is_bound=1
+            is_bound="true"
             if (( host_port != port )); then
                 echo "  Port $port mapped to host:$host_port (original in use)"
             fi
@@ -40,7 +40,7 @@ _w_bind_port() {
         (( host_port++ ))
     done
 
-    if (( !is_bound )); then
+    if [[ "$is_bound" != "true" ]]; then
         echo "  Port $port: no available host port found ($port-$((port+MAX_PORT_FALLBACK_ATTEMPTS-1)) all in use)"
     fi
 }

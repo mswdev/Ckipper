@@ -80,15 +80,15 @@ _ckipper_doctor_registry() {
 #   0 always.
 _ckipper_doctor_account_plugins() {
     local name="$1" dir="$2"
-    local stale_pm=0
+    local has_stale_plugin_metadata="false"
     local pm
     for pm in known_marketplaces.json installed_plugins.json; do
         [[ -f "$dir/plugins/$pm" ]] || continue
         if grep -q -- "$HOME/.claude/" "$dir/plugins/$pm" 2>/dev/null; then
-            stale_pm=1
+            has_stale_plugin_metadata="true"
         fi
     done
-    if (( stale_pm )); then
+    if [[ "$has_stale_plugin_metadata" = "true" ]]; then
         _ckipper_doctor_check WARN "    plugins/*.json has stale ~/.claude/ paths — plugins will fail to load. Repair: ckipper repair-plugins $name"
     fi
 }

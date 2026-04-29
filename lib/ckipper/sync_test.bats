@@ -26,44 +26,44 @@ run_helper() {
 
 # ── _ckipper_sync_parse_flags ─────────────────────────────────────────
 
-@test "parse_flags sets mode_all=1 when no flags given" {
-    run_helper 'mode_mcp=0; mode_settings=0; dry_run=0; mode_all=0
+@test "parse_flags sets mode_all=true when no flags given" {
+    run_helper 'mode_mcp="false"; mode_settings="false"; is_dry_run="false"; mode_all="false"
         _ckipper_sync_parse_flags
         echo "mode_all=$mode_all"'
 
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "mode_all=1" ]]
+    [[ "$output" =~ "mode_all=true" ]]
 }
 
-@test "parse_flags sets dry_run=1 for --dry-run flag" {
-    run_helper 'mode_mcp=0; mode_settings=0; dry_run=0; mode_all=0
+@test "parse_flags sets is_dry_run=true for --dry-run flag" {
+    run_helper 'mode_mcp="false"; mode_settings="false"; is_dry_run="false"; mode_all="false"
         _ckipper_sync_parse_flags --dry-run
-        echo "dry_run=$dry_run"'
+        echo "is_dry_run=$is_dry_run"'
 
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "dry_run=1" ]]
+    [[ "$output" =~ "is_dry_run=true" ]]
 }
 
-@test "parse_flags sets mode_mcp=1 for --mcp flag" {
-    run_helper 'mode_mcp=0; mode_settings=0; dry_run=0; mode_all=0
+@test "parse_flags sets mode_mcp=true for --mcp flag" {
+    run_helper 'mode_mcp="false"; mode_settings="false"; is_dry_run="false"; mode_all="false"
         _ckipper_sync_parse_flags --mcp
         echo "mode_mcp=$mode_mcp"'
 
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "mode_mcp=1" ]]
+    [[ "$output" =~ "mode_mcp=true" ]]
 }
 
-@test "parse_flags sets mode_settings=1 for --settings flag" {
-    run_helper 'mode_mcp=0; mode_settings=0; dry_run=0; mode_all=0
+@test "parse_flags sets mode_settings=true for --settings flag" {
+    run_helper 'mode_mcp="false"; mode_settings="false"; is_dry_run="false"; mode_all="false"
         _ckipper_sync_parse_flags --settings "enabledPlugins"
         echo "mode_settings=$mode_settings"'
 
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "mode_settings=1" ]]
+    [[ "$output" =~ "mode_settings=true" ]]
 }
 
 @test "parse_flags returns 1 and prints error for unknown flag" {
-    run_helper 'mode_mcp=0; mode_settings=0; dry_run=0; mode_all=0
+    run_helper 'mode_mcp="false"; mode_settings="false"; is_dry_run="false"; mode_all="false"
         _ckipper_sync_parse_flags --bogus-flag'
 
     [ "$status" -ne 0 ]
@@ -84,7 +84,7 @@ run_helper() {
         typeset -gA _CKIPPER_SYNC_CTX
         _CKIPPER_SYNC_CTX[from_dir]="'"$from_dir"'"
         _CKIPPER_SYNC_CTX[to_dir]="'"$to_dir"'"
-        _CKIPPER_SYNC_CTX[dry_run]="0"
+        _CKIPPER_SYNC_CTX[dry_run]="false"
         _ckipper_sync_mcp_servers "dst" ""
         echo "${pending_msgs[@]}"'
 
@@ -108,7 +108,7 @@ run_helper() {
         typeset -gA _CKIPPER_SYNC_CTX
         _CKIPPER_SYNC_CTX[from_dir]="'"$from_dir"'"
         _CKIPPER_SYNC_CTX[to_dir]="'"$to_dir"'"
-        _CKIPPER_SYNC_CTX[dry_run]="1"
+        _CKIPPER_SYNC_CTX[dry_run]="true"
         _ckipper_sync_mcp_servers "dst" ""'
 
     [ "$status" -eq 0 ]
@@ -131,7 +131,7 @@ run_helper() {
         typeset -gA _CKIPPER_SYNC_CTX
         _CKIPPER_SYNC_CTX[from_dir]="'"$from_dir"'"
         _CKIPPER_SYNC_CTX[to_dir]="'"$to_dir"'"
-        _CKIPPER_SYNC_CTX[dry_run]="0"
+        _CKIPPER_SYNC_CTX[dry_run]="false"
         _ckipper_sync_settings_keys "src" "dst" "model,enabledPlugins"'
 
     [ "$status" -eq 0 ]
@@ -155,7 +155,7 @@ run_helper() {
         typeset -gA _CKIPPER_SYNC_CTX
         _CKIPPER_SYNC_CTX[from_dir]="'"$from_dir"'"
         _CKIPPER_SYNC_CTX[to_dir]="'"$to_dir"'"
-        _CKIPPER_SYNC_CTX[dry_run]="1"
+        _CKIPPER_SYNC_CTX[dry_run]="true"
         _ckipper_sync_settings_keys "src" "dst" "model"'
 
     [ "$status" -eq 0 ]
@@ -167,7 +167,7 @@ run_helper() {
 
 @test "print_summary prints 'Synced' header and lists all pending messages" {
     run_helper 'pending_msgs=("MCP servers → dst: server1 " "Settings keys → dst: model ")
-        _ckipper_sync_print_summary "dst" "0"'
+        _ckipper_sync_print_summary "dst" "false"'
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "Synced" ]]
@@ -177,7 +177,7 @@ run_helper() {
 
 @test "print_summary prints 'Dry run' header in dry-run mode" {
     run_helper 'pending_msgs=("MCP servers → dst: server1 ")
-        _ckipper_sync_print_summary "dst" "1"'
+        _ckipper_sync_print_summary "dst" "true"'
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "Dry run" ]]
