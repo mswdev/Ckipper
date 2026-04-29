@@ -89,7 +89,7 @@ _w_docker_extract_credentials() {
         return 0
     fi
 
-    if ! echo "$creds" | jq -e empty >/dev/null 2>&1; then
+    if ! echo "$creds" | jq empty >/dev/null 2>&1; then
         echo "Error: Claude credentials from Keychain are not valid JSON. Re-run: ckipper add $W_ACTIVE_ACCOUNT --adopt" >&2
         return 1
     fi

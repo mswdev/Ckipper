@@ -14,61 +14,47 @@ _w_list_worktrees() {
     find "$W_WORKTREES_DIR" -name ".git" -type f -not -path "*/node_modules/*" 2>/dev/null \
         | sort \
         | while IFS= read -r git_metadata_file; do
-            _w_print_worktree_entry "$git_metadata_file" previous_project_for_grouping
+            local wt_dir="${git_metadata_file:h}"
+            local rel="${wt_dir#$W_WORKTREES_DIR/}"
+            local project="${rel%%/*}"
+            local after_first="${rel#*/}"
+            [[ "$after_first" == "$rel" ]] && continue
+
+            local branch
+            _w_get_project_and_branch "$project" "$after_first" project branch
+
+            if [[ "$project" != "$previous_project_for_grouping" ]]; then
+                previous_project_for_grouping="$project"
+                echo "\n[$project]"
+            fi
+            echo "  • $branch"
         done
 }
 
-# Print a single worktree entry, printing a project header when the project changes.
+# Set the caller's project and branch variables from path components.
 #
 # Args:
-#   $1 — path to the .git metadata file
-#   $2 — name of the variable holding the previous project (for grouping, passed by name)
-#
-# Returns: 0 always; silently skips entries that cannot be parsed.
-_w_print_worktree_entry() {
-    local git_metadata_file="$1"
-    local -n _prev_project_ref="$2"
-
-    local wt_dir="${git_metadata_file:h}"
-    local rel="${wt_dir#$W_WORKTREES_DIR/}"
-    local project="${rel%%/*}"
-    local after_first="${rel#*/}"
-    [[ "$after_first" == "$rel" ]] && return 0
-
-    local project branch
-    _w_resolve_project_and_branch "$project" "$after_first" project branch
-
-    if [[ "$project" != "$_prev_project_ref" ]]; then
-        _prev_project_ref="$project"
-        echo "\n[$project]"
-    fi
-    echo "  • $branch"
-}
-
-# Determine the final project name and branch from the path components.
-#
-# Args:
-#   $1 — initial project name (may be partial)
+#   $1 — initial project name (first path component)
 #   $2 — path after the first component
-#   $3 — name of output variable for project
-#   $4 — name of output variable for branch
+#   $3 — variable name to receive the resolved project
+#   $4 — variable name to receive the resolved branch
 #
 # Returns: 0 always.
-_w_resolve_project_and_branch() {
+_w_get_project_and_branch() {
     local initial_project="$1"
     local after_first="$2"
-    local -n _out_project="$3"
-    local -n _out_branch="$4"
+    local out_project_var="$3"
+    local out_branch_var="$4"
 
     local second="${after_first%%/*}"
     local rest="${after_first#*/}"
 
     if [[ -d "$W_PROJECTS_DIR/$initial_project/$second/.git" ]]; then
-        _out_project="$initial_project/$second"
-        _out_branch="$rest"
+        eval "$out_project_var=\"$initial_project/$second\""
+        eval "$out_branch_var=\"$rest\""
     else
-        _out_project="$initial_project"
-        _out_branch="$after_first"
+        eval "$out_project_var=\"$initial_project\""
+        eval "$out_branch_var=\"$after_first\""
     fi
 }
 
