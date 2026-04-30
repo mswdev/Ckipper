@@ -39,7 +39,8 @@ _w_parse_args() {
     _w_parse_run_args "$@"
 }
 
-# Reset all W_* globals to their default values.
+# Reset W_* globals to defaults. W_PROJECTS_DIR and W_WORKTREES_DIR
+# preserve any pre-set value from w-config.zsh or environment.
 #
 # Returns: 0 always.
 _w_reset_globals() {
