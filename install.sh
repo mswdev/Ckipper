@@ -80,7 +80,26 @@ if find "$CKIPPER_DIR/docker/lib" \( -name '*_test.*' -o -name '__pycache__' \) 
     exit 1
 fi
 
-# 5. Generate ckipper-config.zsh (only if it doesn't exist — never overwrite user customizations)
+# 5. Migrate any existing pre-merge config + clean up stale paths
+# (w-function.zsh, w-config.zsh, _w completion file).
+if [ -f "$CKIPPER_DIR/docker/w-config.zsh" ]; then
+    if [ ! -f "$CKIPPER_DIR/docker/ckipper-config.zsh" ]; then
+        echo "  Migrating $CKIPPER_DIR/docker/w-config.zsh → ckipper-config.zsh (preserves your settings)"
+        cp "$CKIPPER_DIR/docker/w-config.zsh" "$CKIPPER_DIR/docker/ckipper-config.zsh"
+    fi
+    echo "  Removing stale $CKIPPER_DIR/docker/w-config.zsh"
+    rm -f "$CKIPPER_DIR/docker/w-config.zsh"
+fi
+if [ -f "$CKIPPER_DIR/docker/w-function.zsh" ]; then
+    echo "  Removing stale $CKIPPER_DIR/docker/w-function.zsh (replaced by ckipper.zsh)"
+    rm -f "$CKIPPER_DIR/docker/w-function.zsh"
+fi
+if [ -f "$HOME/.zsh/completions/_w" ]; then
+    echo "  Removing stale $HOME/.zsh/completions/_w (replaced by _ckipper)"
+    rm -f "$HOME/.zsh/completions/_w"
+fi
+
+# Generate ckipper-config.zsh (only if it doesn't exist — never overwrite user customizations).
 # Also preserve accounts.json and aliases.zsh if they already exist (managed by ckipper CLI).
 config_file="$CKIPPER_DIR/docker/ckipper-config.zsh"
 if [[ ! -f $config_file ]]; then
@@ -99,9 +118,10 @@ echo "  Settings template deployed. ckipper sync-hooks applies it per-account."
 
 # 7. Add or update source line in .zshrc
 # Pre-merge installs sourced w-function.zsh from ~/.claude/docker/ or
-# ~/.ckipper/docker/. Both rewrite to ~/.ckipper/docker/ckipper.zsh.
-if grep -qE '(claude|ckipper)/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
-    sed -i.bak -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*(claude|ckipper)/docker/w-function\.zsh["'\'']?[[:space:]]*$|source "$HOME/.ckipper/docker/ckipper.zsh"|' "$HOME/.zshrc"
+# ~/.ckipper/docker/. The regex matches either install root and rewrites
+# to the canonical ~/.ckipper/docker/ckipper.zsh.
+if grep -qE '/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
+    sed -i.bak -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*/docker/w-function\.zsh["'\'']?[[:space:]]*$|source "$HOME/.ckipper/docker/ckipper.zsh"|' "$HOME/.zshrc"
     echo "  Updated ~/.zshrc source line to ~/.ckipper/docker/ckipper.zsh. Backup at ~/.zshrc.bak."
 elif ! grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then
     echo '' >>"$HOME/.zshrc"
@@ -118,16 +138,7 @@ echo "Optional: enable per-account launchers (claude-<name> and bare <name>) by 
 echo "    [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh"
 echo ""
 
-# 9. Warn about inlined w() from old installs
-if grep -q '^w()' "$HOME/.zshrc" 2>/dev/null || grep -q '^_w_build_image()' "$HOME/.zshrc" 2>/dev/null; then
-    echo ""
-    echo "WARNING: Your ~/.zshrc contains an inlined w() function from a previous install."
-    echo "The new approach sources it from $CKIPPER_DIR/docker/w-function.zsh instead."
-    echo "Please remove the old inlined function from ~/.zshrc manually."
-    echo "(Search for '_w_build_image()' or 'w()' and remove everything through the 'COMPEOF' line)"
-fi
-
-# 10. Set up git hooks path (only if user hasn't already configured a different one,
+# 9. Set up git hooks path (only if user hasn't already configured a different one,
 # e.g. for husky, pre-commit, or another tool — never silently clobber)
 echo "Configuring git hooks path..."
 mkdir -p "$HOME/.git-hooks"
@@ -141,7 +152,7 @@ else
     echo '    git config --global core.hooksPath "$HOME/.git-hooks"'
 fi
 
-# 11. Print summary
+# 10. Print summary
 echo ""
 echo "=== Setup Complete ==="
 echo ""
