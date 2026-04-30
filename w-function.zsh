@@ -34,12 +34,15 @@ source "$W_REPO_DIR/lib/w/ports.zsh"
 source "$W_REPO_DIR/lib/w/docker-mode.zsh"
 source "$W_REPO_DIR/lib/w/normal-mode.zsh"
 
-# Source user config (ports, extra volumes, extra env vars)
+# Source user config (projects/worktrees dirs, ports, extra volumes, extra env vars)
 _w_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/w-config.zsh"
 if [[ -f "$_w_config" ]]; then
     source "$_w_config"
 fi
-# Defaults if config is missing or incomplete
+# Defaults if config is missing or incomplete. Set once at source time and
+# never reset per-call so users can host their projects anywhere without forking.
+W_PROJECTS_DIR="${W_PROJECTS_DIR:-$HOME/Developer}"
+W_WORKTREES_DIR="${W_WORKTREES_DIR:-$W_PROJECTS_DIR/.worktrees}"
 (( ${#W_PORTS[@]} == 0 )) && W_PORTS=(3000)
 (( ${#W_EXTRA_VOLUMES[@]} == 0 )) && W_EXTRA_VOLUMES=()
 (( ${#W_EXTRA_ENV[@]} == 0 )) && W_EXTRA_ENV=()
