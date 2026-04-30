@@ -75,24 +75,22 @@ _ckipper_migrate_prompt_account_name() {
         read -r "?What name do you want for this migrated account? [$default_name] " name
         [[ -z "$name" ]] && name="$default_name"
         if [[ ! "$name" =~ ^[a-z0-9_-]+$ ]]; then
-            echo "Account name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen). Try again."
+            echo "Account name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen). Try again." >&2
             name=""
             continue
         fi
         if [[ -e "$HOME/.claude-$name" ]]; then
-            echo "$HOME/.claude-$name already exists. Pick a different name."
+            echo "$HOME/.claude-$name already exists. Pick a different name." >&2
             name=""
         fi
     done
     printf '%s' "$name"
 }
 
-# Display the migration plan and prompt for user confirmation.
-# Reads legacy_claude, legacy_homejson, target_dir, and name from _CKIPPER_MIGRATE_CTX.
+# Print the migration plan to stdout. Reads context from _CKIPPER_MIGRATE_CTX.
 #
-# Returns:
-#   0 if user confirms; 1 if user aborts.
-_ckipper_migrate_confirm_plan() {
+# Returns: 0 always.
+_ckipper_migrate_print_plan() {
     local legacy_claude="${_CKIPPER_MIGRATE_CTX[legacy_claude]}"
     local legacy_homejson="${_CKIPPER_MIGRATE_CTX[legacy_homejson]}"
     local target_dir="${_CKIPPER_MIGRATE_CTX[target_dir]}"
@@ -118,6 +116,15 @@ NOT a symlink — bare 'claude' will no longer use this account; use 'claude-$na
 If anything fails, the rename is automatically reverted.
 
 EOF
+}
+
+# Display the migration plan and prompt for user confirmation.
+# Reads legacy_claude, legacy_homejson, target_dir, and name from _CKIPPER_MIGRATE_CTX.
+#
+# Returns:
+#   0 if user confirms; 1 if user aborts.
+_ckipper_migrate_confirm_plan() {
+    _ckipper_migrate_print_plan
     local user_choice
     read -r "?Proceed? [y/N] " user_choice
     if [[ "$user_choice" != "y" && "$user_choice" != "Y" ]]; then
@@ -138,13 +145,13 @@ _ckipper_migrate_detect_keychain() {
         printf '%s' "$probed_service"
         return 0
     fi
-    echo "Warning: '$probed_service' not found in Keychain."
-    echo "Listing available Claude Keychain entries:"
-    _core_keychain_snapshot || return 1
+    echo "Warning: '$probed_service' not found in Keychain." >&2
+    echo "Listing available Claude Keychain entries:" >&2
+    _core_keychain_snapshot >&2 || return 1
     local user_input
     read -r "?Enter the Keychain service for the account (or empty to skip): " user_input
     if [[ -n "$user_input" ]] && ! _core_keychain_validate "$user_input"; then
-        echo "Invalid Keychain service shape. Aborting."
+        echo "Invalid Keychain service shape. Aborting." >&2
         return 1
     fi
     printf '%s' "$user_input"
