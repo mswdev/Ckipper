@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # Ckipper main dispatcher.
-# Sources shared primitives from lib/core/ and ckipper-specific subcommands from lib/ckipper/.
+# Sources shared primitives from lib/core/ and account-management subcommands from lib/account/.
 # Public functions exposed: ckipper, ck.
 
 # Ckipper (pronounced "skipper") — multi-account Claude Code manager
@@ -15,11 +15,11 @@ CKIPPER_REPO_DIR="${0:A:h}"
 source "$CKIPPER_REPO_DIR/lib/core/utils.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/registry.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/keychain.zsh"
-source "$CKIPPER_REPO_DIR/lib/ckipper/account-management.zsh"
-source "$CKIPPER_REPO_DIR/lib/ckipper/aliases.zsh"
-source "$CKIPPER_REPO_DIR/lib/ckipper/plugin-repair.zsh"
-source "$CKIPPER_REPO_DIR/lib/ckipper/sync.zsh"
-source "$CKIPPER_REPO_DIR/lib/ckipper/doctor.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/account-management.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/aliases.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/plugin-repair.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/sync.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/doctor.zsh"
 
 # Dispatch a ckipper subcommand or print top-level help.
 #

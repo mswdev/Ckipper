@@ -25,7 +25,7 @@ Omit `Args:` if the function takes none. Omit `Errors:` if it never writes to st
 Used to encode the dependency direction at a glance and let CI verify it:
 
 - `_core_*` — `lib/core/` (shared primitives)
-- `_ckipper_*` — `lib/ckipper/` (ckipper subcommands)
+- `_ckipper_*` — `lib/account/` (account subcommands; will be renamed `_ckipper_account_*` in a follow-up phase)
 - `_w_*` — `lib/w/` (w() helpers)
 - No prefix — public, callable from `.zshrc`: `ckipper`, `ck`, `w`
 
@@ -35,6 +35,6 @@ zsh has no native bool. Use string values `"true"`/`"false"` and test with `[[ "
 
 ## Module sourcing
 
-Modules under `lib/` are sourced once by an entry script (`ckipper.zsh` or `w-function.zsh`). Modules MUST NOT source siblings. Cross-feature imports between `lib/w/` and `lib/ckipper/` are forbidden — extract shared code to `lib/core/` (per `file-organization.md`'s shared-parent rule).
+Modules under `lib/` are sourced once by an entry script (`ckipper.zsh` or `w-function.zsh`). Modules MUST NOT source siblings. Cross-feature imports between `lib/w/` and `lib/account/` are forbidden — extract shared code to `lib/core/` (per `file-organization.md`'s shared-parent rule).
 
 CI enforces this with `grep -rE '\b_ckipper_' lib/w/`.

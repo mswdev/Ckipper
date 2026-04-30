@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# Unit tests for lib/ckipper/account-management.zsh helpers.
-# Sources ckipper.zsh (which wires up all lib/core/ + lib/ckipper/ modules).
+# Unit tests for lib/account/account-management.zsh helpers.
+# Sources ckipper.zsh (which wires up all lib/core/ + lib/account/ modules).
 
 load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 
