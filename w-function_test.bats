@@ -15,7 +15,7 @@ setup() {
     export DOCKER_STUB_LOG="$TMP_HOME/docker.log"
     : > "$DOCKER_STUB_LOG"
     mkdir -p "$CKIPPER_DIR/docker"
-    echo 'W_PORTS=(3000 3030)' > "$CKIPPER_DIR/docker/w-config.zsh"
+    echo 'CKIPPER_PORTS=(3000 3030)' > "$CKIPPER_DIR/docker/w-config.zsh"
     echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 }
 
@@ -116,13 +116,13 @@ teardown() {
 
 # The completion-file regeneration mechanism relies on the literal
 # "# w-completion-version=N" sentinel inside the single-quoted heredoc
-# matching the W_COMPLETION_VERSION variable referenced in the grep
+# matching the CKIPPER_COMPLETION_VERSION variable referenced in the grep
 # check immediately above. If a future bump only updates one side,
 # existing installs silently fail to regenerate. This test guards
 # against that drift.
 @test "w-function.zsh: completion version sentinel matches outer variable" {
     local outer inner
-    outer=$(grep -E '^W_COMPLETION_VERSION=' "$REPO_ROOT/w-function.zsh" | head -1 | cut -d= -f2)
+    outer=$(grep -E '^CKIPPER_COMPLETION_VERSION=' "$REPO_ROOT/w-function.zsh" | head -1 | cut -d= -f2)
     inner=$(grep -E '^# w-completion-version=' "$REPO_ROOT/w-function.zsh" | head -1 | cut -d= -f2)
     [ -n "$outer" ]
     [ -n "$inner" ]

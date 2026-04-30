@@ -1,13 +1,13 @@
 #!/usr/bin/env zsh
-# Account resolution for w(). Populates W_ACTIVE_* globals.
+# Account resolution for w(). Populates CKIPPER_WT_ACTIVE_* globals.
 
 # Resolve which ckipper account to use, then populate:
-#   W_ACTIVE_ACCOUNT          — resolved account name
-#   W_ACTIVE_CONFIG_DIR       — account's claude config directory
-#   W_ACTIVE_KEYCHAIN_SERVICE — account's keychain service name (may be empty)
+#   CKIPPER_WT_ACTIVE_ACCOUNT          — resolved account name
+#   CKIPPER_WT_ACTIVE_CONFIG_DIR       — account's claude config directory
+#   CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE — account's keychain service name (may be empty)
 #
 # Resolution order:
-#   1. W_CLI_ACCOUNT (from --account flag)
+#   1. CKIPPER_WT_CLI_ACCOUNT (from --account flag)
 #   2. Account whose config_dir matches $CLAUDE_CONFIG_DIR (if set)
 #   3. Registry default
 #
@@ -36,9 +36,9 @@ _ckipper_worktree_resolve_account() {
         return 1
     fi
 
-    W_ACTIVE_ACCOUNT="$candidate"
-    W_ACTIVE_CONFIG_DIR="$config_dir"
-    W_ACTIVE_KEYCHAIN_SERVICE="$keychain_service"
+    CKIPPER_WT_ACTIVE_ACCOUNT="$candidate"
+    CKIPPER_WT_ACTIVE_CONFIG_DIR="$config_dir"
+    CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE="$keychain_service"
 }
 
 # Return the account name to use, without side effects.
@@ -47,8 +47,8 @@ _ckipper_worktree_resolve_account() {
 #
 # Returns: 0 always (prints account name to stdout, or empty string if none found).
 _ckipper_worktree_find_account_name() {
-    if [[ -n "$W_CLI_ACCOUNT" ]]; then
-        echo "$W_CLI_ACCOUNT"
+    if [[ -n "$CKIPPER_WT_CLI_ACCOUNT" ]]; then
+        echo "$CKIPPER_WT_CLI_ACCOUNT"
         return 0
     fi
 

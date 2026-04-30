@@ -50,7 +50,7 @@ ckipper repair-plugins <name>                        # fix stale ~/.claude/ path
 ckipper doctor                                       # diagnostic checklist
 ```
 
-`ck` is a short alias for `ckipper`. `<project>` is a relative path under `$W_PROJECTS_DIR` (default `~/Developer/`, e.g. `myorg/myapp`). Tab completion is included. See [Projects Directory](#projects-directory) to change the base path.
+`ck` is a short alias for `ckipper`. `<project>` is a relative path under `$CKIPPER_PROJECTS_DIR` (default `~/Developer/`, e.g. `myorg/myapp`). Tab completion is included. See [Projects Directory](#projects-directory) to change the base path.
 
 ## Multiple accounts
 
@@ -189,7 +189,7 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 | MCPs with local files | node/uvx (mounted ro) | Yes (add mount) |
 | Docker-based MCPs | Docker-in-Docker | No (security) |
 
-For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
+For MCPs that reference local files, add entries to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
 
 Two named Docker volumes support uvx-based MCP servers:
 - **`claude-uv-cache`** — persists the uv package cache (downloaded wheels, git clones) across container restarts
@@ -285,7 +285,7 @@ See `docs/test-prompt.md` for the full prompt and expected results table.
 
 ### Projects Directory
 
-`w()` resolves project paths under `$W_PROJECTS_DIR` (default `$HOME/Developer`). To use a different location (e.g. `~/code`), set `W_PROJECTS_DIR` in `~/.ckipper/docker/w-config.zsh`. Worktrees default to `$W_PROJECTS_DIR/.worktrees`; override with `W_WORKTREES_DIR` if you want them elsewhere.
+`w()` resolves project paths under `$CKIPPER_PROJECTS_DIR` (default `$HOME/Developer`). To use a different location (e.g. `~/code`), set `CKIPPER_PROJECTS_DIR` in `~/.ckipper/docker/w-config.zsh`. Worktrees default to `$CKIPPER_PROJECTS_DIR/.worktrees`; override with `CKIPPER_WORKTREES_DIR` if you want them elsewhere.
 
 ### Firewall Domains
 
@@ -293,7 +293,7 @@ Edit `docker/init-firewall.sh` → `ALLOWED_DOMAINS` array, then `w --rebuild-im
 
 ### Forwarded Ports
 
-Edit `W_PORTS` in `~/.ckipper/docker/w-config.zsh`.
+Edit `CKIPPER_PORTS` in `~/.ckipper/docker/w-config.zsh`.
 
 ### Base Branch
 
@@ -301,11 +301,11 @@ Worktrees are created from `origin/develop`. Search for `develop` in `w-function
 
 ### MCP Mounts
 
-Add entries to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Format: `"host_path:container_path:mode"`.
+Add entries to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Format: `"host_path:container_path:mode"`.
 
 ### Statusline
 
-If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`:
+If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`:
 - **Config mount** (`~/.config/ccstatusline`, read-only) — theme, widget layout, powerline settings
 - **Cache mount** (`~/.cache/ccstatusline`, read-write) — shares usage API cache with host to avoid 429 rate limits
 
@@ -422,9 +422,9 @@ Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DI
 | `git commit` fails (no identity) | Entrypoint should set this automatically; check `.claude.json` has `oauthAccount` |
 | Native binary errors (Exec format) | Run `w --rebuild-image` — entrypoint runs `npm install` to fix platform binaries |
 | Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `w --rebuild-image` if missing |
-| Branch already checked out | Switch main repo to different branch: `cd $W_PROJECTS_DIR/<project> && git checkout develop` |
-| Stale worktree directory | Remove manually: `rm -rf $W_WORKTREES_DIR/<project>/<branch>` |
-| Statusline not rendering correctly | Add ccstatusline mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
+| Branch already checked out | Switch main repo to different branch: `cd $CKIPPER_PROJECTS_DIR/<project> && git checkout develop` |
+| Stale worktree directory | Remove manually: `rm -rf $CKIPPER_WORKTREES_DIR/<project>/<branch>` |
+| Statusline not rendering correctly | Add ccstatusline mounts to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
 | `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |

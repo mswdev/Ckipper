@@ -34,21 +34,21 @@ _resolve_and_print() {
         "
 }
 
-@test "_ckipper_worktree_resolve_account populates W_ACTIVE_ACCOUNT from registry default" {
+@test "_ckipper_worktree_resolve_account populates CKIPPER_WT_ACTIVE_ACCOUNT from registry default" {
     echo '{"version":1,"default":"work","accounts":{"work":{"config_dir":"'"$TMP_HOME"'/.claude-work","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
     mkdir -p "$TMP_HOME/.claude-work"
 
-    _resolve_and_print "W_ACTIVE_ACCOUNT"
+    _resolve_and_print "CKIPPER_WT_ACTIVE_ACCOUNT"
 
     [ "$status" -eq 0 ]
     [ "$output" = "work" ]
 }
 
-@test "_ckipper_worktree_resolve_account populates W_ACTIVE_CONFIG_DIR from registry" {
+@test "_ckipper_worktree_resolve_account populates CKIPPER_WT_ACTIVE_CONFIG_DIR from registry" {
     echo '{"version":1,"default":"work","accounts":{"work":{"config_dir":"'"$TMP_HOME"'/.claude-work","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
     mkdir -p "$TMP_HOME/.claude-work"
 
-    _resolve_and_print "W_ACTIVE_CONFIG_DIR"
+    _resolve_and_print "CKIPPER_WT_ACTIVE_CONFIG_DIR"
 
     [ "$status" -eq 0 ]
     [ "$output" = "$TMP_HOME/.claude-work" ]
@@ -58,7 +58,7 @@ _resolve_and_print() {
     echo '{"version":1,"default":null,"accounts":{"personal":{"config_dir":"'"$TMP_HOME"'/.claude-personal","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
     mkdir -p "$TMP_HOME/.claude-personal"
 
-    _resolve_and_print "W_ACTIVE_ACCOUNT" "CLAUDE_CONFIG_DIR=$TMP_HOME/.claude-personal"
+    _resolve_and_print "CKIPPER_WT_ACTIVE_ACCOUNT" "CLAUDE_CONFIG_DIR=$TMP_HOME/.claude-personal"
 
     [ "$status" -eq 0 ]
     [ "$output" = "personal" ]
@@ -67,7 +67,7 @@ _resolve_and_print() {
 @test "_ckipper_worktree_resolve_account fails when no account can be resolved" {
     echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
-    _resolve_and_print "W_ACTIVE_ACCOUNT"
+    _resolve_and_print "CKIPPER_WT_ACTIVE_ACCOUNT"
 
     [ "$status" -ne 0 ]
     [[ "$output" =~ "no account" || "$output" =~ "no default" ]]

@@ -4,18 +4,18 @@
 # Parse all arguments passed to w() into W_* globals.
 #
 # Globals set:
-#   W_FLAG_LIST           — true if --list
-#   W_FLAG_REBUILD_IMAGE  — true if --rebuild-image
-#   W_FLAG_RM             — true if --rm
-#   W_FLAG_FORCE          — true if --force (with --rm)
-#   W_FLAG_DOCKER         — true if --docker
-#   W_FLAG_FIREWALL       — true if --firewall
-#   W_PROJECT             — first positional arg (project path)
-#   W_BRANCH              — second positional arg (worktree/branch name)
-#   W_CLI_ACCOUNT         — value of --account <name>, or empty
-#   W_COMMAND             — array: remaining positional args after project+branch
+#   CKIPPER_WT_FLAG_LIST           — true if --list
+#   CKIPPER_WT_FLAG_REBUILD_IMAGE  — true if --rebuild-image
+#   CKIPPER_WT_FLAG_RM             — true if --rm
+#   CKIPPER_WT_FLAG_FORCE          — true if --force (with --rm)
+#   CKIPPER_WT_FLAG_DOCKER         — true if --docker
+#   CKIPPER_WT_FLAG_FIREWALL       — true if --firewall
+#   CKIPPER_WT_PROJECT             — first positional arg (project path)
+#   CKIPPER_WT_BRANCH              — second positional arg (worktree/branch name)
+#   CKIPPER_WT_CLI_ACCOUNT         — value of --account <name>, or empty
+#   CKIPPER_WT_COMMAND             — array: remaining positional args after project+branch
 #
-# W_PROJECTS_DIR / W_WORKTREES_DIR are config values, not args — they are
+# CKIPPER_PROJECTS_DIR / CKIPPER_WORKTREES_DIR are config values, not args — they are
 # initialized once when w-function.zsh is sourced and never reset here.
 #
 # Returns: 0 always (validation is done by the dispatcher).
@@ -23,12 +23,12 @@ _ckipper_worktree_parse_args() {
     _ckipper_worktree_reset_globals
 
     if [[ "$1" == "--list" ]]; then
-        W_FLAG_LIST=true
+        CKIPPER_WT_FLAG_LIST=true
         return 0
     fi
 
     if [[ "$1" == "--rebuild-image" ]]; then
-        W_FLAG_REBUILD_IMAGE=true
+        CKIPPER_WT_FLAG_REBUILD_IMAGE=true
         return 0
     fi
 
@@ -41,21 +41,21 @@ _ckipper_worktree_parse_args() {
 }
 
 # Reset per-call W_* arg globals (flags + positionals) to their default values.
-# Config globals (W_PROJECTS_DIR, W_WORKTREES_DIR, W_PORTS, etc.) are owned
+# Config globals (CKIPPER_PROJECTS_DIR, CKIPPER_WORKTREES_DIR, CKIPPER_PORTS, etc.) are owned
 # by w-function.zsh and intentionally not touched here.
 #
 # Returns: 0 always.
 _ckipper_worktree_reset_globals() {
-    W_FLAG_LIST=false
-    W_FLAG_REBUILD_IMAGE=false
-    W_FLAG_RM=false
-    W_FLAG_FORCE=false
-    W_FLAG_DOCKER=false
-    W_FLAG_FIREWALL=false
-    W_PROJECT=""
-    W_BRANCH=""
-    W_CLI_ACCOUNT=""
-    W_COMMAND=()
+    CKIPPER_WT_FLAG_LIST=false
+    CKIPPER_WT_FLAG_REBUILD_IMAGE=false
+    CKIPPER_WT_FLAG_RM=false
+    CKIPPER_WT_FLAG_FORCE=false
+    CKIPPER_WT_FLAG_DOCKER=false
+    CKIPPER_WT_FLAG_FIREWALL=false
+    CKIPPER_WT_PROJECT=""
+    CKIPPER_WT_BRANCH=""
+    CKIPPER_WT_CLI_ACCOUNT=""
+    CKIPPER_WT_COMMAND=()
 }
 
 # Parse --rm [--force] <project> <branch> args.
@@ -65,14 +65,14 @@ _ckipper_worktree_reset_globals() {
 #
 # Returns: 0 always.
 _ckipper_worktree_parse_rm_args() {
-    W_FLAG_RM=true
+    CKIPPER_WT_FLAG_RM=true
     shift
     if [[ "$1" == "--force" || "$1" == "-f" ]]; then
-        W_FLAG_FORCE=true
+        CKIPPER_WT_FLAG_FORCE=true
         shift
     fi
-    W_PROJECT="$1"
-    W_BRANCH="$2"
+    CKIPPER_WT_PROJECT="$1"
+    CKIPPER_WT_BRANCH="$2"
 }
 
 # Parse the normal run args: project branch [flags...] [command...].
@@ -82,16 +82,16 @@ _ckipper_worktree_parse_rm_args() {
 #
 # Returns: 0 always.
 _ckipper_worktree_parse_run_args() {
-    W_PROJECT="$1"
-    W_BRANCH="$2"
+    CKIPPER_WT_PROJECT="$1"
+    CKIPPER_WT_BRANCH="$2"
     shift 2 2>/dev/null
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --docker)   W_FLAG_DOCKER=true; shift ;;
-            --firewall) W_FLAG_FIREWALL=true; shift ;;
-            --account)  W_CLI_ACCOUNT="$2"; shift 2 ;;
-            *)          W_COMMAND+=("$1"); shift ;;
+            --docker)   CKIPPER_WT_FLAG_DOCKER=true; shift ;;
+            --firewall) CKIPPER_WT_FLAG_FIREWALL=true; shift ;;
+            --account)  CKIPPER_WT_CLI_ACCOUNT="$2"; shift 2 ;;
+            *)          CKIPPER_WT_COMMAND+=("$1"); shift ;;
         esac
     done
 }

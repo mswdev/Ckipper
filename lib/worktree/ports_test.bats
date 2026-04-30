@@ -21,14 +21,14 @@ _run_ports() {
         LSOF_STUB_BUSY="${LSOF_STUB_BUSY:-}" \
         zsh -c "
             source \"$REPO_ROOT/lib/worktree/ports.zsh\"
-            typeset -a W_DOCKER_ARGS=()
-            typeset -a W_RESOLVED_PORTS=()
+            typeset -a CKIPPER_WT_DOCKER_ARGS=()
+            typeset -a CKIPPER_WT_RESOLVED_PORTS=()
             $zsh_cmd
         "
 }
 
-@test "_ckipper_worktree_bind_port appends a -p flag to W_DOCKER_ARGS when port is free" {
-    _run_ports '_ckipper_worktree_bind_port 3000; print -r -- "${W_DOCKER_ARGS[*]}"'
+@test "_ckipper_worktree_bind_port appends a -p flag to CKIPPER_WT_DOCKER_ARGS when port is free" {
+    _run_ports '_ckipper_worktree_bind_port 3000; print -r -- "${CKIPPER_WT_DOCKER_ARGS[*]}"'
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "-p 127.0.0.1:3000:3000" ]]

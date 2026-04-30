@@ -20,29 +20,29 @@ _parse_and_print() {
         zsh -c "source \"$REPO_ROOT/lib/worktree/args.zsh\"; _ckipper_worktree_parse_args $*; print -r -- \"\$$var_name\""
 }
 
-@test "_ckipper_worktree_parse_args sets W_PROJECT and W_BRANCH for bare project/branch args" {
-    _parse_and_print "W_PROJECT" myapp feature-x
+@test "_ckipper_worktree_parse_args sets CKIPPER_WT_PROJECT and CKIPPER_WT_BRANCH for bare project/branch args" {
+    _parse_and_print "CKIPPER_WT_PROJECT" myapp feature-x
 
     [ "$status" -eq 0 ]
     [ "$output" = "myapp" ]
 }
 
-@test "_ckipper_worktree_parse_args sets W_FLAG_RM to true for --rm flag" {
-    _parse_and_print "W_FLAG_RM" --rm myapp branch
+@test "_ckipper_worktree_parse_args sets CKIPPER_WT_FLAG_RM to true for --rm flag" {
+    _parse_and_print "CKIPPER_WT_FLAG_RM" --rm myapp branch
 
     [ "$status" -eq 0 ]
     [ "$output" = "true" ]
 }
 
-@test "_ckipper_worktree_parse_args sets W_FLAG_DOCKER to true for --docker flag" {
-    _parse_and_print "W_FLAG_DOCKER" myapp feature-x --docker
+@test "_ckipper_worktree_parse_args sets CKIPPER_WT_FLAG_DOCKER to true for --docker flag" {
+    _parse_and_print "CKIPPER_WT_FLAG_DOCKER" myapp feature-x --docker
 
     [ "$status" -eq 0 ]
     [ "$output" = "true" ]
 }
 
-@test "_ckipper_worktree_parse_args sets W_FLAG_LIST to true for --list flag" {
-    _parse_and_print "W_FLAG_LIST" --list
+@test "_ckipper_worktree_parse_args sets CKIPPER_WT_FLAG_LIST to true for --list flag" {
+    _parse_and_print "CKIPPER_WT_FLAG_LIST" --list
 
     [ "$status" -eq 0 ]
     [ "$output" = "true" ]

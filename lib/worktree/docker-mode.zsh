@@ -17,14 +17,14 @@ readonly DOCKER_GROUP_ADD_HOST_ROOT=0
 
 # Run the worktree in a Docker container.
 #
-# Reads globals: W_WT_PATH, W_PROJECTS_DIR, W_PROJECT, W_BRANCH, W_COMMAND,
-#   W_FLAG_FIREWALL, W_ACTIVE_ACCOUNT, W_ACTIVE_CONFIG_DIR,
-#   W_ACTIVE_KEYCHAIN_SERVICE, W_PORTS, W_EXTRA_VOLUMES, W_EXTRA_ENV.
+# Reads globals: CKIPPER_WT_WT_PATH, CKIPPER_PROJECTS_DIR, CKIPPER_WT_PROJECT, CKIPPER_WT_BRANCH, CKIPPER_WT_COMMAND,
+#   CKIPPER_WT_FLAG_FIREWALL, CKIPPER_WT_ACTIVE_ACCOUNT, CKIPPER_WT_ACTIVE_CONFIG_DIR,
+#   CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE, CKIPPER_PORTS, CKIPPER_EXTRA_VOLUMES, CKIPPER_EXTRA_ENV.
 # Returns: exit code of the docker run invocation.
 _ckipper_worktree_run_docker_mode() {
     _ckipper_worktree_docker_check_prerequisites || return 1
 
-    [[ -f "$W_ACTIVE_CONFIG_DIR/.claude.json" ]] || echo '{}' > "$W_ACTIVE_CONFIG_DIR/.claude.json"
+    [[ -f "$CKIPPER_WT_ACTIVE_CONFIG_DIR/.claude.json" ]] || echo '{}' > "$CKIPPER_WT_ACTIVE_CONFIG_DIR/.claude.json"
 
     _ckipper_worktree_docker_validate_keychain || return 1
 
@@ -32,13 +32,13 @@ _ckipper_worktree_run_docker_mode() {
     claude_creds=$(_ckipper_worktree_docker_extract_credentials) || return 1
     gh_token=$(_ckipper_worktree_docker_extract_gh_token)
 
-    local -a W_DOCKER_ARGS
+    local -a CKIPPER_WT_DOCKER_ARGS
     _ckipper_worktree_docker_build_base_args
     _ckipper_worktree_docker_add_optional_args "$claude_creds" "$gh_token"
     _ckipper_worktree_resolve_ports
-    [[ "$W_FLAG_FIREWALL" = true ]] && W_DOCKER_ARGS+=( --cap-add=NET_ADMIN -e ENABLE_FIREWALL=1 )
+    [[ "$CKIPPER_WT_FLAG_FIREWALL" = true ]] && CKIPPER_WT_DOCKER_ARGS+=( --cap-add=NET_ADMIN -e ENABLE_FIREWALL=1 )
 
-    W_DOCKER_ARGS+=( ckipper-dev )
+    CKIPPER_WT_DOCKER_ARGS+=( ckipper-dev )
     _ckipper_worktree_docker_expand_command
 
     _ckipper_worktree_docker_print_banner
@@ -67,34 +67,34 @@ _ckipper_worktree_docker_check_prerequisites() {
 
 # Validate the active account's keychain service name if set.
 #
-# Reads: W_ACTIVE_KEYCHAIN_SERVICE, W_ACTIVE_ACCOUNT globals.
+# Reads: CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE, CKIPPER_WT_ACTIVE_ACCOUNT globals.
 # Returns: 0 if valid or no keychain service is configured; 1 on invalid service.
 # Errors (stderr):
 #   "Error: account '<name>' has invalid keychain_service in registry." — on validation failure
 _ckipper_worktree_docker_validate_keychain() {
-    if [[ -n "$W_ACTIVE_KEYCHAIN_SERVICE" ]] && \
-       ! _core_keychain_validate "$W_ACTIVE_KEYCHAIN_SERVICE"; then
-        echo "Error: account '$W_ACTIVE_ACCOUNT' has invalid keychain_service in registry."
-        echo "Re-register with: ckipper remove $W_ACTIVE_ACCOUNT && ckipper add $W_ACTIVE_ACCOUNT --adopt"
+    if [[ -n "$CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE" ]] && \
+       ! _core_keychain_validate "$CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE"; then
+        echo "Error: account '$CKIPPER_WT_ACTIVE_ACCOUNT' has invalid keychain_service in registry."
+        echo "Re-register with: ckipper remove $CKIPPER_WT_ACTIVE_ACCOUNT && ckipper add $CKIPPER_WT_ACTIVE_ACCOUNT --adopt"
         return 1
     fi
 }
 
 # Extract Claude credentials from macOS Keychain and validate they are valid JSON.
 #
-# Reads: W_ACTIVE_KEYCHAIN_SERVICE global.
+# Reads: CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE global.
 # Returns: 0 on success (prints credentials to stdout, or empty string if no service).
 #   1 if credentials are present but not valid JSON.
 # Errors (stderr):
 #   "Error: Claude credentials from Keychain are not valid JSON. ..." — on invalid JSON
 _ckipper_worktree_docker_extract_credentials() {
-    if [[ -z "$W_ACTIVE_KEYCHAIN_SERVICE" ]]; then
+    if [[ -z "$CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE" ]]; then
         echo ""
         return 0
     fi
 
     local creds
-    creds=$(security find-generic-password -s "$W_ACTIVE_KEYCHAIN_SERVICE" -w 2>/dev/null) || true
+    creds=$(security find-generic-password -s "$CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE" -w 2>/dev/null) || true
 
     if [[ -z "$creds" ]]; then
         echo ""
@@ -102,7 +102,7 @@ _ckipper_worktree_docker_extract_credentials() {
     fi
 
     if ! echo "$creds" | jq empty >/dev/null 2>&1; then
-        echo "Error: Claude credentials from Keychain are not valid JSON. Re-run: ckipper add $W_ACTIVE_ACCOUNT --adopt" >&2
+        echo "Error: Claude credentials from Keychain are not valid JSON. Re-run: ckipper add $CKIPPER_WT_ACTIVE_ACCOUNT --adopt" >&2
         return 1
     fi
 
@@ -111,32 +111,32 @@ _ckipper_worktree_docker_extract_credentials() {
 
 # Extract GitHub token for gh CLI auth inside container (prints to stdout).
 #
-# Reads: W_ACTIVE_CONFIG_DIR global.
+# Reads: CKIPPER_WT_ACTIVE_CONFIG_DIR global.
 # Returns: 0 always (prints empty string if no token found).
 _ckipper_worktree_docker_extract_gh_token() {
     local token
     token=$(jq -r '.mcpServers.github.env.GITHUB_PERSONAL_ACCESS_TOKEN // empty' \
-        "$W_ACTIVE_CONFIG_DIR/.claude.json" 2>/dev/null) || true
+        "$CKIPPER_WT_ACTIVE_CONFIG_DIR/.claude.json" 2>/dev/null) || true
     if [[ -z "$token" ]] && command -v gh &>/dev/null; then
         token=$(gh auth token 2>/dev/null) || true
     fi
     echo "$token"
 }
 
-# Build the base docker run argument array into W_DOCKER_ARGS.
+# Build the base docker run argument array into CKIPPER_WT_DOCKER_ARGS.
 #
-# Reads: W_WT_PATH, W_PROJECTS_DIR, W_PROJECT, W_ACTIVE_CONFIG_DIR,
-#   W_EXTRA_VOLUMES globals.
-# Sets: W_DOCKER_ARGS (initialised from scratch).
+# Reads: CKIPPER_WT_WT_PATH, CKIPPER_PROJECTS_DIR, CKIPPER_WT_PROJECT, CKIPPER_WT_ACTIVE_CONFIG_DIR,
+#   CKIPPER_EXTRA_VOLUMES globals.
+# Sets: CKIPPER_WT_DOCKER_ARGS (initialised from scratch).
 # Returns: 0 always.
 _ckipper_worktree_docker_build_base_args() {
-    W_DOCKER_ARGS=(
+    CKIPPER_WT_DOCKER_ARGS=(
         docker run --rm -it
         -e TERM="${TERM:-xterm-256color}"
-        -v "$W_WT_PATH:/workspace:rw"
-        -v "$W_PROJECTS_DIR/$W_PROJECT/.git:$W_PROJECTS_DIR/$W_PROJECT/.git:rw"
-        -v "$W_ACTIVE_CONFIG_DIR:$W_ACTIVE_CONFIG_DIR:rw"
-        -e "CLAUDE_CONFIG_DIR=$W_ACTIVE_CONFIG_DIR"
+        -v "$CKIPPER_WT_WT_PATH:/workspace:rw"
+        -v "$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:rw"
+        -v "$CKIPPER_WT_ACTIVE_CONFIG_DIR:$CKIPPER_WT_ACTIVE_CONFIG_DIR:rw"
+        -e "CLAUDE_CONFIG_DIR=$CKIPPER_WT_ACTIVE_CONFIG_DIR"
         -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
         -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
         -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
@@ -148,82 +148,82 @@ _ckipper_worktree_docker_build_base_args() {
         -e "UV_TOOL_BIN_DIR=/home/claude/.uv-tools/bin"
         -e "UV_PYTHON_INSTALL_DIR=/home/claude/.uv-tools/python"
     )
-    for vol in "${W_EXTRA_VOLUMES[@]}"; do
-        W_DOCKER_ARGS+=( -v "$vol" )
+    for vol in "${CKIPPER_EXTRA_VOLUMES[@]}"; do
+        CKIPPER_WT_DOCKER_ARGS+=( -v "$vol" )
     done
 }
 
-# Add credentials, gh token, and extra env vars to W_DOCKER_ARGS.
+# Add credentials, gh token, and extra env vars to CKIPPER_WT_DOCKER_ARGS.
 #
 # Args:
 #   $1 — claude_creds: Claude credentials string (may be empty)
 #   $2 — gh_token: GitHub personal access token (may be empty)
 #
-# Reads: W_EXTRA_ENV global. Appends to W_DOCKER_ARGS.
+# Reads: CKIPPER_EXTRA_ENV global. Appends to CKIPPER_WT_DOCKER_ARGS.
 # Returns: 0 always.
 _ckipper_worktree_docker_add_optional_args() {
     local claude_creds="$1"
     local gh_token="$2"
 
     if [[ -n "$claude_creds" ]]; then
-        W_DOCKER_ARGS+=( -e "CLAUDE_CREDENTIALS=$claude_creds" )
+        CKIPPER_WT_DOCKER_ARGS+=( -e "CLAUDE_CREDENTIALS=$claude_creds" )
     else
         echo "  Warning: Could not extract Claude credentials from Keychain"
     fi
 
     if [[ -n "$gh_token" ]]; then
-        W_DOCKER_ARGS+=( -e "GH_TOKEN=$gh_token" )
+        CKIPPER_WT_DOCKER_ARGS+=( -e "GH_TOKEN=$gh_token" )
     else
         echo "  Warning: No GitHub token found (gh commands won't work in container)"
     fi
 
-    for env_var in "${W_EXTRA_ENV[@]}"; do
-        W_DOCKER_ARGS+=( -e "$env_var" )
+    for env_var in "${CKIPPER_EXTRA_ENV[@]}"; do
+        CKIPPER_WT_DOCKER_ARGS+=( -e "$env_var" )
     done
 }
 
 # If the command is "claude", expand to full skip-permissions invocation.
 #
-# Reads and appends to W_COMMAND and W_DOCKER_ARGS.
+# Reads and appends to CKIPPER_WT_COMMAND and CKIPPER_WT_DOCKER_ARGS.
 # Returns: 0 always.
 _ckipper_worktree_docker_expand_command() {
-    if [[ ${#W_COMMAND[@]} -gt 0 && "${W_COMMAND[1]}" == "claude" ]]; then
-        W_COMMAND=(claude --dangerously-skip-permissions "/rename $W_BRANCH")
+    if [[ ${#CKIPPER_WT_COMMAND[@]} -gt 0 && "${CKIPPER_WT_COMMAND[1]}" == "claude" ]]; then
+        CKIPPER_WT_COMMAND=(claude --dangerously-skip-permissions "/rename $CKIPPER_WT_BRANCH")
     fi
-    if [[ ${#W_COMMAND[@]} -gt 0 ]]; then
-        W_DOCKER_ARGS+=( "${W_COMMAND[@]}" )
+    if [[ ${#CKIPPER_WT_COMMAND[@]} -gt 0 ]]; then
+        CKIPPER_WT_DOCKER_ARGS+=( "${CKIPPER_WT_COMMAND[@]}" )
     fi
 }
 
 # Print the startup banner.
 #
-# Reads: W_COMMAND, W_FLAG_FIREWALL, W_WT_PATH, W_RESOLVED_PORTS globals.
+# Reads: CKIPPER_WT_COMMAND, CKIPPER_WT_FLAG_FIREWALL, CKIPPER_WT_WT_PATH, CKIPPER_WT_RESOLVED_PORTS globals.
 # Returns: 0 always.
 _ckipper_worktree_docker_print_banner() {
     local mode_label="Docker"
-    [[ ${#W_COMMAND[@]} -gt 0 ]] && mode_label+=": ${W_COMMAND[1]}"
-    [[ "$W_FLAG_FIREWALL" = true ]] && mode_label+=", firewall"
+    [[ ${#CKIPPER_WT_COMMAND[@]} -gt 0 ]] && mode_label+=": ${CKIPPER_WT_COMMAND[1]}"
+    [[ "$CKIPPER_WT_FLAG_FIREWALL" = true ]] && mode_label+=", firewall"
     echo "Starting $mode_label..."
-    echo "  Worktree: $W_WT_PATH"
-    echo "  Ports: ${W_RESOLVED_PORTS[*]}"
+    echo "  Worktree: $CKIPPER_WT_WT_PATH"
+    echo "  Ports: ${CKIPPER_WT_RESOLVED_PORTS[*]}"
 }
 
 # Snapshot git state, run docker, then check for post-session tampering.
 #
-# Reads: W_DOCKER_ARGS, W_PROJECTS_DIR, W_PROJECT globals.
+# Reads: CKIPPER_WT_DOCKER_ARGS, CKIPPER_PROJECTS_DIR, CKIPPER_WT_PROJECT globals.
 # Returns: exit code of the docker run invocation.
 _ckipper_worktree_docker_snapshot_and_run() {
-    local git_config="$W_PROJECTS_DIR/$W_PROJECT/.git/config"
+    local git_config="$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git/config"
     local git_config_hash=""
     [[ -f "$git_config" ]] && git_config_hash=$(shasum -a "$SHASUM_BITS" "$git_config" | cut -d' ' -f1)
 
-    local git_worktrees_dir="$W_PROJECTS_DIR/$W_PROJECT/.git/worktrees"
+    local git_worktrees_dir="$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git/worktrees"
     local -a worktrees_before=()
     if [[ -d "$git_worktrees_dir" ]]; then
         worktrees_before=( "$git_worktrees_dir"/*(N/:t) )
     fi
 
-    "${W_DOCKER_ARGS[@]}"
+    "${CKIPPER_WT_DOCKER_ARGS[@]}"
     local exit_code=$?
 
     _ckipper_worktree_docker_check_git_config_tampering "$git_config" "$git_config_hash"
@@ -248,7 +248,7 @@ _ckipper_worktree_docker_check_git_config_tampering() {
         if [[ "$original_hash" != "$new_hash" ]]; then
             echo ""
             echo "WARNING: .git/config was modified during the Docker session!"
-            echo "Review changes: git -C $W_PROJECTS_DIR/$W_PROJECT config --local --list"
+            echo "Review changes: git -C $CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT config --local --list"
         fi
     fi
 }
@@ -286,7 +286,7 @@ _ckipper_worktree_docker_check_worktree_destruction() {
     echo ""
     echo "The working directories still exist on disk — only the .git/worktrees/ metadata was deleted."
     echo "To recover, re-register each worktree:"
-    echo "  cd $W_PROJECTS_DIR/$W_PROJECT"
+    echo "  cd $CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT"
     for wt in "${missing[@]}"; do
         echo "  git worktree add <path-to-$wt> $wt"
     done

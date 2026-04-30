@@ -6,9 +6,9 @@ load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 
 setup() {
     setup_isolated_env
-    export W_WT_PATH="$TMP_HOME/worktrees/myapp/feature-x"
-    export W_BRANCH="feature-x"
-    mkdir -p "$W_WT_PATH"
+    export CKIPPER_WT_WT_PATH="$TMP_HOME/worktrees/myapp/feature-x"
+    export CKIPPER_WT_BRANCH="feature-x"
+    mkdir -p "$CKIPPER_WT_WT_PATH"
 }
 
 teardown() {
@@ -17,11 +17,11 @@ teardown() {
 
 @test "_ckipper_worktree_run_normal_mode executes a stub claude binary in the worktree directory" {
     run env HOME="$TMP_HOME" \
-        W_WT_PATH="$W_WT_PATH" \
-        W_BRANCH="$W_BRANCH" \
+        CKIPPER_WT_WT_PATH="$CKIPPER_WT_WT_PATH" \
+        CKIPPER_WT_BRANCH="$CKIPPER_WT_BRANCH" \
         PATH="$PATH" \
         zsh -c "
-            typeset -a W_COMMAND=(claude)
+            typeset -a CKIPPER_WT_COMMAND=(claude)
             source \"$REPO_ROOT/lib/worktree/normal-mode.zsh\"
             _ckipper_worktree_run_normal_mode
         "

@@ -10,29 +10,29 @@
 #   w --rm <project> <branch-name>                 remove worktree + delete branch
 #   w --rebuild-image                              rebuild ckipper-dev Docker image
 #
-# <project> is a path relative to W_PROJECTS_DIR (default: ~/Developer; e.g. "Whmoro/orderguard", "my-app")
+# <project> is a path relative to CKIPPER_PROJECTS_DIR (default: ~/Developer; e.g. "Whmoro/orderguard", "my-app")
 #
 # ── CUSTOMIZATION ────────────────────────────────────────────────
 # Edit ~/.ckipper/docker/w-config.zsh to customize:
-#   - W_PROJECTS_DIR: base directory for git projects (default: $HOME/Developer)
-#   - W_WORKTREES_DIR: base directory for worktrees (default: $W_PROJECTS_DIR/.worktrees)
-#   - W_PORTS: dev server ports to forward
-#   - W_EXTRA_VOLUMES: MCP server mounts and other volume mounts
-#   - W_EXTRA_ENV: extra environment variables for the container
+#   - CKIPPER_PROJECTS_DIR: base directory for git projects (default: $HOME/Developer)
+#   - CKIPPER_WORKTREES_DIR: base directory for worktrees (default: $CKIPPER_PROJECTS_DIR/.worktrees)
+#   - CKIPPER_PORTS: dev server ports to forward
+#   - CKIPPER_EXTRA_VOLUMES: MCP server mounts and other volume mounts
+#   - CKIPPER_EXTRA_ENV: extra environment variables for the container
 #
 # BASE BRANCH: Worktrees are created from origin/develop. Change
 # "develop" below if your default branch is different (e.g. main).
 # ─────────────────────────────────────────────────────────────────
 
-W_REPO_DIR="${0:A:h}"
-source "$W_REPO_DIR/ckipper.zsh"
-source "$W_REPO_DIR/lib/worktree/resolve-account.zsh"
-source "$W_REPO_DIR/lib/worktree/build-image.zsh"
-source "$W_REPO_DIR/lib/worktree/args.zsh"
-source "$W_REPO_DIR/lib/worktree/worktree.zsh"
-source "$W_REPO_DIR/lib/worktree/ports.zsh"
-source "$W_REPO_DIR/lib/worktree/docker-mode.zsh"
-source "$W_REPO_DIR/lib/worktree/normal-mode.zsh"
+CKIPPER_REPO_DIR="${0:A:h}"
+source "$CKIPPER_REPO_DIR/ckipper.zsh"
+source "$CKIPPER_REPO_DIR/lib/worktree/resolve-account.zsh"
+source "$CKIPPER_REPO_DIR/lib/worktree/build-image.zsh"
+source "$CKIPPER_REPO_DIR/lib/worktree/args.zsh"
+source "$CKIPPER_REPO_DIR/lib/worktree/worktree.zsh"
+source "$CKIPPER_REPO_DIR/lib/worktree/ports.zsh"
+source "$CKIPPER_REPO_DIR/lib/worktree/docker-mode.zsh"
+source "$CKIPPER_REPO_DIR/lib/worktree/normal-mode.zsh"
 
 # Source user config (projects/worktrees dirs, ports, extra volumes, extra env vars)
 _ckipper_worktree_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/w-config.zsh"
@@ -41,16 +41,16 @@ if [[ -f "$_ckipper_worktree_config" ]]; then
 fi
 # Defaults if config is missing or incomplete. Set once at source time and
 # never reset per-call so users can host their projects anywhere without forking.
-W_PROJECTS_DIR="${W_PROJECTS_DIR:-$HOME/Developer}"
-W_WORKTREES_DIR="${W_WORKTREES_DIR:-$W_PROJECTS_DIR/.worktrees}"
-(( ${#W_PORTS[@]} == 0 )) && W_PORTS=(3000)
-(( ${#W_EXTRA_VOLUMES[@]} == 0 )) && W_EXTRA_VOLUMES=()
-(( ${#W_EXTRA_ENV[@]} == 0 )) && W_EXTRA_ENV=()
+CKIPPER_PROJECTS_DIR="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
+CKIPPER_WORKTREES_DIR="${CKIPPER_WORKTREES_DIR:-$CKIPPER_PROJECTS_DIR/.worktrees}"
+(( ${#CKIPPER_PORTS[@]} == 0 )) && CKIPPER_PORTS=(3000)
+(( ${#CKIPPER_EXTRA_VOLUMES[@]} == 0 )) && CKIPPER_EXTRA_VOLUMES=()
+(( ${#CKIPPER_EXTRA_ENV[@]} == 0 )) && CKIPPER_EXTRA_ENV=()
 
 # Worktree-aware Claude Code launcher.
 #
 # Args:
-#   $1 — project path (relative to W_PROJECTS_DIR), or a flag (--list, --rm, --rebuild-image)
+#   $1 — project path (relative to CKIPPER_PROJECTS_DIR), or a flag (--list, --rm, --rebuild-image)
 #   $2 — branch/worktree name (required unless $1 is --list or --rebuild-image)
 #   $@ — optional flags and command: [--docker] [--firewall] [--account <name>] [cmd...]
 #
@@ -62,25 +62,25 @@ W_WORKTREES_DIR="${W_WORKTREES_DIR:-$W_PROJECTS_DIR/.worktrees}"
 w() {
     _ckipper_worktree_parse_args "$@"
 
-    if [[ "$W_FLAG_LIST" = true ]]; then
+    if [[ "$CKIPPER_WT_FLAG_LIST" = true ]]; then
         _ckipper_worktree_list_worktrees
-    elif [[ "$W_FLAG_REBUILD_IMAGE" = true ]]; then
+    elif [[ "$CKIPPER_WT_FLAG_REBUILD_IMAGE" = true ]]; then
         _ckipper_worktree_build_image
         return $?
-    elif [[ "$W_FLAG_RM" = true ]]; then
-        _ckipper_worktree_remove_worktree "$W_PROJECT" "$W_BRANCH"
+    elif [[ "$CKIPPER_WT_FLAG_RM" = true ]]; then
+        _ckipper_worktree_remove_worktree "$CKIPPER_WT_PROJECT" "$CKIPPER_WT_BRANCH"
         return $?
-    elif [[ -z "$W_PROJECT" || -z "$W_BRANCH" ]]; then
+    elif [[ -z "$CKIPPER_WT_PROJECT" || -z "$CKIPPER_WT_BRANCH" ]]; then
         _ckipper_worktree_usage
         return 1
     else
-        if [[ "$W_FLAG_FIREWALL" = true && "$W_FLAG_DOCKER" = false ]]; then
+        if [[ "$CKIPPER_WT_FLAG_FIREWALL" = true && "$CKIPPER_WT_FLAG_DOCKER" = false ]]; then
             echo "Error: --firewall requires --docker"
             return 1
         fi
         _ckipper_worktree_resolve_account || return $?
-        _ckipper_worktree_create_worktree "$W_PROJECT" "$W_BRANCH" || return $?
-        if [[ "$W_FLAG_DOCKER" = true ]]; then
+        _ckipper_worktree_create_worktree "$CKIPPER_WT_PROJECT" "$CKIPPER_WT_BRANCH" || return $?
+        if [[ "$CKIPPER_WT_FLAG_DOCKER" = true ]]; then
             _ckipper_worktree_run_docker_mode
         else
             _ckipper_worktree_run_normal_mode
@@ -117,9 +117,9 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs regenerate
 # the cached completion file. The version is embedded as a literal comment in
 # the generated file and matched here.
-W_COMPLETION_VERSION=2
+CKIPPER_COMPLETION_VERSION=2
 if [[ ! -f ~/.zsh/completions/_w ]] \
-    || ! grep -q "# w-completion-version=$W_COMPLETION_VERSION" ~/.zsh/completions/_w 2>/dev/null; then
+    || ! grep -q "# w-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_w 2>/dev/null; then
     # Note: `_w()` below is a zsh tab-completion definition embedded in a heredoc.
     # It uses zsh's _arguments DSL and must remain a single function for tab
     # completion to work. The 25-line cap in code-style.md does not apply to
@@ -130,8 +130,8 @@ if [[ ! -f ~/.zsh/completions/_w ]] \
 # w-completion-version=2
 
 _w() {
-    local projects_dir="${W_PROJECTS_DIR:-$HOME/Developer}"
-    local worktrees_dir="${W_WORKTREES_DIR:-$projects_dir/.worktrees}"
+    local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
+    local worktrees_dir="${CKIPPER_WORKTREES_DIR:-$projects_dir/.worktrees}"
 
     _arguments -C \
         '(--rm)--list[List all worktrees]' \

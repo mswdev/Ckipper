@@ -6,9 +6,9 @@ load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 
 setup() {
     setup_isolated_env
-    export W_PROJECTS_DIR="$TMP_HOME/Developer"
-    export W_WORKTREES_DIR="$TMP_HOME/Developer/.worktrees"
-    mkdir -p "$W_PROJECTS_DIR" "$W_WORKTREES_DIR"
+    export CKIPPER_PROJECTS_DIR="$TMP_HOME/Developer"
+    export CKIPPER_WORKTREES_DIR="$TMP_HOME/Developer/.worktrees"
+    mkdir -p "$CKIPPER_PROJECTS_DIR" "$CKIPPER_WORKTREES_DIR"
 }
 
 teardown() {
@@ -21,11 +21,11 @@ _run_worktree() {
     run env HOME="$TMP_HOME" \
         CKIPPER_DIR="$CKIPPER_DIR" \
         CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
-        W_PROJECTS_DIR="$W_PROJECTS_DIR" \
-        W_WORKTREES_DIR="$W_WORKTREES_DIR" \
-        W_ACTIVE_ACCOUNT="${W_ACTIVE_ACCOUNT:-test}" \
-        W_ACTIVE_CONFIG_DIR="${W_ACTIVE_CONFIG_DIR:-$TMP_HOME/.claude-test}" \
-        W_FLAG_FORCE="${W_FLAG_FORCE:-false}" \
+        CKIPPER_PROJECTS_DIR="$CKIPPER_PROJECTS_DIR" \
+        CKIPPER_WORKTREES_DIR="$CKIPPER_WORKTREES_DIR" \
+        CKIPPER_WT_ACTIVE_ACCOUNT="${CKIPPER_WT_ACTIVE_ACCOUNT:-test}" \
+        CKIPPER_WT_ACTIVE_CONFIG_DIR="${CKIPPER_WT_ACTIVE_CONFIG_DIR:-$TMP_HOME/.claude-test}" \
+        CKIPPER_WT_FLAG_FORCE="${CKIPPER_WT_FLAG_FORCE:-false}" \
         PATH="$PATH" \
         zsh -c "
             source \"$REPO_ROOT/lib/core/utils.zsh\"
