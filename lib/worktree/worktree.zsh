@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# Worktree list, remove, and create operations for w().
+# Worktree list, remove, and create operations for `ckipper worktree`.
 
 readonly CKIPPER_WT_FIND_MAX_DEPTH=3
 
@@ -64,7 +64,7 @@ _ckipper_worktree_get_project_and_branch() {
 # Reads CKIPPER_WT_FLAG_FORCE, CKIPPER_WORKTREES_DIR, CKIPPER_PROJECTS_DIR globals.
 # Returns: 0 on success; 1 on validation failure or git error.
 # Errors (stderr):
-#   "Usage: w --rm [--force] <project> <worktree>" — when project or worktree is empty
+#   "Usage: ckipper worktree rm [--force] <project> <worktree>" — when project or worktree is empty
 #   "Worktree not found: <path>" — when the worktree directory does not exist
 #   "Failed to remove worktree. Use --force if it has uncommitted changes." — on git error
 _ckipper_worktree_remove_worktree() {
@@ -72,7 +72,7 @@ _ckipper_worktree_remove_worktree() {
     local worktree="$2"
 
     if [[ -z "$project" || -z "$worktree" ]]; then
-        echo "Usage: w --rm [--force] <project> <worktree>"
+        echo "Usage: ckipper worktree rm [--force] <project> <worktree>"
         return 1
     fi
 

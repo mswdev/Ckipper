@@ -34,7 +34,7 @@ _ckipper_doctor_tooling() {
     if [[ -d "$CKIPPER_DIR" ]]; then _ckipper_doctor_check PASS "$CKIPPER_DIR exists"; else _ckipper_doctor_check FAIL "$CKIPPER_DIR is missing — run install.sh"; fi
     if [[ -f "$CKIPPER_DIR/docker/ckipper.zsh" ]]; then _ckipper_doctor_check PASS "ckipper.zsh deployed"; else _ckipper_doctor_check FAIL "ckipper.zsh missing in $CKIPPER_DIR/docker/"; fi
     if [[ -f "$CKIPPER_DIR/docker/cleanup-projects.py" ]]; then _ckipper_doctor_check PASS "cleanup-projects.py deployed"; else _ckipper_doctor_check WARN "cleanup-projects.py missing — ckipper worktree rm cleanup will silently skip"; fi
-    if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then _ckipper_doctor_check PASS "settings-template.json deployed"; else _ckipper_doctor_check WARN "settings-template.json missing — ckipper add will skip seeding settings.json"; fi
+    if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then _ckipper_doctor_check PASS "settings-template.json deployed"; else _ckipper_doctor_check WARN "settings-template.json missing — ckipper account add will skip seeding settings.json"; fi
     if [[ -d "$CKIPPER_DIR/hooks" ]] && (( $(ls -1 "$CKIPPER_DIR/hooks" 2>/dev/null | wc -l) >= MIN_HOOK_FILES )); then
         _ckipper_doctor_check PASS "hooks/ has ${MIN_HOOK_FILES}+ files"
     else
@@ -50,7 +50,7 @@ _ckipper_doctor_registry() {
     echo ""
     echo "── Registry ──────────────────────────────────────────"
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
-        _ckipper_doctor_check INFO "No registry yet — no accounts registered. Run: ckipper add <name>"
+        _ckipper_doctor_check INFO "No registry yet — no accounts registered. Run: ckipper account add <name>"
         return 1
     fi
     local v; v=$(jq -r '.version // 0' "$CKIPPER_REGISTRY" 2>/dev/null)
@@ -88,7 +88,7 @@ _ckipper_doctor_account_plugins() {
         fi
     done
     if [[ "$has_stale_plugin_metadata" = "true" ]]; then
-        _ckipper_doctor_check WARN "    plugins/*.json has stale ~/.claude/ paths — plugins will fail to load. Repair: ckipper repair-plugins $name"
+        _ckipper_doctor_check WARN "    plugins/*.json has stale ~/.claude/ paths — plugins will fail to load. Repair: ckipper account repair-plugins $name"
     fi
 }
 
@@ -138,7 +138,7 @@ _ckipper_doctor_account() {
         _ckipper_doctor_check WARN "    .claude.json missing in $dir"
     fi
     if [[ -f "$dir/settings.json" ]]; then _ckipper_doctor_check PASS "    settings.json present"; else _ckipper_doctor_check WARN "    settings.json missing"; fi
-    if [[ -d "$dir/hooks" ]]; then _ckipper_doctor_check PASS "    hooks/ deployed"; else _ckipper_doctor_check WARN "    hooks/ missing — run: ckipper sync-hooks"; fi
+    if [[ -d "$dir/hooks" ]]; then _ckipper_doctor_check PASS "    hooks/ deployed"; else _ckipper_doctor_check WARN "    hooks/ missing — run: ckipper account sync-hooks"; fi
     _ckipper_doctor_account_plugins "$name" "$dir"
     _ckipper_doctor_account_keychain "$svc" "$name"
 }

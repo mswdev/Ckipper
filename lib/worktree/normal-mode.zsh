@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# Normal (non-Docker) mode execution for w().
+# Normal (non-Docker) mode execution for `ckipper worktree run`.
 
 # Run the worktree in normal mode: cd to it or run a command inside it.
 #

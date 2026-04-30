@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# Account resolution for w(). Populates CKIPPER_WT_ACTIVE_* globals.
+# Account resolution for `ckipper worktree run`. Populates CKIPPER_WT_ACTIVE_* globals.
 
 # Resolve which ckipper account to use, then populate:
 #   CKIPPER_WT_ACTIVE_ACCOUNT          — resolved account name

@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# Port resolution for w() Docker mode. Finds available host ports for dev servers.
+# Port resolution for `ckipper worktree run --docker`. Finds available host ports for dev servers.
 
 readonly MAX_PORT_FALLBACK_ATTEMPTS=10
 

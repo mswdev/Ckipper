@@ -19,42 +19,48 @@ _ckipper_worktree_dispatch() {
     local cmd="$1"
     shift 2>/dev/null
     case "$cmd" in
-        run)
+        run|list|rm|rebuild-image)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-                _ckipper_worktree_help_for run
+                _ckipper_worktree_help_for "$cmd"
                 return 0
             fi
-            _ckipper_worktree_run "$@"
-            ;;
-        list)
-            if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-                _ckipper_worktree_help_for list
-                return 0
-            fi
-            _ckipper_worktree_list_worktrees "$@"
-            ;;
-        rm)
-            if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-                _ckipper_worktree_help_for rm
-                return 0
-            fi
-            _ckipper_worktree_parse_rm_args "$@"
-            if [[ -z "$CKIPPER_WT_PROJECT" || -z "$CKIPPER_WT_BRANCH" ]]; then
-                _ckipper_worktree_help_for rm >&2
-                return 1
-            fi
-            _ckipper_worktree_remove_worktree "$CKIPPER_WT_PROJECT" "$CKIPPER_WT_BRANCH"
-            ;;
-        rebuild-image)
-            if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-                _ckipper_worktree_help_for rebuild-image
-                return 0
-            fi
-            _ckipper_worktree_build_image "$@"
+            _ckipper_worktree_route "$cmd" "$@"
             ;;
         ""|help|-h|--help) _ckipper_worktree_help ;;
         *) _ckipper_worktree_unknown "$cmd"; return 1 ;;
     esac
+}
+
+# Route a known subcommand to its handler.
+#
+# Args:
+#   $1     — subcommand name (run, list, rm, or rebuild-image)
+#   $2..$N — arguments forwarded to the handler
+#
+# Returns: handler exit status.
+_ckipper_worktree_route() {
+    local cmd="$1"
+    shift
+    case "$cmd" in
+        run)           _ckipper_worktree_run "$@" ;;
+        list)          _ckipper_worktree_list_worktrees "$@" ;;
+        rm)            _ckipper_worktree_route_rm "$@" ;;
+        rebuild-image) _ckipper_worktree_build_image "$@" ;;
+    esac
+}
+
+# Parse `rm` flags and dispatch to the remove helper.
+#
+# Args: $1..$N — `rm` arguments (flags + project + worktree).
+#
+# Returns: 0 on success; 1 if project or worktree is empty after parsing.
+_ckipper_worktree_route_rm() {
+    _ckipper_worktree_parse_rm_args "$@"
+    if [[ -z "$CKIPPER_WT_PROJECT" || -z "$CKIPPER_WT_BRANCH" ]]; then
+        _ckipper_worktree_help_for rm >&2
+        return 1
+    fi
+    _ckipper_worktree_remove_worktree "$CKIPPER_WT_PROJECT" "$CKIPPER_WT_BRANCH"
 }
 
 # Print the closest-match suggestion (or a bare unknown-command line) and

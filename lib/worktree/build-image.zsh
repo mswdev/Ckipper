@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# Docker image build helper for w().
+# Docker image build helper for `ckipper worktree rebuild-image`.
 
 # Build the ckipper-dev Docker image from $CKIPPER_DIR/docker/Dockerfile.
 #

@@ -39,14 +39,14 @@ ck wt list                                             # list all worktrees
 ck wt rm myorg/myapp feature-x                         # remove worktree + delete branch
 ck wt rebuild-image                                    # rebuild Docker image
 
-ckipper add <name>                                   # register a Claude account (interactive /login)
-ckipper list                                         # show registered accounts
-ckipper default <name>                               # set the default account
-ckipper rename <old> <new>                           # rename an account in place
-ckipper remove <name>                                # unregister (does not delete the dir)
-ckipper sync <from> <to>                             # copy MCP/settings/plugins between accounts
-ckipper sync-hooks                                   # re-deploy hooks into every account dir
-ckipper repair-plugins <name>                        # fix stale ~/.claude/ paths in plugin metadata
+ckipper account add <name>                           # register a Claude account (interactive /login)
+ckipper account list                                 # show registered accounts
+ckipper account default <name>                       # set the default account
+ckipper account rename <old> <new>                   # rename an account in place
+ckipper account remove <name>                        # unregister (does not delete the dir)
+ckipper account sync <from> <to>                     # copy MCP/settings/plugins between accounts
+ckipper account sync-hooks                           # re-deploy hooks into every account dir
+ckipper account repair-plugins <name>                # fix stale ~/.claude/ paths in plugin metadata
 ckipper doctor                                       # diagnostic checklist
 ```
 
@@ -59,7 +59,7 @@ Run a personal account in one terminal and a work account in another, fully isol
 ### Add an account
 
 ```bash
-ckipper add work
+ckipper account add work
 ```
 
 `ckipper` walks you through `/login` and registers the account. Repeat for every account you want.
@@ -72,7 +72,7 @@ work                                         # bare-name shortcut (skipped if it
 CLAUDE_CONFIG_DIR=~/.claude-work claude      # raw form
 ```
 
-`ckipper add` re-sources `aliases.zsh` in your current shell, so new launchers are usable immediately — no `exec zsh`.
+`ckipper account add` re-sources `aliases.zsh` in your current shell, so new launchers are usable immediately — no `exec zsh`.
 
 ### Inside Docker
 
@@ -80,14 +80,14 @@ CLAUDE_CONFIG_DIR=~/.claude-work claude      # raw form
 ck wt run myorg/app feature --account work --docker claude
 ```
 
-If you're already in a terminal where `CLAUDE_CONFIG_DIR` is set (e.g., via `claude-work`), `w` picks up the account automatically — no flag needed.
+If you're already in a terminal where `CLAUDE_CONFIG_DIR` is set (e.g., via `claude-work`), `ckipper worktree run` picks up the account automatically — no flag needed.
 
 ### List, default, remove
 
 ```bash
-ckipper list
-ckipper default personal
-ckipper remove old-account
+ckipper account list
+ckipper account default personal
+ckipper account remove old-account
 ```
 
 ### How accounts are stored
@@ -95,7 +95,7 @@ ckipper remove old-account
 - Per-account state lives in `~/.claude-<name>/` (analogous to the legacy `~/.claude/`).
 - The registry mapping accounts to dirs and Keychain services lives at `~/.ckipper/accounts.json` (chmod 600, atomic writes via `flock`).
 - Auto-generated `~/.ckipper/aliases.zsh` defines `claude-<name>` (and a bare `<name>` shortcut, when it doesn't shadow an existing command) per registered account.
-- Hooks under `~/.ckipper/hooks/` are the canonical source — `ckipper sync-hooks` copies them per-account and rewrites `settings.json` paths.
+- Hooks under `~/.ckipper/hooks/` are the canonical source — `ckipper account sync-hooks` copies them per-account and rewrites `settings.json` paths.
 
 ## ⚠️ Don't run the same account in two sessions
 
@@ -248,7 +248,7 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `ckipper.zsh` | `~/.ckipper/docker/ckipper.zsh` | ckipper CLI entry (sourced by .zshrc) |
 | `lib/core/`, `lib/account/`, `lib/worktree/` | `~/.ckipper/docker/lib/` | Shell module tree (sourced by `ckipper.zsh`; test files excluded) |
 | `templates/ckipper-config.zsh.example` | `~/.ckipper/docker/ckipper-config.zsh` | User config (ports, mounts, env vars) |
-| `templates/settings-template.json` | `~/.ckipper/settings-template.json` | Hook settings template (applied per-account by `ckipper sync-hooks`) |
+| `templates/settings-template.json` | `~/.ckipper/settings-template.json` | Hook settings template (applied per-account by `ckipper account sync-hooks`) |
 
 ### macOS Keychain Authentication
 
@@ -321,7 +321,7 @@ git pull
 source ~/.zshrc
 ```
 
-`install.sh` is idempotent. It re-deploys `~/.ckipper/docker/` (entry scripts, Dockerfile, entrypoint, `lib/` tree) and `~/.ckipper/hooks/`. Your `accounts.json`, `aliases.zsh`, and `ckipper-config.zsh` are preserved. If hooks changed in the update, run `ckipper sync-hooks` to push the new versions into each registered account dir.
+`install.sh` is idempotent. It re-deploys `~/.ckipper/docker/` (entry scripts, Dockerfile, entrypoint, `lib/` tree) and `~/.ckipper/hooks/`. Your `accounts.json`, `aliases.zsh`, and `ckipper-config.zsh` are preserved. If hooks changed in the update, run `ckipper account sync-hooks` to push the new versions into each registered account dir.
 
 ### Update the container
 
@@ -384,17 +384,17 @@ This is usually a feature — your `personal` and `work` accounts working in the
 
 ### MCP servers are per-account (user-scoped only)
 
-`mcpServers` lives in each account's `.claude.json`. When you `ckipper add <new>`, the new account starts with **zero** user-scoped MCP servers. Two ways to populate:
+`mcpServers` lives in each account's `.claude.json`. When you `ckipper account add <new>`, the new account starts with **zero** user-scoped MCP servers. Two ways to populate:
 
 ```bash
-ckipper sync personal work                  # default bundle: mcpServers + plugins + statusLine + env
-ckipper sync personal work --mcp Vibma,github   # only specific MCPs
-ckipper sync personal work --dry-run         # preview before writing
+ckipper account sync personal work                  # default bundle: mcpServers + plugins + statusLine + env
+ckipper account sync personal work --mcp Vibma,github   # only specific MCPs
+ckipper account sync personal work --dry-run         # preview before writing
 ```
 
 ### Plugins and marketplaces are per-account
 
-`enabledPlugins` and `extraKnownMarketplaces` (in `settings.json`) are per-account. The `ckipper sync` default bundle includes them; the `~/.ckipper/plugins/known_marketplaces.json` cache is independent per account dir.
+`enabledPlugins` and `extraKnownMarketplaces` (in `settings.json`) are per-account. The `ckipper account sync` default bundle includes them; the `~/.ckipper/plugins/known_marketplaces.json` cache is independent per account dir.
 
 ### `~/.claude/settings.local.json` may recreate after migration
 

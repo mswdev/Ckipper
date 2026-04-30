@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# Docker mode execution for w(). Builds docker run args and launches the container.
+# Docker mode execution for `ckipper worktree run --docker`. Builds docker run args and launches the container.
 
 readonly SHASUM_BITS=256
 
