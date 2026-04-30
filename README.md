@@ -230,8 +230,8 @@ ckipper add work
 
 ```bash
 # Clone the repo
-git clone https://github.com/whmoro/claude-docker-sandbox.git
-cd claude-docker-sandbox
+git clone https://github.com/whmoro/Ckipper.git
+cd Ckipper
 
 # Run the installer (copies all files, merges hooks, adds source line)
 ./install.sh
