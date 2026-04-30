@@ -55,7 +55,9 @@ _ckipper_worktree_get_project_and_branch() {
     fi
 }
 
-# Remove a worktree and delete its branch.
+# Remove a worktree and delete its branch. Empty-args validation lives in the
+# dispatcher (`_ckipper_worktree_route_rm`); this function expects non-empty
+# `project` and `worktree`.
 #
 # Args:
 #   $1 — project path (relative to CKIPPER_PROJECTS_DIR)
@@ -64,21 +66,15 @@ _ckipper_worktree_get_project_and_branch() {
 # Reads CKIPPER_WT_FLAG_FORCE, CKIPPER_WORKTREES_DIR, CKIPPER_PROJECTS_DIR globals.
 # Returns: 0 on success; 1 on validation failure or git error.
 # Errors (stderr):
-#   "Usage: ckipper worktree rm [--force] <project> <worktree>" — when project or worktree is empty
 #   "Worktree not found: <path>" — when the worktree directory does not exist
 #   "Failed to remove worktree. Use --force if it has uncommitted changes." — on git error
 _ckipper_worktree_remove_worktree() {
     local project="$1"
     local worktree="$2"
 
-    if [[ -z "$project" || -z "$worktree" ]]; then
-        echo "Usage: ckipper worktree rm [--force] <project> <worktree>"
-        return 1
-    fi
-
     local wt_path="$CKIPPER_WORKTREES_DIR/$project/$worktree"
     if [[ ! -d "$wt_path" ]]; then
-        echo "Worktree not found: $wt_path"
+        echo "Worktree not found: $wt_path" >&2
         return 1
     fi
 
@@ -86,7 +82,7 @@ _ckipper_worktree_remove_worktree() {
     [[ "$CKIPPER_WT_FLAG_FORCE" = true ]] && force_flag="--force"
 
     (cd "$CKIPPER_PROJECTS_DIR/$project" && git worktree remove $force_flag "$wt_path" && git branch -D "$worktree" 2>/dev/null) || {
-        echo "Failed to remove worktree. Use --force if it has uncommitted changes."
+        echo "Failed to remove worktree. Use --force if it has uncommitted changes." >&2
         return 1
     }
 
@@ -109,7 +105,7 @@ _ckipper_worktree_cleanup_project_registry() {
 }
 
 # Create a worktree for the given project and branch (idempotent if it already exists).
-# Sets CKIPPER_WT_WT_PATH to the resolved worktree path.
+# Sets CKIPPER_WT_PATH to the resolved worktree path.
 #
 # Args:
 #   $1 — project path (relative to CKIPPER_PROJECTS_DIR)
@@ -125,19 +121,19 @@ _ckipper_worktree_create_worktree() {
     local worktree="$2"
 
     if [[ ! -d "$CKIPPER_PROJECTS_DIR/$project" ]]; then
-        echo "Project not found: $CKIPPER_PROJECTS_DIR/$project"
+        echo "Project not found: $CKIPPER_PROJECTS_DIR/$project" >&2
         return 1
     fi
 
     if [[ -d "$CKIPPER_WORKTREES_DIR/$project/$worktree" ]]; then
         _ckipper_worktree_validate_existing_worktree "$project" "$worktree" || return 1
-        CKIPPER_WT_WT_PATH="$CKIPPER_WORKTREES_DIR/$project/$worktree"
+        CKIPPER_WT_PATH="$CKIPPER_WORKTREES_DIR/$project/$worktree"
         return 0
     fi
 
     echo "Creating worktree: $worktree"
     mkdir -p "$CKIPPER_WORKTREES_DIR/$project"
-    CKIPPER_WT_WT_PATH="$CKIPPER_WORKTREES_DIR/$project/$worktree"
+    CKIPPER_WT_PATH="$CKIPPER_WORKTREES_DIR/$project/$worktree"
 
     _ckipper_worktree_fetch_and_create "$project" "$worktree" || return 1
     _ckipper_worktree_post_create_setup "$project" "$worktree" || return 1
@@ -158,8 +154,8 @@ _ckipper_worktree_validate_existing_worktree() {
     local wt_path="$CKIPPER_WORKTREES_DIR/$project/$worktree"
 
     if [[ ! -f "$wt_path/.git" ]]; then
-        echo "Error: $wt_path exists but is not a valid worktree."
-        echo "Remove it manually or use a different branch name."
+        echo "Error: $wt_path exists but is not a valid worktree." >&2
+        echo "Remove it manually or use a different branch name." >&2
         return 1
     fi
 }
@@ -197,7 +193,7 @@ _ckipper_worktree_fetch_origin() {
     local worktree="$2"
 
     (cd "$CKIPPER_PROJECTS_DIR/$project" && git fetch origin develop) || {
-        echo "Failed to fetch from origin. Check your network connection and that 'develop' exists on the remote."
+        echo "Failed to fetch from origin. Check your network connection and that 'develop' exists on the remote." >&2
         return 1
     }
     (cd "$CKIPPER_PROJECTS_DIR/$project" && git fetch origin "$worktree" 2>/dev/null) || true
@@ -220,13 +216,13 @@ _ckipper_worktree_add_worktree() {
     (cd "$CKIPPER_PROJECTS_DIR/$project" && \
         if git show-ref --verify --quiet "refs/heads/$worktree"; then
             echo "Using existing local branch: $worktree"
-            git worktree add "$CKIPPER_WT_WT_PATH" "$worktree"
+            git worktree add "$CKIPPER_WT_PATH" "$worktree"
         elif git show-ref --verify --quiet "refs/remotes/origin/$worktree"; then
             echo "Tracking remote branch: origin/$worktree"
-            git worktree add "$CKIPPER_WT_WT_PATH" -b "$worktree" "origin/$worktree"
+            git worktree add "$CKIPPER_WT_PATH" -b "$worktree" "origin/$worktree"
         else
             echo "Creating new branch from origin/develop"
-            git worktree add "$CKIPPER_WT_WT_PATH" -b "$worktree" origin/develop
+            git worktree add "$CKIPPER_WT_PATH" -b "$worktree" origin/develop
         fi
     ) || _ckipper_worktree_handle_worktree_add_failure "$project" "$worktree"
 }
@@ -247,11 +243,11 @@ _ckipper_worktree_handle_worktree_add_failure() {
     local current_branch
     current_branch=$(cd "$CKIPPER_PROJECTS_DIR/$project" && git branch --show-current 2>/dev/null)
     if [[ "$current_branch" == "$worktree" ]]; then
-        echo "Failed: branch '$worktree' is currently checked out in the main repo."
-        echo "Switch the main repo to a different branch first:"
-        echo "  cd $CKIPPER_PROJECTS_DIR/$project && git checkout develop"
+        echo "Failed: branch '$worktree' is currently checked out in the main repo." >&2
+        echo "Switch the main repo to a different branch first:" >&2
+        echo "  cd $CKIPPER_PROJECTS_DIR/$project && git checkout develop" >&2
     else
-        echo "Failed to create worktree"
+        echo "Failed to create worktree" >&2
     fi
     return 1
 }
@@ -262,17 +258,17 @@ _ckipper_worktree_handle_worktree_add_failure() {
 #   $1 — project path (relative to CKIPPER_PROJECTS_DIR)
 #   $2 — branch/worktree name (unused but kept for symmetry with other helpers)
 #
-# Reads CKIPPER_WT_WT_PATH, CKIPPER_WT_ACTIVE_ACCOUNT globals.
+# Reads CKIPPER_WT_PATH, CKIPPER_WT_ACTIVE_ACCOUNT globals.
 # Returns: 0 always (individual steps may warn on failure but don't abort).
 _ckipper_worktree_post_create_setup() {
     local project="$1"
 
     echo "Installing dependencies..."
-    (cd "$CKIPPER_WT_WT_PATH" && npm install) || echo "Warning: npm install failed. You may need to run it manually."
+    (cd "$CKIPPER_WT_PATH" && npm install) || echo "Warning: npm install failed. You may need to run it manually."
 
     for env_file in $(find "$CKIPPER_PROJECTS_DIR/$project" -maxdepth "$CKIPPER_WT_FIND_MAX_DEPTH" -name ".env*" -not -name "*.example" -not -path "*/node_modules/*" -not -path "*/.git/*"); do
         local rel_path="${env_file#$CKIPPER_PROJECTS_DIR/$project/}"
-        local dest_dir="$CKIPPER_WT_WT_PATH/$(dirname "$rel_path")"
+        local dest_dir="$CKIPPER_WT_PATH/$(dirname "$rel_path")"
         mkdir -p "$dest_dir"
         cp "$env_file" "$dest_dir/"
         echo "Copied $rel_path"
@@ -286,7 +282,7 @@ _ckipper_worktree_post_create_setup() {
 # Args:
 #   $1 — project path (relative to CKIPPER_PROJECTS_DIR)
 #
-# Reads CKIPPER_WT_WT_PATH, CKIPPER_WT_ACTIVE_ACCOUNT globals.
+# Reads CKIPPER_WT_PATH, CKIPPER_WT_ACTIVE_ACCOUNT globals.
 # Returns: 0 always (failure is non-fatal).
 _ckipper_worktree_sync_project_registry() {
     local project="$1"
@@ -295,6 +291,6 @@ _ckipper_worktree_sync_project_registry() {
     if [[ -f "$ckipper_base_dir/docker/cleanup-projects.py" ]]; then
         CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
             python3 "$ckipper_base_dir/docker/cleanup-projects.py" sync \
-            "$CKIPPER_WT_ACTIVE_ACCOUNT" "$main_project_path" "$CKIPPER_WT_WT_PATH" 2>/dev/null || true
+            "$CKIPPER_WT_ACTIVE_ACCOUNT" "$main_project_path" "$CKIPPER_WT_PATH" 2>/dev/null || true
     fi
 }

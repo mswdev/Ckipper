@@ -11,7 +11,7 @@ setup() {
     export DOCKER_STUB_LOG="$TMP_HOME/docker.log"
     : > "$DOCKER_STUB_LOG"
     # Provide reasonable defaults for globals docker-mode reads.
-    export CKIPPER_WT_WT_PATH="$TMP_HOME/worktrees/myapp/feature-x"
+    export CKIPPER_WT_PATH="$TMP_HOME/worktrees/myapp/feature-x"
     export CKIPPER_PROJECTS_DIR="$TMP_HOME/Developer"
     export CKIPPER_WT_PROJECT="myapp"
     export CKIPPER_WT_BRANCH="feature-x"
@@ -38,7 +38,7 @@ _run_docker_mode() {
         CKIPPER_DIR="$CKIPPER_DIR" \
         CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
         DOCKER_STUB_LOG="$DOCKER_STUB_LOG" \
-        CKIPPER_WT_WT_PATH="$CKIPPER_WT_WT_PATH" \
+        CKIPPER_WT_PATH="$CKIPPER_WT_PATH" \
         CKIPPER_PROJECTS_DIR="$CKIPPER_PROJECTS_DIR" \
         CKIPPER_WT_PROJECT="$CKIPPER_WT_PROJECT" \
         CKIPPER_WT_BRANCH="$CKIPPER_WT_BRANCH" \
@@ -68,7 +68,7 @@ _run_docker_mode() {
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "-v" ]]
-    [[ "$output" =~ "$CKIPPER_WT_WT_PATH:/workspace:rw" ]]
+    [[ "$output" =~ "$CKIPPER_WT_PATH:/workspace:rw" ]]
 }
 
 @test "_ckipper_worktree_docker_add_optional_args emits a warning when no credentials are provided" {

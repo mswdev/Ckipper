@@ -20,8 +20,8 @@ _ckipper_worktree_resolve_account() {
     candidate=$(_ckipper_worktree_find_account_name)
 
     if [[ -z "$candidate" ]]; then
-        echo "Error: no account selected and no default registered."
-        echo "Run: ckipper account list   (then: ckipper account default <name>, or pass --account <name>)"
+        echo "Error: no account selected and no default registered." >&2
+        echo "Run: ckipper account list   (then: ckipper account default <name>, or pass --account <name>)" >&2
         return 1
     fi
 
@@ -32,7 +32,7 @@ _ckipper_worktree_resolve_account() {
     fi
 
     if [[ -z "$config_dir" ]]; then
-        echo "Error: account '$candidate' is not registered. Run: ckipper account list"
+        echo "Error: account '$candidate' is not registered. Run: ckipper account list" >&2
         return 1
     fi
 

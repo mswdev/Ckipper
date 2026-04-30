@@ -37,7 +37,7 @@ Run `./install.sh`. It rewrites `~/.zshrc`, deletes stale paths (`w-function.zsh
 
 ### Added
 - Initial public release.
-- Multi-account Claude Code management (`ckipper add/remove/rename/list/default/sync/doctor/migrate`).
+- Multi-account Claude Code management (`ckipper add/remove/rename/list/default/sync/doctor/migrate`; renamed to `ckipper account *` in 0.2.0).
 - `w()` worktree-aware launcher with normal and Docker (`--docker --firewall`) modes.
 - Auto-generated per-account aliases.
 - Safety hooks: `bash-guardrails.sh`, `protect-claude-config.sh`, `docker-context.sh`, `notify-bell.sh`.

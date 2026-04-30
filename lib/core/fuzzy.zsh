@@ -65,3 +65,26 @@ _core_fuzzy_suggest() {
     done
     echo "$best"
 }
+
+# Print an "Unknown command" message with a closest-match suggestion (if any)
+# followed by a help-pointer line. All output goes to stderr — this enforces
+# the unknown-command stderr contract for every dispatch tier.
+#
+# Args:
+#   $1     — the unknown command token the user typed
+#   $2     — help pointer text (e.g. "Run 'ckipper help' for available commands.")
+#   $3..$N — known-command candidate list
+#
+# Returns: 0 always.
+_core_unknown_command() {
+    local cmd="$1" help_text="$2"
+    shift 2
+    local suggestion
+    suggestion=$(_core_fuzzy_suggest "$cmd" "$@")
+    if [[ -n "$suggestion" ]]; then
+        echo "Unknown command: '$cmd'. Did you mean: '$suggestion'?" >&2
+    else
+        echo "Unknown command: '$cmd'." >&2
+    fi
+    echo "$help_text" >&2
+}

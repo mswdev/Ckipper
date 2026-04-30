@@ -64,6 +64,28 @@ _ckipper_account_sync_warn_running_claude() {
     [[ "$user_choice" != "y" && "$user_choice" != "Y" ]] && { echo "Aborted."; return 1; }
 }
 
+# Build the jq filter args used by sync_mcp_servers to project a server subset.
+# Populates the caller-scope array `jq_filter_args` (dynamic scope).
+#
+# Args:
+#   $1 — comma-separated MCP server names; empty means "all servers".
+#
+# Returns:
+#   0 always.
+_ckipper_account_sync_build_mcp_filter_args() {
+    local mcp_names="$1"
+    if [[ -z "$mcp_names" ]]; then
+        jq_filter_args=('.mcpServers // {}')
+        return 0
+    fi
+    local jq_array
+    jq_array=$(printf '%s' "$mcp_names" | jq -R 'split(",") | map(. | gsub("^\\s+|\\s+$"; ""))')
+    jq_filter_args=(
+        --argjson keys "$jq_array"
+        '.mcpServers // {} | with_entries(select(.key as $k | $keys | index($k)))'
+    )
+}
+
 # Sync MCP servers from one account to another. Appends a summary line to pending_msgs.
 # Reads from_dir, to_dir, and dry_run from _CKIPPER_SYNC_CTX module global.
 #
@@ -78,17 +100,8 @@ _ckipper_account_sync_mcp_servers() {
     local from_dir="${_CKIPPER_SYNC_CTX[from_dir]}"
     local to_dir="${_CKIPPER_SYNC_CTX[to_dir]}"
     local dry_run="${_CKIPPER_SYNC_CTX[dry_run]}"
-    local mcp_filter
     local -a jq_filter_args
-    if [[ -z "$mcp_names" ]]; then
-        mcp_filter='.mcpServers // {}'
-        jq_filter_args=("$mcp_filter")
-    else
-        local jq_array
-        jq_array=$(printf '%s' "$mcp_names" | jq -R 'split(",") | map(. | gsub("^\\s+|\\s+$"; ""))')
-        mcp_filter='.mcpServers // {} | with_entries(select(.key as $k | $keys | index($k)))'
-        jq_filter_args=(--argjson keys "$jq_array" "$mcp_filter")
-    fi
+    _ckipper_account_sync_build_mcp_filter_args "$mcp_names"
     local servers; servers=$(jq "${jq_filter_args[@]}" "$from_dir/.claude.json")
     local server_keys; server_keys=$(printf '%s' "$servers" | jq -r 'keys[]?' | tr '\n' ' ')
     if [[ -z "$server_keys" || "$server_keys" == " " ]]; then
@@ -203,10 +216,10 @@ _ckipper_account_sync() {
     local from="$1" to="$2"
     shift 2 2>/dev/null
     if [[ -z "$from" || -z "$to" ]]; then
-        echo "Usage: ckipper account sync <from> <to> [--mcp [names]] [--settings keys] [--all] [--dry-run]"
+        echo "Usage: ckipper account sync <from> <to> [--mcp [names]] [--settings keys] [--all] [--dry-run]" >&2
         return 1
     fi
-    [[ "$from" == "$to" ]] && { echo "<from> and <to> must differ."; return 1; }
+    [[ "$from" == "$to" ]] && { echo "<from> and <to> must differ." >&2; return 1; }
     local dirs_line; dirs_line=$(_ckipper_account_sync_resolve_dirs "$from" "$to") || return 1
     local from_dir="${dirs_line%%	*}" to_dir="${dirs_line##*	}"
     local mode_mcp mcp_names mode_settings settings_keys is_dry_run mode_all

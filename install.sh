@@ -40,7 +40,7 @@ chmod +x "$CKIPPER_DIR/docker/entrypoint.sh"
 chmod +x "$CKIPPER_DIR/docker/init-firewall.sh"
 chmod +x "$CKIPPER_DIR/docker/cleanup-projects.py"
 
-# 3. Copy hooks (canonical source for ckipper sync-hooks)
+# 3. Copy hooks (canonical source for ckipper account sync-hooks)
 echo "Copying hooks to $CKIPPER_DIR/hooks/..."
 mkdir -p "$CKIPPER_DIR/hooks"
 cp "$REPO_DIR/hooks/protect-claude-config.sh" "$CKIPPER_DIR/hooks/"
@@ -85,7 +85,13 @@ fi
 if [ -f "$CKIPPER_DIR/docker/w-config.zsh" ]; then
     if [ ! -f "$CKIPPER_DIR/docker/ckipper-config.zsh" ]; then
         echo "  Migrating $CKIPPER_DIR/docker/w-config.zsh → ckipper-config.zsh (preserves your settings)"
-        cp "$CKIPPER_DIR/docker/w-config.zsh" "$CKIPPER_DIR/docker/ckipper-config.zsh"
+        # Rewrite assignments of the five known pre-merge variables to their
+        # CKIPPER_* counterparts. Allow-list (not blanket W_* → CKIPPER_*) so
+        # we don't mangle user comments or unrelated W_-prefixed names. The
+        # anchor `^[[:space:]]*` matches assignment lines only, leaving
+        # comment text intact.
+        sed -E 's/^([[:space:]]*)W_(PROJECTS_DIR|WORKTREES_DIR|PORTS|EXTRA_VOLUMES|EXTRA_ENV)/\1CKIPPER_\2/' \
+            "$CKIPPER_DIR/docker/w-config.zsh" >"$CKIPPER_DIR/docker/ckipper-config.zsh"
     fi
     echo "  Removing stale $CKIPPER_DIR/docker/w-config.zsh"
     rm -f "$CKIPPER_DIR/docker/w-config.zsh"
@@ -111,18 +117,42 @@ fi
 [[ -f "$CKIPPER_DIR/accounts.json" ]] && echo "  accounts.json already exists (not overwritten — managed by ckipper)"
 [[ -f "$CKIPPER_DIR/aliases.zsh" ]] && echo "  aliases.zsh already exists (not overwritten — auto-generated)"
 
-# 6. Deploy settings-template.json (consumed by ckipper add / sync-hooks per-account)
+# 6. Deploy settings-template.json (consumed by ckipper account add / sync-hooks per-account)
 echo "Copying settings-template.json to $CKIPPER_DIR/..."
 cp "$REPO_DIR/templates/settings-template.json" "$CKIPPER_DIR/settings-template.json"
-echo "  Settings template deployed. ckipper sync-hooks applies it per-account."
+echo "  Settings template deployed. ckipper account sync-hooks applies it per-account."
 
 # 7. Add or update source line in .zshrc
 # Pre-merge installs sourced w-function.zsh from ~/.claude/docker/ or
 # ~/.ckipper/docker/. The regex matches either install root and rewrites
 # to the canonical ~/.ckipper/docker/ckipper.zsh.
+#
+# Edge cases handled:
+#   - trailing comment on the source line (`source "..." # ckipper`)
+#   - sed regex failing to match anything: we detect the no-op and append a
+#     working source line so the user is never left with a broken zshrc.
+#   - timestamped backup so re-runs don't clobber the previous .bak.
 if grep -qE '/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
-    sed -i.bak -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*/docker/w-function\.zsh["'\'']?[[:space:]]*$|source "$HOME/.ckipper/docker/ckipper.zsh"|' "$HOME/.zshrc"
-    echo "  Updated ~/.zshrc source line to ~/.ckipper/docker/ckipper.zsh. Backup at ~/.zshrc.bak."
+    zshrc_backup="$HOME/.zshrc.ckipper-bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    cp "$HOME/.zshrc" "$zshrc_backup"
+    zshrc_tmp="$HOME/.zshrc.ckipper-tmp.$$"
+    sed -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*/docker/w-function\.zsh["'\'']?[[:space:]]*(#.*)?$|source "$HOME/.ckipper/docker/ckipper.zsh"|' \
+        "$HOME/.zshrc" >"$zshrc_tmp" && mv "$zshrc_tmp" "$HOME/.zshrc"
+    if grep -qE '/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
+        # Sed didn't match the stale source line (unusual whitespace,
+        # quoting, or an exotic comment). Append a working source line so
+        # ckipper still loads, and warn the user to remove the stale one.
+        if ! grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then
+            echo '' >>"$HOME/.zshrc"
+            echo '# Ckipper — multi-account Claude Code manager (ckipper + ckipper worktree run)' >>"$HOME/.zshrc"
+            echo 'source "$HOME/.ckipper/docker/ckipper.zsh"' >>"$HOME/.zshrc"
+        fi
+        echo "  WARNING: could not rewrite stale w-function.zsh source line in ~/.zshrc."
+        echo "  Appended a working ckipper.zsh source line; please remove the stale one manually."
+        echo "  Backup: $zshrc_backup"
+    else
+        echo "  Updated ~/.zshrc source line to ~/.ckipper/docker/ckipper.zsh. Backup: $zshrc_backup"
+    fi
 elif ! grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then
     echo '' >>"$HOME/.zshrc"
     echo '# Ckipper — multi-account Claude Code manager (ckipper + ckipper worktree run)' >>"$HOME/.zshrc"

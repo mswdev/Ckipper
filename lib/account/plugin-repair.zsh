@@ -86,17 +86,17 @@ _ckipper_account_detect_stale_plugin_prefix() {
 _ckipper_account_repair_plugins() {
     local name="$1"
     if [[ -z "$name" ]]; then
-        echo "Usage: ckipper account repair-plugins <name>"
+        echo "Usage: ckipper account repair-plugins <name>" >&2
         return 1
     fi
     _core_registry_check_version || return 1
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir // empty' "$CKIPPER_REGISTRY")
     if [[ -z "$dir" ]]; then
-        echo "Account '$name' is not registered. Run: ckipper account list"
+        echo "Account '$name' is not registered. Run: ckipper account list" >&2
         return 1
     fi
     if [[ ! -d "$dir" ]]; then
-        echo "Account dir does not exist: $dir"
+        echo "Account dir does not exist: $dir" >&2
         return 1
     fi
     _ckipper_account_repair_plugins_apply "$name" "$dir"

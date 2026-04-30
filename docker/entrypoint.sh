@@ -8,7 +8,7 @@ readonly GIT_CONFIG_COUNT=2
 # Require CLAUDE_CONFIG_DIR — Ckipper's account context. No silent fallback.
 if [ -z "$CLAUDE_CONFIG_DIR" ]; then
     echo "Error: CLAUDE_CONFIG_DIR is not set inside the container." >&2
-    echo "This means w() did not pass the account context. Bug — please report." >&2
+    echo "This means ckipper worktree run did not pass the account context. Bug — please report." >&2
     exit 1
 fi
 if [ ! -d "$CLAUDE_CONFIG_DIR" ]; then

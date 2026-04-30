@@ -56,6 +56,23 @@ CKIPPER_WORKTREES_DIR="${CKIPPER_WORKTREES_DIR:-$CKIPPER_PROJECTS_DIR/.worktrees
 # Top-level commands. Used both for routing and for fuzzy-suggest.
 _CKIPPER_COMMANDS=(account worktree doctor help)
 
+# Pre-merge top-level commands → their post-merge namespaced replacement.
+# Used by _ckipper_unknown so a user typing the old form (e.g. `ckipper add`)
+# gets a precise migration hint instead of a generic "Unknown command" —
+# Levenshtein cannot bridge the rename (lev(add, account) = 6, well above the
+# fuzzy threshold). Empty value means the command was removed entirely.
+typeset -gA _CKIPPER_LEGACY_COMMANDS=(
+    [add]='account add'
+    [list]='account list'
+    [default]='account default'
+    [remove]='account remove'
+    [rename]='account rename'
+    [sync]='account sync'
+    [sync-hooks]='account sync-hooks'
+    [repair-plugins]='account repair-plugins'
+    [migrate]=''
+)
+
 # Dispatch a top-level ckipper command.
 #
 # Args:
@@ -89,20 +106,26 @@ ckipper() {
     esac
 }
 
-# Print the closest top-level command match (or a bare unknown-command line)
-# and point the user at help. Always writes to stderr.
+# Print a migration hint for retired pre-merge commands, or fall through to
+# the standard unknown-command + fuzzy-suggest path. Always writes to stderr.
 #
 # Args: $1 — the unknown command the user typed.
 # Returns: 0 always.
 _ckipper_unknown() {
-    local cmd="$1" suggestion
-    suggestion=$(_core_fuzzy_suggest "$cmd" "${_CKIPPER_COMMANDS[@]}")
-    if [[ -n "$suggestion" ]]; then
-        echo "Unknown command: '$cmd'. Did you mean: '$suggestion'?" >&2
-    else
-        echo "Unknown command: '$cmd'." >&2
+    local cmd="$1"
+    if (( ${+_CKIPPER_LEGACY_COMMANDS[$cmd]} )); then
+        local replacement="${_CKIPPER_LEGACY_COMMANDS[$cmd]}"
+        if [[ -n "$replacement" ]]; then
+            echo "'ckipper $cmd' was renamed to 'ckipper $replacement' — pass the same arguments." >&2
+        else
+            echo "'ckipper $cmd' was removed in this release." >&2
+        fi
+        echo "Run 'ckipper help' for the current command list." >&2
+        return 0
     fi
-    echo "Run 'ckipper help' for available commands." >&2
+    _core_unknown_command "$cmd" \
+        "Run 'ckipper help' for available commands." \
+        "${_CKIPPER_COMMANDS[@]}"
 }
 
 # Print the top-level ckipper usage summary.

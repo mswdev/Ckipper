@@ -3,11 +3,11 @@
 
 # Run the worktree in normal mode: cd to it or run a command inside it.
 #
-# Reads globals: CKIPPER_WT_WT_PATH, CKIPPER_WT_BRANCH, CKIPPER_WT_COMMAND.
+# Reads globals: CKIPPER_WT_PATH, CKIPPER_WT_BRANCH, CKIPPER_WT_COMMAND.
 # Returns: 0 on cd; exit code of command if one was given.
 _ckipper_worktree_run_normal_mode() {
     if [[ ${#CKIPPER_WT_COMMAND[@]} -eq 0 ]]; then
-        cd "$CKIPPER_WT_WT_PATH"
+        cd "$CKIPPER_WT_PATH"
         return 0
     fi
 
@@ -16,7 +16,7 @@ _ckipper_worktree_run_normal_mode() {
     fi
 
     local old_pwd="$PWD"
-    cd "$CKIPPER_WT_WT_PATH"
+    cd "$CKIPPER_WT_PATH"
     "${CKIPPER_WT_COMMAND[@]}"
     local exit_code=$?
     cd "$old_pwd"

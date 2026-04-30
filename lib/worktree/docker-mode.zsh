@@ -17,9 +17,14 @@ readonly DOCKER_GROUP_ADD_HOST_ROOT=0
 
 # Run the worktree in a Docker container.
 #
-# Reads globals: CKIPPER_WT_WT_PATH, CKIPPER_PROJECTS_DIR, CKIPPER_WT_PROJECT, CKIPPER_WT_BRANCH, CKIPPER_WT_COMMAND,
+# Reads globals: CKIPPER_WT_PATH, CKIPPER_PROJECTS_DIR, CKIPPER_WT_PROJECT, CKIPPER_WT_BRANCH, CKIPPER_WT_COMMAND,
 #   CKIPPER_WT_FLAG_FIREWALL, CKIPPER_WT_ACTIVE_ACCOUNT, CKIPPER_WT_ACTIVE_CONFIG_DIR,
 #   CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE, CKIPPER_PORTS, CKIPPER_EXTRA_VOLUMES, CKIPPER_EXTRA_ENV.
+# Sets globals: CKIPPER_WT_DOCKER_ARGS — the assembled `docker run` argv,
+#   built up by helper calls below. Declared at function scope as a global
+#   array (not `local -a`) so the runtime ring is uniform with the other
+#   CKIPPER_WT_* runtime variables (the helpers mutate it explicitly, not via
+#   dynamic-scope leakage).
 # Returns: exit code of the docker run invocation.
 _ckipper_worktree_run_docker_mode() {
     _ckipper_worktree_docker_check_prerequisites || return 1
@@ -32,7 +37,7 @@ _ckipper_worktree_run_docker_mode() {
     claude_creds=$(_ckipper_worktree_docker_extract_credentials) || return 1
     gh_token=$(_ckipper_worktree_docker_extract_gh_token)
 
-    local -a CKIPPER_WT_DOCKER_ARGS
+    typeset -ga CKIPPER_WT_DOCKER_ARGS=()
     _ckipper_worktree_docker_build_base_args
     _ckipper_worktree_docker_add_optional_args "$claude_creds" "$gh_token"
     _ckipper_worktree_resolve_ports
@@ -53,11 +58,11 @@ _ckipper_worktree_run_docker_mode() {
 #   "Error: Docker daemon is not running. Start Docker Desktop first." — when daemon is down
 _ckipper_worktree_docker_check_prerequisites() {
     if ! command -v docker &>/dev/null; then
-        echo "Error: docker is not installed or not in PATH"
+        echo "Error: docker is not installed or not in PATH" >&2
         return 1
     fi
     if ! docker info &>/dev/null 2>&1; then
-        echo "Error: Docker daemon is not running. Start Docker Desktop first."
+        echo "Error: Docker daemon is not running. Start Docker Desktop first." >&2
         return 1
     fi
     if ! docker image inspect ckipper-dev > /dev/null 2>&1; then
@@ -74,8 +79,8 @@ _ckipper_worktree_docker_check_prerequisites() {
 _ckipper_worktree_docker_validate_keychain() {
     if [[ -n "$CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE" ]] && \
        ! _core_keychain_validate "$CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE"; then
-        echo "Error: account '$CKIPPER_WT_ACTIVE_ACCOUNT' has invalid keychain_service in registry."
-        echo "Re-register with: ckipper account remove $CKIPPER_WT_ACTIVE_ACCOUNT && ckipper account add $CKIPPER_WT_ACTIVE_ACCOUNT --adopt"
+        echo "Error: account '$CKIPPER_WT_ACTIVE_ACCOUNT' has invalid keychain_service in registry." >&2
+        echo "Re-register with: ckipper account remove $CKIPPER_WT_ACTIVE_ACCOUNT && ckipper account add $CKIPPER_WT_ACTIVE_ACCOUNT --adopt" >&2
         return 1
     fi
 }
@@ -125,7 +130,7 @@ _ckipper_worktree_docker_extract_gh_token() {
 
 # Build the base docker run argument array into CKIPPER_WT_DOCKER_ARGS.
 #
-# Reads: CKIPPER_WT_WT_PATH, CKIPPER_PROJECTS_DIR, CKIPPER_WT_PROJECT, CKIPPER_WT_ACTIVE_CONFIG_DIR,
+# Reads: CKIPPER_WT_PATH, CKIPPER_PROJECTS_DIR, CKIPPER_WT_PROJECT, CKIPPER_WT_ACTIVE_CONFIG_DIR,
 #   CKIPPER_EXTRA_VOLUMES globals.
 # Sets: CKIPPER_WT_DOCKER_ARGS (initialised from scratch).
 # Returns: 0 always.
@@ -133,7 +138,7 @@ _ckipper_worktree_docker_build_base_args() {
     CKIPPER_WT_DOCKER_ARGS=(
         docker run --rm -it
         -e TERM="${TERM:-xterm-256color}"
-        -v "$CKIPPER_WT_WT_PATH:/workspace:rw"
+        -v "$CKIPPER_WT_PATH:/workspace:rw"
         -v "$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:rw"
         -v "$CKIPPER_WT_ACTIVE_CONFIG_DIR:$CKIPPER_WT_ACTIVE_CONFIG_DIR:rw"
         -e "CLAUDE_CONFIG_DIR=$CKIPPER_WT_ACTIVE_CONFIG_DIR"
@@ -197,14 +202,14 @@ _ckipper_worktree_docker_expand_command() {
 
 # Print the startup banner.
 #
-# Reads: CKIPPER_WT_COMMAND, CKIPPER_WT_FLAG_FIREWALL, CKIPPER_WT_WT_PATH, CKIPPER_WT_RESOLVED_PORTS globals.
+# Reads: CKIPPER_WT_COMMAND, CKIPPER_WT_FLAG_FIREWALL, CKIPPER_WT_PATH, CKIPPER_WT_RESOLVED_PORTS globals.
 # Returns: 0 always.
 _ckipper_worktree_docker_print_banner() {
     local mode_label="Docker"
     [[ ${#CKIPPER_WT_COMMAND[@]} -gt 0 ]] && mode_label+=": ${CKIPPER_WT_COMMAND[1]}"
     [[ "$CKIPPER_WT_FLAG_FIREWALL" = true ]] && mode_label+=", firewall"
     echo "Starting $mode_label..."
-    echo "  Worktree: $CKIPPER_WT_WT_PATH"
+    echo "  Worktree: $CKIPPER_WT_PATH"
     echo "  Ports: ${CKIPPER_WT_RESOLVED_PORTS[*]}"
 }
 

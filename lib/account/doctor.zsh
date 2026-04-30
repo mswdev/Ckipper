@@ -40,6 +40,23 @@ _ckipper_doctor_tooling() {
     else
         _ckipper_doctor_check WARN "hooks/ is missing or has fewer than $MIN_HOOK_FILES hook files"
     fi
+    _ckipper_doctor_check_stale_w_vars
+}
+
+# Detect pre-merge W_* variable assignments in ckipper-config.zsh.
+#
+# Pre-merge installs used W_PROJECTS_DIR / W_PORTS / W_EXTRA_VOLUMES /
+# W_EXTRA_ENV / W_WORKTREES_DIR. Post-merge ckipper.zsh only reads the
+# CKIPPER_* names, so any leftover W_* assignment is silently ignored — and
+# the user's customizations are lost. Surface this loudly.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_check_stale_w_vars() {
+    local cfg="$CKIPPER_DIR/docker/ckipper-config.zsh"
+    [[ -f "$cfg" ]] || return 0
+    if grep -qE '^[[:space:]]*W_(PROJECTS_DIR|WORKTREES_DIR|PORTS|EXTRA_VOLUMES|EXTRA_ENV)[[:space:]]*=' "$cfg"; then
+        _ckipper_doctor_check FAIL "ckipper-config.zsh has stale W_* assignments — they're being ignored. Rename to CKIPPER_* (e.g. W_PORTS → CKIPPER_PORTS)."
+    fi
 }
 
 # Check registry version, permissions, and default account validity.

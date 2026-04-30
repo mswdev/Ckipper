@@ -43,14 +43,9 @@ _ckipper_account_dispatch() {
 # Args: $1 — the unknown subcommand the user typed.
 # Returns: 0 always.
 _ckipper_account_unknown() {
-    local cmd="$1" suggestion
-    suggestion=$(_core_fuzzy_suggest "$cmd" "${_CKIPPER_ACCOUNT_SUBCOMMANDS[@]}")
-    if [[ -n "$suggestion" ]]; then
-        echo "Unknown command: '$cmd'. Did you mean: '$suggestion'?" >&2
-    else
-        echo "Unknown command: '$cmd'." >&2
-    fi
-    echo "Run 'ckipper account help' for available commands." >&2
+    _core_unknown_command "$1" \
+        "Run 'ckipper account help' for available commands." \
+        "${_CKIPPER_ACCOUNT_SUBCOMMANDS[@]}"
 }
 
 # Print the account-namespace usage summary.

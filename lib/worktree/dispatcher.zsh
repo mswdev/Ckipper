@@ -69,14 +69,9 @@ _ckipper_worktree_route_rm() {
 # Args: $1 — the unknown subcommand the user typed.
 # Returns: 0 always.
 _ckipper_worktree_unknown() {
-    local cmd="$1" suggestion
-    suggestion=$(_core_fuzzy_suggest "$cmd" "${_CKIPPER_WORKTREE_SUBCOMMANDS[@]}")
-    if [[ -n "$suggestion" ]]; then
-        echo "Unknown command: '$cmd'. Did you mean: '$suggestion'?" >&2
-    else
-        echo "Unknown command: '$cmd'." >&2
-    fi
-    echo "Run 'ckipper worktree help' for available commands." >&2
+    _core_unknown_command "$1" \
+        "Run 'ckipper worktree help' for available commands." \
+        "${_CKIPPER_WORKTREE_SUBCOMMANDS[@]}"
 }
 
 # Print the worktree-namespace usage summary.
