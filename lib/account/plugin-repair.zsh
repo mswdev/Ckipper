@@ -15,13 +15,13 @@
 # Returns:
 #   0 always (idempotent: if neither file contains old prefix, this is a no-op);
 #   1 if arguments are invalid.
-_ckipper_rewrite_plugin_paths() {
+_ckipper_account_rewrite_plugin_paths() {
     local old="$1" new="$2"
     [[ -z "$old" || -z "$new" || "$old" != */ || "$new" != */ ]] && return 1
     [[ "$old" == "$new" ]] && return 0
     local f
     for f in plugins/known_marketplaces.json plugins/installed_plugins.json; do
-        _ckipper_rewrite_single_plugin_file "$old" "$new" "$f"
+        _ckipper_account_rewrite_single_plugin_file "$old" "$new" "$f"
     done
     return 0
 }
@@ -36,7 +36,7 @@ _ckipper_rewrite_plugin_paths() {
 #
 # Returns:
 #   0 always (no-op if file absent or old prefix not found).
-_ckipper_rewrite_single_plugin_file() {
+_ckipper_account_rewrite_single_plugin_file() {
     local old="$1" new="$2" rel_path="$3"
     local fp="$new$rel_path"
     [[ -f "$fp" ]] || return 0
@@ -56,7 +56,7 @@ _ckipper_rewrite_single_plugin_file() {
 #
 # Returns:
 #   0 always; prints stale prefix to stdout (empty if none found).
-_ckipper_detect_stale_plugin_prefix() {
+_ckipper_account_detect_stale_plugin_prefix() {
     local dir="$1"
     local f
     for f in plugins/known_marketplaces.json plugins/installed_plugins.json; do
@@ -83,7 +83,7 @@ _ckipper_detect_stale_plugin_prefix() {
 #   "Usage: ckipper repair-plugins <name>" — when name is empty.
 #   "Account '...' is not registered." — when account not found.
 #   "Account dir does not exist: ..." — when directory is missing.
-_ckipper_repair_plugins() {
+_ckipper_account_repair_plugins() {
     local name="$1"
     if [[ -z "$name" ]]; then
         echo "Usage: ckipper repair-plugins <name>"
@@ -99,7 +99,7 @@ _ckipper_repair_plugins() {
         echo "Account dir does not exist: $dir"
         return 1
     fi
-    _ckipper_repair_plugins_apply "$name" "$dir"
+    _ckipper_account_repair_plugins_apply "$name" "$dir"
 }
 
 # Apply stale-prefix repair to an account directory once validation has passed.
@@ -110,16 +110,16 @@ _ckipper_repair_plugins() {
 #
 # Returns:
 #   0 on success or when no repair is needed.
-_ckipper_repair_plugins_apply() {
+_ckipper_account_repair_plugins_apply() {
     local name="$1" dir="$2"
     local stale_prefix
-    stale_prefix=$(_ckipper_detect_stale_plugin_prefix "$dir")
+    stale_prefix=$(_ckipper_account_detect_stale_plugin_prefix "$dir")
     if [[ -z "$stale_prefix" ]]; then
         echo "No stale paths found in $dir/plugins/. Nothing to repair."
         return 0
     fi
     echo "Rewriting plugin metadata for '$name':"
     echo "  $stale_prefix → $dir/"
-    _ckipper_rewrite_plugin_paths "$stale_prefix" "$dir/"
+    _ckipper_account_rewrite_plugin_paths "$stale_prefix" "$dir/"
     echo "Done. Backups saved alongside each rewritten file (.pre-rewrite-backup-<ts>)."
 }

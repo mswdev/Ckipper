@@ -38,12 +38,19 @@ ckipper() {
     shift 2>/dev/null
     case "$cmd" in
         # --help on any subcommand short-circuits to subcommand help
-        add|list|default|remove|rename|sync|sync-hooks|doctor|repair-plugins)
+        add|list|default|remove|rename|sync|sync-hooks|repair-plugins)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
                 _ckipper_help_for "$cmd"
                 return 0
             fi
-            "_ckipper_${cmd//-/_}" "$@"
+            "_ckipper_account_${cmd//-/_}" "$@"
+            ;;
+        doctor)
+            if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+                _ckipper_help_for "$cmd"
+                return 0
+            fi
+            _ckipper_doctor "$@"
             ;;
         ""|help|-h|--help) _ckipper_help ;;
         *) echo "Unknown command: $cmd"; _ckipper_help; return 1 ;;

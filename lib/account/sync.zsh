@@ -2,7 +2,7 @@
 # Account settings sync subcommand: sync MCP servers and settings.json keys between accounts.
 
 # Module-level context for the in-progress sync operation.
-# Populated by _ckipper_sync before any helper reads it.
+# Populated by _ckipper_account_sync before any helper reads it.
 # Fields: from_dir, to_dir, dry_run
 typeset -gA _CKIPPER_SYNC_CTX
 
@@ -14,7 +14,7 @@ typeset -gA _CKIPPER_SYNC_CTX
 #
 # Returns:
 #   0 on success; 1 on unknown flag.
-_ckipper_sync_parse_flags() {
+_ckipper_account_sync_parse_flags() {
     mode_mcp="false"; mcp_names=""; mode_settings="false"; settings_keys=""; is_dry_run="false"; mode_all="false"
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -51,7 +51,7 @@ _ckipper_sync_parse_flags() {
 #
 # Returns:
 #   0 to proceed; 1 if user aborts.
-_ckipper_sync_warn_running_claude() {
+_ckipper_account_sync_warn_running_claude() {
     local from="$1" to="$2"
     local running_procs
     running_procs=$(_core_running_claude_processes)
@@ -73,7 +73,7 @@ _ckipper_sync_warn_running_claude() {
 #
 # Returns:
 #   0 always.
-_ckipper_sync_mcp_servers() {
+_ckipper_account_sync_mcp_servers() {
     local to="$1" mcp_names="$2"
     local from_dir="${_CKIPPER_SYNC_CTX[from_dir]}"
     local to_dir="${_CKIPPER_SYNC_CTX[to_dir]}"
@@ -112,7 +112,7 @@ _ckipper_sync_mcp_servers() {
 #
 # Returns:
 #   0 always.
-_ckipper_sync_settings_keys() {
+_ckipper_account_sync_settings_keys() {
     local from="$1" to="$2" settings_keys="$3"
     local from_dir="${_CKIPPER_SYNC_CTX[from_dir]}"
     local to_dir="${_CKIPPER_SYNC_CTX[to_dir]}"
@@ -145,7 +145,7 @@ _ckipper_sync_settings_keys() {
 #
 # Returns:
 #   0 always.
-_ckipper_sync_print_summary() {
+_ckipper_account_sync_print_summary() {
     local to="$1" is_dry_run="$2"
     if [[ "$is_dry_run" = "true" ]]; then
         echo "Dry run — would apply:"
@@ -171,7 +171,7 @@ _ckipper_sync_print_summary() {
 #
 # Returns:
 #   0 with "from_dir\tto_dir" on stdout; 1 on validation failure.
-_ckipper_sync_resolve_dirs() {
+_ckipper_account_sync_resolve_dirs() {
     local from="$1" to="$2"
     local from_dir to_dir
     from_dir=$(_core_account_dir "$from") || return 1
@@ -198,7 +198,7 @@ _ckipper_sync_resolve_dirs() {
 # Errors (stderr):
 #   "Usage: ckipper sync <from> <to> ..." — when arguments are missing.
 #   "<from> and <to> must differ." — when both accounts are the same.
-_ckipper_sync() {
+_ckipper_account_sync() {
     _core_registry_check_version || return 1
     local from="$1" to="$2"
     shift 2 2>/dev/null
@@ -207,20 +207,20 @@ _ckipper_sync() {
         return 1
     fi
     [[ "$from" == "$to" ]] && { echo "<from> and <to> must differ."; return 1; }
-    local dirs_line; dirs_line=$(_ckipper_sync_resolve_dirs "$from" "$to") || return 1
+    local dirs_line; dirs_line=$(_ckipper_account_sync_resolve_dirs "$from" "$to") || return 1
     local from_dir="${dirs_line%%	*}" to_dir="${dirs_line##*	}"
     local mode_mcp mcp_names mode_settings settings_keys is_dry_run mode_all
-    _ckipper_sync_parse_flags "$@" || return 1
+    _ckipper_account_sync_parse_flags "$@" || return 1
     if [[ "$is_dry_run" != "true" ]]; then
-        _ckipper_sync_warn_running_claude "$from" "$to" || return 1
+        _ckipper_account_sync_warn_running_claude "$from" "$to" || return 1
     fi
     _CKIPPER_SYNC_CTX[from_dir]="$from_dir"
     _CKIPPER_SYNC_CTX[to_dir]="$to_dir"
     _CKIPPER_SYNC_CTX[dry_run]="$is_dry_run"
     local pending_msgs=()
     [[ "$mode_mcp" = "true" ]] && \
-        _ckipper_sync_mcp_servers "$to" "$mcp_names"
+        _ckipper_account_sync_mcp_servers "$to" "$mcp_names"
     [[ "$mode_settings" = "true" && ${#settings_keys} -gt 0 ]] && \
-        _ckipper_sync_settings_keys "$from" "$to" "$settings_keys"
-    _ckipper_sync_print_summary "$to" "$is_dry_run"
+        _ckipper_account_sync_settings_keys "$from" "$to" "$settings_keys"
+    _ckipper_account_sync_print_summary "$to" "$is_dry_run"
 }

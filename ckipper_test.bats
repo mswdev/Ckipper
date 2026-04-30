@@ -43,7 +43,7 @@ teardown() {
     [ "$status" -eq 0 ]
 }
 
-# ── _ckipper_sync ────────────────────────────────────────────────────
+# ── _ckipper_account_sync ────────────────────────────────────────────────────
 
 @test "ckipper sync --help prints usage and exits 0" {
     run_ckipper sync --help
@@ -65,7 +65,7 @@ teardown() {
     [[ "$output" =~ "differ" ]]
 }
 
-# ── _ckipper_add ────────────────────────────────────────────────────
+# ── _ckipper_account_add ────────────────────────────────────────────────────
 
 @test "ckipper add rejects names containing spaces (invalid regex)" {
     echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
@@ -109,7 +109,7 @@ teardown() {
     [[ "$output" =~ [Uu]sage ]]
 }
 
-# ── _ckipper_list ────────────────────────────────────────────────────
+# ── _ckipper_account_list ────────────────────────────────────────────────────
 
 @test "ckipper list shows registered accounts" {
     echo '{"version":1,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":"Claude Code-credentials-work"}}}' > "$CKIPPER_REGISTRY"
@@ -125,7 +125,7 @@ teardown() {
     [[ "$output" =~ "No accounts" || "$output" =~ "no accounts" ]]
 }
 
-# ── _ckipper_remove ──────────────────────────────────────────────────
+# ── _ckipper_account_remove ──────────────────────────────────────────────────
 
 @test "ckipper remove unregisters a known account and exits 0" {
     echo '{"version":1,"default":null,"accounts":{"tmp":{"config_dir":"/tmp/.claude-tmp","keychain_service":"Claude Code-credentials-tmp"}}}' > "$CKIPPER_REGISTRY"

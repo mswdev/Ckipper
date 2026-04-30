@@ -12,13 +12,13 @@ readonly ALIASES_FILE_PERMS=644
 #
 # Returns:
 #   0 always.
-_ckipper_generate_account_launcher_function() {
+_ckipper_account_generate_account_launcher_function() {
     local account_name="$1" account_dir="$2"
     echo "claude-$account_name() { CLAUDE_CONFIG_DIR=\"$account_dir\" command claude \"\$@\"; }"
     # Bare-name shortcut: also generate `<name>` so users can type the
     # account name directly. Skip if it would shadow a real binary, builtin,
     # alias, or reserved word.
-    if _ckipper_bare_alias_safe "$account_name"; then
+    if _ckipper_account_bare_alias_safe "$account_name"; then
         echo "$account_name() { CLAUDE_CONFIG_DIR=\"$account_dir\" command claude \"\$@\"; }"
     else
         echo "# Bare-name alias '$account_name' skipped (would shadow existing command)."
@@ -31,7 +31,7 @@ _ckipper_generate_account_launcher_function() {
 #
 # Returns:
 #   0 always.
-_ckipper_write_bare_claude_guard() {
+_ckipper_account_write_bare_claude_guard() {
     echo "claude() {"
     echo "    if [[ -f \"\$_CKIPPER_REGISTRY\" ]] && jq -e '.accounts | length > 0' \"\$_CKIPPER_REGISTRY\" >/dev/null 2>&1; then"
     echo "        local default"
@@ -60,7 +60,7 @@ _ckipper_write_bare_claude_guard() {
 #
 # Returns:
 #   0 always.
-_ckipper_regenerate_aliases() {
+_ckipper_account_regenerate_aliases() {
     local out="$CKIPPER_DIR/aliases.zsh"
     local account_name account_dir
     {
@@ -70,12 +70,12 @@ _ckipper_regenerate_aliases() {
         echo ""
         echo "_CKIPPER_REGISTRY=\"\${CKIPPER_DIR:-\$HOME/.ckipper}/accounts.json\""
         echo ""
-        _ckipper_write_bare_claude_guard
+        _ckipper_account_write_bare_claude_guard
         echo ""
         if [[ -f "$CKIPPER_REGISTRY" ]]; then
             jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)"' "$CKIPPER_REGISTRY" | \
                 while IFS=$'\t' read -r account_name account_dir; do
-                    _ckipper_generate_account_launcher_function "$account_name" "$account_dir"
+                    _ckipper_account_generate_account_launcher_function "$account_name" "$account_dir"
                 done
         fi
     } > "$out.tmp"
@@ -95,7 +95,7 @@ _ckipper_regenerate_aliases() {
 #
 # Returns:
 #   0 always.
-_ckipper_rewrite_settings_json_hooks() {
+_ckipper_account_rewrite_settings_json_hooks() {
     local dir="$1"
     [[ -f "$dir/settings.json" ]] || return 0
     command -v jq &>/dev/null || return 0
@@ -111,7 +111,7 @@ _ckipper_rewrite_settings_json_hooks() {
 }
 
 # Copy hook scripts into an account directory and rewrite settings.json hook paths.
-# Allows callers (e.g. _ckipper_add) to pass the dir directly before the account
+# Allows callers (e.g. _ckipper_account_add) to pass the dir directly before the account
 # is registered in the registry.
 #
 # Args:
@@ -120,7 +120,7 @@ _ckipper_rewrite_settings_json_hooks() {
 #
 # Returns:
 #   0 on success; 1 if directory cannot be resolved.
-_ckipper_sync_hooks_for() {
+_ckipper_account_sync_hooks_for() {
     local name="$1" dir="${2:-}"
     if [[ -z "$dir" ]]; then
         _core_registry_check_version || return 1
@@ -129,14 +129,14 @@ _ckipper_sync_hooks_for() {
     fi
     mkdir -p "$dir/hooks"
     cp -a "$CKIPPER_DIR/hooks/." "$dir/hooks/" 2>/dev/null || true
-    _ckipper_rewrite_settings_json_hooks "$dir"
+    _ckipper_account_rewrite_settings_json_hooks "$dir"
 }
 
 # Copy hooks into all registered accounts.
 #
 # Returns:
 #   0 on success; 1 if registry version check fails.
-_ckipper_sync_hooks() {
+_ckipper_account_sync_hooks() {
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
         echo "No accounts registered."
         return 0
@@ -145,6 +145,6 @@ _ckipper_sync_hooks() {
     local names; names=$(jq -r '.accounts | keys[]' "$CKIPPER_REGISTRY")
     while IFS= read -r name; do
         echo "Syncing hooks → $name"
-        _ckipper_sync_hooks_for "$name"
+        _ckipper_account_sync_hooks_for "$name"
     done <<< "$names"
 }

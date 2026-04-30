@@ -2,12 +2,12 @@
 # Account lifecycle subcommands: add, finalize_registration, remove, rename, list, default, bare_alias_safe.
 
 # Module-level context for the in-progress registration.
-# Populated by callers before invoking _ckipper_finalize_registration.
+# Populated by callers before invoking _ckipper_account_finalize_registration.
 # Fields: name, dir, service
 typeset -gA _CKIPPER_FINALIZE_CTX
 
 # Module-level context for the in-progress rename.
-# Populated by _ckipper_rename before invoking _ckipper_rename_perform.
+# Populated by _ckipper_account_rename before invoking _ckipper_account_rename_perform.
 # Fields: old_dir, new_dir
 typeset -gA _CKIPPER_RENAME_CTX
 
@@ -20,7 +20,7 @@ typeset -gA _CKIPPER_RENAME_CTX
 #
 # Returns:
 #   0 if valid; 1 on empty name, invalid name format, or already registered.
-_ckipper_add_validate_name() {
+_ckipper_account_add_validate_name() {
     local name="$1"
     if [[ -z "$name" ]]; then
         echo "Usage: ckipper add <name> [--adopt]"
@@ -44,7 +44,7 @@ _ckipper_add_validate_name() {
 #
 # Returns:
 #   0 on success; 1 on validation or registration failure.
-_ckipper_add_adopt_flow() {
+_ckipper_account_add_adopt_flow() {
     local name="$1" dir="$2"
     if [[ ! -d "$dir" ]]; then
         echo "Cannot adopt: $dir does not exist."
@@ -52,12 +52,12 @@ _ckipper_add_adopt_flow() {
     fi
     local picked=""
     if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
-        _ckipper_add_pick_keychain_entry "$name" picked || return 1
+        _ckipper_account_add_pick_keychain_entry "$name" picked || return 1
     fi
     _CKIPPER_FINALIZE_CTX[name]="$name"
     _CKIPPER_FINALIZE_CTX[dir]="$dir"
     _CKIPPER_FINALIZE_CTX[service]="$picked"
-    _ckipper_finalize_registration "adopt"
+    _ckipper_account_finalize_registration "adopt"
 }
 
 # Prompt the user to pick a Keychain entry from the available candidates.
@@ -69,7 +69,7 @@ _ckipper_add_adopt_flow() {
 #
 # Returns:
 #   0 on success; 1 on keychain error or invalid service shape.
-_ckipper_add_pick_keychain_entry() {
+_ckipper_account_add_pick_keychain_entry() {
     local name="$1"
     local -n _picked_ref="$2"
     local candidates
@@ -95,7 +95,7 @@ _ckipper_add_pick_keychain_entry() {
 #
 # Returns:
 #   0 on success; 1 on abort or credential detection failure.
-_ckipper_add_fresh_flow() {
+_ckipper_account_add_fresh_flow() {
     local name="$1" dir="$2"
     if [[ -d "$dir" ]]; then
         echo "Directory $dir already exists. Use --adopt to register it."
@@ -105,21 +105,21 @@ _ckipper_add_fresh_flow() {
     if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then
         cp "$CKIPPER_DIR/settings-template.json" "$dir/settings.json"
     fi
-    _ckipper_sync_hooks_for "$name" "$dir"
+    _ckipper_account_sync_hooks_for "$name" "$dir"
     local before_snapshot
     before_snapshot=$(_core_keychain_snapshot) || return 1
-    _ckipper_add_launch_claude "$name" "$dir" || return 1
+    _ckipper_account_add_launch_claude "$name" "$dir" || return 1
     local after_snapshot
     after_snapshot=$(_core_keychain_snapshot) || return 1
     local new_service
     new_service=$(comm -13 \
         <(printf '%s\n' "$before_snapshot") \
         <(printf '%s\n' "$after_snapshot") | head -1)
-    _ckipper_add_check_credentials "$name" "$dir" "$new_service" || return 1
+    _ckipper_account_add_check_credentials "$name" "$dir" "$new_service" || return 1
     _CKIPPER_FINALIZE_CTX[name]="$name"
     _CKIPPER_FINALIZE_CTX[dir]="$dir"
     _CKIPPER_FINALIZE_CTX[service]="$new_service"
-    _ckipper_finalize_registration "fresh"
+    _ckipper_account_finalize_registration "fresh"
 }
 
 # Display the fresh-add instructions, prompt for confirmation, and launch Claude.
@@ -130,7 +130,7 @@ _ckipper_add_fresh_flow() {
 #
 # Returns:
 #   0 after Claude exits; 1 if user chose to skip.
-_ckipper_add_launch_claude() {
+_ckipper_account_add_launch_claude() {
     local name="$1" dir="$2"
     cat <<EOF
 
@@ -166,7 +166,7 @@ EOF
 #
 # Returns:
 #   0 if credentials are present; 1 otherwise with error message.
-_ckipper_add_check_credentials() {
+_ckipper_account_add_check_credentials() {
     local name="$1" dir="$2" new_service="$3"
     if [[ -n "$new_service" ]]; then
         if ! _core_keychain_validate "$new_service"; then
@@ -194,18 +194,18 @@ _ckipper_add_check_credentials() {
 #
 # Returns:
 #   0 on success; 1 on validation or registration failure.
-_ckipper_add() {
+_ckipper_account_add() {
     _core_registry_check_version || return 1
     local name="$1" should_adopt="false"
     [[ "$2" == "--adopt" ]] && should_adopt="true"
     _core_registry_init
-    _ckipper_add_validate_name "$name" || return 1
+    _ckipper_account_add_validate_name "$name" || return 1
     local dir="$HOME/.claude-$name"
     if [[ "$should_adopt" = "true" ]]; then
-        _ckipper_add_adopt_flow "$name" "$dir"
+        _ckipper_account_add_adopt_flow "$name" "$dir"
         return $?
     fi
-    _ckipper_add_fresh_flow "$name" "$dir"
+    _ckipper_account_add_fresh_flow "$name" "$dir"
 }
 
 # Write the account entry to the registry and regenerate aliases atomically.
@@ -217,7 +217,7 @@ _ckipper_add() {
 #
 # Returns:
 #   0 on success; 1 on registry collision or write failure.
-_ckipper_finalize_registration() {
+_ckipper_account_finalize_registration() {
     local mode="$1"
     local name="${_CKIPPER_FINALIZE_CTX[name]}"
     local dir="${_CKIPPER_FINALIZE_CTX[dir]}"
@@ -234,10 +234,10 @@ _ckipper_finalize_registration() {
             | (if .default == null then .default = $n else . end)
         end
     ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"; then
-        _ckipper_finalize_diagnose_error "$name" "$dir"
+        _ckipper_account_finalize_diagnose_error "$name" "$dir"
         return 1
     fi
-    _ckipper_finalize_announce "$name" "$mode"
+    _ckipper_account_finalize_announce "$name" "$mode"
 }
 
 # Regenerate aliases, sync hooks, and print the post-registration usage hint.
@@ -247,19 +247,19 @@ _ckipper_finalize_registration() {
 #   $2 — registration mode label (e.g. "fresh", "adopt")
 #
 # Returns: 0 always.
-_ckipper_finalize_announce() {
+_ckipper_account_finalize_announce() {
     local name="$1" mode="$2"
-    _ckipper_regenerate_aliases
-    _ckipper_sync_hooks_for "$name"
+    _ckipper_account_regenerate_aliases
+    _ckipper_account_sync_hooks_for "$name"
     echo "Registered '$name' (mode: $mode)."
-    if _ckipper_bare_alias_safe "$name"; then
+    if _ckipper_account_bare_alias_safe "$name"; then
         echo "Use it via: claude-$name   (or just: $name)"
     else
         echo "Use it via: claude-$name"
     fi
 }
 
-# Diagnose why _ckipper_finalize_registration failed and print the appropriate error.
+# Diagnose why _ckipper_account_finalize_registration failed and print the appropriate error.
 #
 # Args:
 #   $1 — account name
@@ -267,7 +267,7 @@ _ckipper_finalize_announce() {
 #
 # Returns:
 #   0 always (error message already printed to stderr).
-_ckipper_finalize_diagnose_error() {
+_ckipper_account_finalize_diagnose_error() {
     local name="$1" dir="$2"
     if jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
         echo "Error: account '$name' already exists in registry (race detected)." >&2
@@ -287,7 +287,7 @@ _ckipper_finalize_diagnose_error() {
 #
 # Returns:
 #   0 if safe to use; 1 if it would shadow an existing command/builtin/alias/reserved word.
-_ckipper_bare_alias_safe() {
+_ckipper_account_bare_alias_safe() {
     local n="$1"
     (( ${+commands[$n]} || ${+builtins[$n]} || ${+aliases[$n]} )) && return 1
     local what; what=$(whence -w "$n" 2>/dev/null | awk '{print $2}')
@@ -299,7 +299,7 @@ _ckipper_bare_alias_safe() {
 #
 # Returns:
 #   0 always.
-_ckipper_list() {
+_ckipper_account_list() {
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
         echo "No accounts registered. Run: ckipper add <name>"
         return 0
@@ -309,7 +309,7 @@ _ckipper_list() {
     echo "Registered accounts:"
     jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)"' "$CKIPPER_REGISTRY" | \
         while IFS=$'\t' read -r name dir; do
-            _ckipper_list_account_line "$name" "$dir" "$default"
+            _ckipper_account_list_account_line "$name" "$dir" "$default"
         done
     echo ""
     echo "* = default. Run: ckipper default <name>"
@@ -327,7 +327,7 @@ _ckipper_list() {
 #
 # Returns:
 #   0 always.
-_ckipper_list_account_line() {
+_ckipper_account_list_account_line() {
     local name="$1" dir="$2" default="$3"
     local marker="  "
     [[ "$name" == "$default" ]] && marker="* "
@@ -347,7 +347,7 @@ _ckipper_list_account_line() {
 #
 # Returns:
 #   0 on success; 1 if account is not registered.
-_ckipper_default() {
+_ckipper_account_default() {
     _core_registry_check_version || return 1
     local name="$1"
     [[ -z "$name" ]] && { echo "Usage: ckipper default <name>"; return 1; }
@@ -366,7 +366,7 @@ _ckipper_default() {
 #
 # Returns:
 #   0 on success; 1 if account is not registered.
-_ckipper_remove() {
+_ckipper_account_remove() {
     _core_registry_check_version || return 1
     local name="$1"
     [[ -z "$name" ]] && { echo "Usage: ckipper remove <name>"; return 1; }
@@ -380,7 +380,7 @@ _ckipper_remove() {
     # Drop the now-stale launcher functions from the calling shell.
     unset -f "claude-$name" 2>/dev/null
     unset -f "$name" 2>/dev/null
-    _ckipper_regenerate_aliases
+    _ckipper_account_regenerate_aliases
     echo "Unregistered '$name'."
     echo ""
     echo "The directory and Keychain entry were not deleted. To remove them manually:"
@@ -398,7 +398,7 @@ _ckipper_remove() {
 #
 # Returns:
 #   0 if valid; 1 on any validation failure.
-_ckipper_rename_validate() {
+_ckipper_account_rename_validate() {
     local old="$1" new="$2"
     if [[ -z "$old" || -z "$new" ]]; then
         echo "Usage: ckipper rename <old> <new>"
@@ -439,7 +439,7 @@ _ckipper_rename_validate() {
 #   $2 — old directory path (must be a directory)
 #
 # Returns: 0 if preconditions pass; 1 if any check fails.
-_ckipper_rename_check_preconditions() {
+_ckipper_account_rename_check_preconditions() {
     local new_dir="$1" old_dir="$2"
     if [[ -e "$new_dir" ]]; then
         echo "Error: $new_dir already exists. Pick a different name or remove it first."
@@ -452,11 +452,11 @@ _ckipper_rename_check_preconditions() {
     _core_assert_no_running_claude || return 1
 }
 
-_ckipper_rename_perform() {
+_ckipper_account_rename_perform() {
     local old="$1" new="$2"
     local old_dir="${_CKIPPER_RENAME_CTX[old_dir]}"
     local new_dir="${_CKIPPER_RENAME_CTX[new_dir]}"
-    _ckipper_rename_check_preconditions "$new_dir" "$old_dir" || return 1
+    _ckipper_account_rename_check_preconditions "$new_dir" "$old_dir" || return 1
     if ! mv "$old_dir" "$new_dir" 2>/dev/null; then
         echo "Error: failed to rename $old_dir → $new_dir." >&2
         return 1
@@ -481,24 +481,24 @@ _ckipper_rename_perform() {
 #
 # Returns:
 #   0 on success; 1 on validation or rename failure.
-_ckipper_rename() {
+_ckipper_account_rename() {
     _core_registry_check_version || return 1
     local old="$1" new="$2"
-    _ckipper_rename_validate "$old" "$new" || return 1
+    _ckipper_account_rename_validate "$old" "$new" || return 1
     local old_dir new_dir
     old_dir=$(jq -r --arg n "$old" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
     new_dir="$HOME/.claude-$new"
     _CKIPPER_RENAME_CTX[old_dir]="$old_dir"
     _CKIPPER_RENAME_CTX[new_dir]="$new_dir"
-    _ckipper_rename_perform "$old" "$new" || return 1
+    _ckipper_account_rename_perform "$old" "$new" || return 1
     # Drop old-name launcher functions from the calling shell.
     unset -f "claude-$old" 2>/dev/null
     unset -f "$old" 2>/dev/null
-    _ckipper_regenerate_aliases
-    _ckipper_sync_hooks_for "$new"   # rewrite per-account settings.json hook paths to new dir
+    _ckipper_account_regenerate_aliases
+    _ckipper_account_sync_hooks_for "$new"   # rewrite per-account settings.json hook paths to new dir
     echo "Renamed '$old' → '$new'."
     echo "Directory:    $old_dir → $new_dir"
-    if _ckipper_bare_alias_safe "$new"; then
+    if _ckipper_account_bare_alias_safe "$new"; then
         echo "Use:          claude-$new   (or just: $new)"
     else
         echo "Use:          claude-$new"

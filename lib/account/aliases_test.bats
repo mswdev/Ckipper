@@ -24,12 +24,12 @@ run_helper() {
         zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; $*"
 }
 
-# ── _ckipper_regenerate_aliases ───────────────────────────────────────
+# ── _ckipper_account_regenerate_aliases ───────────────────────────────────────
 
 @test "regenerate_aliases creates aliases.zsh with mode 644" {
     echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
-    run_helper '_ckipper_regenerate_aliases'
+    run_helper '_ckipper_account_regenerate_aliases'
 
     local out="$CKIPPER_DIR/aliases.zsh"
     assert_file_exists "$out"
@@ -39,31 +39,31 @@ run_helper() {
 @test "regenerate_aliases includes a launcher function for each registered account" {
     echo '{"version":1,"default":"dev","accounts":{"dev":{"config_dir":"/tmp/.claude-dev","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
 
-    run_helper '_ckipper_regenerate_aliases'
+    run_helper '_ckipper_account_regenerate_aliases'
 
     local out="$CKIPPER_DIR/aliases.zsh"
     assert_file_exists "$out"
     grep -q "claude-dev()" "$out"
 }
 
-# ── _ckipper_generate_account_launcher_function ───────────────────────
+# ── _ckipper_account_generate_account_launcher_function ───────────────────────
 
 @test "generate_account_launcher_function emits a claude-<name> function" {
-    run_helper '_ckipper_generate_account_launcher_function "work" "/tmp/.claude-work"'
+    run_helper '_ckipper_account_generate_account_launcher_function "work" "/tmp/.claude-work"'
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "claude-work()" ]]
 }
 
 @test "generate_account_launcher_function sets CLAUDE_CONFIG_DIR in the emitted body" {
-    run_helper '_ckipper_generate_account_launcher_function "work" "/tmp/.claude-work"'
+    run_helper '_ckipper_account_generate_account_launcher_function "work" "/tmp/.claude-work"'
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "CLAUDE_CONFIG_DIR" ]]
     [[ "$output" =~ "/tmp/.claude-work" ]]
 }
 
-# ── _ckipper_sync_hooks_for ──────────────────────────────────────────
+# ── _ckipper_account_sync_hooks_for ──────────────────────────────────────────
 
 @test "sync_hooks_for copies hooks into the account directory" {
     echo '{"version":1,"default":"dev","accounts":{"dev":{"config_dir":"'"$TMP_HOME"'/.claude-dev","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
@@ -72,7 +72,7 @@ run_helper() {
     mkdir -p "$CKIPPER_DIR/hooks"
     echo "#!/bin/sh" > "$CKIPPER_DIR/hooks/test-hook.sh"
 
-    run_helper '_ckipper_sync_hooks_for "dev"'
+    run_helper '_ckipper_account_sync_hooks_for "dev"'
 
     [ "$status" -eq 0 ]
     [ -f "$TMP_HOME/.claude-dev/hooks/test-hook.sh" ]
@@ -85,13 +85,13 @@ run_helper() {
     printf '{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"$HOME/.ckipper/hooks/pre.sh"}]}]}}' \
         > "$TMP_HOME/.claude-dev/settings.json"
 
-    run_helper '_ckipper_sync_hooks_for "dev"'
+    run_helper '_ckipper_account_sync_hooks_for "dev"'
 
     # After rewriting, the path should point to the account's hooks dir.
     grep -q "$TMP_HOME/.claude-dev/hooks/pre.sh" "$TMP_HOME/.claude-dev/settings.json"
 }
 
-# ── _ckipper_sync_hooks ───────────────────────────────────────────────
+# ── _ckipper_account_sync_hooks ───────────────────────────────────────────────
 
 @test "sync_hooks iterates all registered accounts and copies hooks to each" {
     local dir_a="$TMP_HOME/.claude-alpha"
@@ -101,7 +101,7 @@ run_helper() {
     mkdir -p "$CKIPPER_DIR/hooks"
     echo "#!/bin/sh" > "$CKIPPER_DIR/hooks/shared-hook.sh"
 
-    run_helper '_ckipper_sync_hooks'
+    run_helper '_ckipper_account_sync_hooks'
 
     [ "$status" -eq 0 ]
     [ -f "$dir_a/hooks/shared-hook.sh" ]
