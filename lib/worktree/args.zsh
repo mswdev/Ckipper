@@ -1,54 +1,15 @@
 #!/usr/bin/env zsh
-# Argument parsing for w(). Populates W_* globals used by all other lib/w modules.
+# Argument parsing for the worktree namespace. Two parsers, one per subcommand
+# (run, rm); the rest of the worktree subcommands take no args. Mode dispatch
+# (--list / --rm / --rebuild-image) is gone — those are subcommands now and
+# the dispatcher in lib/worktree/dispatcher.zsh routes them directly.
 
-# Parse all arguments passed to w() into W_* globals.
-#
-# Globals set:
-#   CKIPPER_WT_FLAG_LIST           — true if --list
-#   CKIPPER_WT_FLAG_REBUILD_IMAGE  — true if --rebuild-image
-#   CKIPPER_WT_FLAG_RM             — true if --rm
-#   CKIPPER_WT_FLAG_FORCE          — true if --force (with --rm)
-#   CKIPPER_WT_FLAG_DOCKER         — true if --docker
-#   CKIPPER_WT_FLAG_FIREWALL       — true if --firewall
-#   CKIPPER_WT_PROJECT             — first positional arg (project path)
-#   CKIPPER_WT_BRANCH              — second positional arg (worktree/branch name)
-#   CKIPPER_WT_CLI_ACCOUNT         — value of --account <name>, or empty
-#   CKIPPER_WT_COMMAND             — array: remaining positional args after project+branch
-#
-# CKIPPER_PROJECTS_DIR / CKIPPER_WORKTREES_DIR are config values, not args — they are
-# initialized once when w-function.zsh is sourced and never reset here.
-#
-# Returns: 0 always (validation is done by the dispatcher).
-_ckipper_worktree_parse_args() {
-    _ckipper_worktree_reset_globals
-
-    if [[ "$1" == "--list" ]]; then
-        CKIPPER_WT_FLAG_LIST=true
-        return 0
-    fi
-
-    if [[ "$1" == "--rebuild-image" ]]; then
-        CKIPPER_WT_FLAG_REBUILD_IMAGE=true
-        return 0
-    fi
-
-    if [[ "$1" == "--rm" ]]; then
-        _ckipper_worktree_parse_rm_args "$@"
-        return 0
-    fi
-
-    _ckipper_worktree_parse_run_args "$@"
-}
-
-# Reset per-call W_* arg globals (flags + positionals) to their default values.
-# Config globals (CKIPPER_PROJECTS_DIR, CKIPPER_WORKTREES_DIR, CKIPPER_PORTS, etc.) are owned
-# by w-function.zsh and intentionally not touched here.
+# Reset per-call CKIPPER_WT_* arg globals (flags + positionals) to defaults.
+# Config globals (CKIPPER_PROJECTS_DIR, CKIPPER_WORKTREES_DIR, CKIPPER_PORTS,
+# etc.) are owned by ckipper.zsh and intentionally not touched here.
 #
 # Returns: 0 always.
 _ckipper_worktree_reset_globals() {
-    CKIPPER_WT_FLAG_LIST=false
-    CKIPPER_WT_FLAG_REBUILD_IMAGE=false
-    CKIPPER_WT_FLAG_RM=false
     CKIPPER_WT_FLAG_FORCE=false
     CKIPPER_WT_FLAG_DOCKER=false
     CKIPPER_WT_FLAG_FIREWALL=false
@@ -58,30 +19,19 @@ _ckipper_worktree_reset_globals() {
     CKIPPER_WT_COMMAND=()
 }
 
-# Parse --rm [--force] <project> <branch> args.
+# Parse `worktree run <project> <branch> [--docker] [--firewall] [--account <name>] [cmd...]`.
 #
-# Args:
-#   $@ — original args starting with --rm
+# Globals set:
+#   CKIPPER_WT_PROJECT       — first positional arg (project path)
+#   CKIPPER_WT_BRANCH        — second positional arg (worktree/branch name)
+#   CKIPPER_WT_FLAG_DOCKER   — true if --docker
+#   CKIPPER_WT_FLAG_FIREWALL — true if --firewall
+#   CKIPPER_WT_CLI_ACCOUNT   — value of --account <name>, or empty
+#   CKIPPER_WT_COMMAND       — array of remaining positional args (the command to run)
 #
-# Returns: 0 always.
-_ckipper_worktree_parse_rm_args() {
-    CKIPPER_WT_FLAG_RM=true
-    shift
-    if [[ "$1" == "--force" || "$1" == "-f" ]]; then
-        CKIPPER_WT_FLAG_FORCE=true
-        shift
-    fi
-    CKIPPER_WT_PROJECT="$1"
-    CKIPPER_WT_BRANCH="$2"
-}
-
-# Parse the normal run args: project branch [flags...] [command...].
-#
-# Args:
-#   $@ — original args (project is $1, branch is $2)
-#
-# Returns: 0 always.
+# Returns: 0 always (validation is the caller's responsibility).
 _ckipper_worktree_parse_run_args() {
+    _ckipper_worktree_reset_globals
     CKIPPER_WT_PROJECT="$1"
     CKIPPER_WT_BRANCH="$2"
     shift 2 2>/dev/null
@@ -94,4 +44,22 @@ _ckipper_worktree_parse_run_args() {
             *)          CKIPPER_WT_COMMAND+=("$1"); shift ;;
         esac
     done
+}
+
+# Parse `worktree rm [--force] <project> <branch>`.
+#
+# Globals set:
+#   CKIPPER_WT_FLAG_FORCE  — true if --force / -f was passed
+#   CKIPPER_WT_PROJECT     — project path
+#   CKIPPER_WT_BRANCH      — branch name
+#
+# Returns: 0 always.
+_ckipper_worktree_parse_rm_args() {
+    _ckipper_worktree_reset_globals
+    if [[ "$1" == "--force" || "$1" == "-f" ]]; then
+        CKIPPER_WT_FLAG_FORCE=true
+        shift
+    fi
+    CKIPPER_WT_PROJECT="$1"
+    CKIPPER_WT_BRANCH="$2"
 }
