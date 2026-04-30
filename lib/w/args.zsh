@@ -14,8 +14,8 @@
 #   W_BRANCH              — second positional arg (worktree/branch name)
 #   W_CLI_ACCOUNT         — value of --account <name>, or empty
 #   W_COMMAND             — array: remaining positional args after project+branch
-#   W_PROJECTS_DIR        — base directory for projects ($HOME/Developer)
-#   W_WORKTREES_DIR       — base directory for worktrees ($HOME/Developer/.worktrees)
+#   W_PROJECTS_DIR        — base directory for projects (default: $HOME/Developer; honors pre-set value from w-config.zsh or environment)
+#   W_WORKTREES_DIR       — base directory for worktrees (default: $W_PROJECTS_DIR/.worktrees; honors pre-set value)
 #
 # Returns: 0 always (validation is done by the dispatcher).
 _w_parse_args() {
@@ -53,8 +53,10 @@ _w_reset_globals() {
     W_BRANCH=""
     W_CLI_ACCOUNT=""
     W_COMMAND=()
-    W_PROJECTS_DIR="$HOME/Developer"
-    W_WORKTREES_DIR="$HOME/Developer/.worktrees"
+    # Honor pre-set values from w-config.zsh or environment so users can host
+    # their projects anywhere (e.g. $HOME/code, $HOME/work) without forking.
+    W_PROJECTS_DIR="${W_PROJECTS_DIR:-$HOME/Developer}"
+    W_WORKTREES_DIR="${W_WORKTREES_DIR:-$W_PROJECTS_DIR/.worktrees}"
 }
 
 # Parse --rm [--force] <project> <branch> args.

@@ -51,7 +51,7 @@ ckipper doctor                                       # diagnostic checklist
 ckipper migrate                                      # one-time migration from claude-docker-sandbox
 ```
 
-`ck` is a short alias for `ckipper`. `<project>` is a relative path under `~/Developer/` (e.g. `myorg/myapp`). Tab completion is included.
+`ck` is a short alias for `ckipper`. `<project>` is a relative path under `$W_PROJECTS_DIR` (default `~/Developer/`, e.g. `myorg/myapp`). Tab completion is included. See [Projects Directory](#projects-directory) to change the base path.
 
 ## Multiple accounts
 
@@ -270,8 +270,8 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `w-function.zsh` | `~/.ckipper/docker/w-function.zsh` | w() launcher entry (sourced by .zshrc) |
 | `ckipper.zsh` | `~/.ckipper/docker/ckipper.zsh` | ckipper CLI entry (account management) |
 | `lib/core/`, `lib/ckipper/`, `lib/w/` | `~/.ckipper/docker/lib/` | Shell module tree (sourced by entry scripts; test files excluded) |
-| `w-config.zsh.example` | `~/.ckipper/docker/w-config.zsh` | User config (ports, mounts, env vars) |
-| `settings-hooks.json` | Auto-merged into `~/.claude/settings.json` | Hook registration |
+| `templates/w-config.zsh.example` | `~/.ckipper/docker/w-config.zsh` | User config (ports, mounts, env vars) |
+| `templates/settings-template.json` | `~/.ckipper/settings-template.json` | Hook settings template (applied per-account by `ckipper sync-hooks`) |
 
 ### macOS Keychain Authentication
 
@@ -287,7 +287,7 @@ After setup, run the comprehensive environment test to verify everything works:
 w <your-project> test-branch --docker claude
 ```
 
-Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Claude session. It covers 12 sections:
+Then paste the contents of [`docs/test-prompt.md`](docs/test-prompt.md) into the Docker Claude session. It covers 12 sections:
 
 - Entrypoint verification (env vars, git identity, Chrome disabled, Turbo cache, credential clearing from `/proc/self/environ`)
 - File system access (read, write, delete, ownership, SSH staging mount, config sanitization)
@@ -301,9 +301,13 @@ Then paste the contents of [`test-prompt.md`](test-prompt.md) into the Docker Cl
 - Safety hooks (4 blocked actions + guardrail bypass testing)
 - Container isolation (non-root user, sudo restrictions, no Docker socket, setuid audit)
 
-See `test-prompt.md` for the full prompt and expected results table.
+See `docs/test-prompt.md` for the full prompt and expected results table.
 
 ## Customization
+
+### Projects Directory
+
+`w()` resolves project paths under `$W_PROJECTS_DIR` (default `$HOME/Developer`). To use a different location (e.g. `~/code`), set `W_PROJECTS_DIR` in `~/.ckipper/docker/w-config.zsh`. Worktrees default to `$W_PROJECTS_DIR/.worktrees`; override with `W_WORKTREES_DIR` if you want them elsewhere.
 
 ### Firewall Domains
 
@@ -440,8 +444,8 @@ Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DI
 | `git commit` fails (no identity) | Entrypoint should set this automatically; check `.claude.json` has `oauthAccount` |
 | Native binary errors (Exec format) | Run `w --rebuild-image` — entrypoint runs `npm install` to fix platform binaries |
 | Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `w --rebuild-image` if missing |
-| Branch already checked out | Switch main repo to different branch: `cd ~/Developer/<project> && git checkout develop` |
-| Stale worktree directory | Remove manually: `rm -rf ~/Developer/.worktrees/<project>/<branch>` |
+| Branch already checked out | Switch main repo to different branch: `cd $W_PROJECTS_DIR/<project> && git checkout develop` |
+| Stale worktree directory | Remove manually: `rm -rf $W_WORKTREES_DIR/<project>/<branch>` |
 | Statusline not rendering correctly | Add ccstatusline mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
 | `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
