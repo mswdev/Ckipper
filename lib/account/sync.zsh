@@ -196,14 +196,14 @@ _ckipper_account_sync_resolve_dirs() {
 #   0 on success; 1 on validation failure or user abort.
 #
 # Errors (stderr):
-#   "Usage: ckipper sync <from> <to> ..." — when arguments are missing.
+#   "Usage: ckipper account sync <from> <to> ..." — when arguments are missing.
 #   "<from> and <to> must differ." — when both accounts are the same.
 _ckipper_account_sync() {
     _core_registry_check_version || return 1
     local from="$1" to="$2"
     shift 2 2>/dev/null
     if [[ -z "$from" || -z "$to" ]]; then
-        echo "Usage: ckipper sync <from> <to> [--mcp [names]] [--settings keys] [--all] [--dry-run]"
+        echo "Usage: ckipper account sync <from> <to> [--mcp [names]] [--settings keys] [--all] [--dry-run]"
         return 1
     fi
     [[ "$from" == "$to" ]] && { echo "<from> and <to> must differ."; return 1; }

@@ -45,7 +45,7 @@ _ckipper_account_write_bare_claude_guard() {
     echo "        if [[ -n \"\$default\" ]]; then"
     echo "            echo \"Use:  claude-\$default\" >&2"
     echo "        else"
-    echo "            echo \"Set a default first: ckipper default <name>, then use claude-<name>.\" >&2"
+    echo "            echo \"Set a default first: ckipper account default <name>, then use claude-<name>.\" >&2"
     echo "        fi"
     echo "        echo \"\" >&2"
     echo "        echo \"To bypass (fresh login on purpose):  command claude \\\$@\" >&2"

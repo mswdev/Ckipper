@@ -61,11 +61,11 @@ _ckipper_doctor_registry() {
     else _ckipper_doctor_check WARN "registry permissions $perms (expected 600)"; fi
     local default_acc; default_acc=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
     if [[ -z "$default_acc" ]]; then
-        _ckipper_doctor_check WARN "no default account set — w/ckipper-add will require --account"
+        _ckipper_doctor_check WARN "no default account set — ckipper worktree run will require --account"
     elif jq -e --arg n "$default_acc" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
         _ckipper_doctor_check INFO "default account: $default_acc"
     else
-        _ckipper_doctor_check FAIL "default account '$default_acc' is NOT in registry — fix with: ckipper default <existing-account>"
+        _ckipper_doctor_check FAIL "default account '$default_acc' is NOT in registry — fix with: ckipper account default <existing-account>"
     fi
 }
 

@@ -80,19 +80,19 @@ _ckipper_account_detect_stale_plugin_prefix() {
 #   0 on success or when no repair is needed; 1 on error.
 #
 # Errors (stderr):
-#   "Usage: ckipper repair-plugins <name>" — when name is empty.
+#   "Usage: ckipper account repair-plugins <name>" — when name is empty.
 #   "Account '...' is not registered." — when account not found.
 #   "Account dir does not exist: ..." — when directory is missing.
 _ckipper_account_repair_plugins() {
     local name="$1"
     if [[ -z "$name" ]]; then
-        echo "Usage: ckipper repair-plugins <name>"
+        echo "Usage: ckipper account repair-plugins <name>"
         return 1
     fi
     _core_registry_check_version || return 1
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir // empty' "$CKIPPER_REGISTRY")
     if [[ -z "$dir" ]]; then
-        echo "Account '$name' is not registered. Run: ckipper list"
+        echo "Account '$name' is not registered. Run: ckipper account list"
         return 1
     fi
     if [[ ! -d "$dir" ]]; then

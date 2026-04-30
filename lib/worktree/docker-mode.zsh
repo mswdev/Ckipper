@@ -75,7 +75,7 @@ _ckipper_worktree_docker_validate_keychain() {
     if [[ -n "$CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE" ]] && \
        ! _core_keychain_validate "$CKIPPER_WT_ACTIVE_KEYCHAIN_SERVICE"; then
         echo "Error: account '$CKIPPER_WT_ACTIVE_ACCOUNT' has invalid keychain_service in registry."
-        echo "Re-register with: ckipper remove $CKIPPER_WT_ACTIVE_ACCOUNT && ckipper add $CKIPPER_WT_ACTIVE_ACCOUNT --adopt"
+        echo "Re-register with: ckipper account remove $CKIPPER_WT_ACTIVE_ACCOUNT && ckipper account add $CKIPPER_WT_ACTIVE_ACCOUNT --adopt"
         return 1
     fi
 }
@@ -102,7 +102,7 @@ _ckipper_worktree_docker_extract_credentials() {
     fi
 
     if ! echo "$creds" | jq empty >/dev/null 2>&1; then
-        echo "Error: Claude credentials from Keychain are not valid JSON. Re-run: ckipper add $CKIPPER_WT_ACTIVE_ACCOUNT --adopt" >&2
+        echo "Error: Claude credentials from Keychain are not valid JSON. Re-run: ckipper account add $CKIPPER_WT_ACTIVE_ACCOUNT --adopt" >&2
         return 1
     fi
 

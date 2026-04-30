@@ -11,7 +11,7 @@ typeset -gA _CKIPPER_FINALIZE_CTX
 # Fields: old_dir, new_dir
 typeset -gA _CKIPPER_RENAME_CTX
 
-# Validate the account name and --adopt flag from `ckipper add` arguments.
+# Validate the account name and --adopt flag from `ckipper account add` arguments.
 # Prints error messages to stdout and returns non-zero on failure.
 #
 # Args:
@@ -23,7 +23,7 @@ typeset -gA _CKIPPER_RENAME_CTX
 _ckipper_account_add_validate_name() {
     local name="$1"
     if [[ -z "$name" ]]; then
-        echo "Usage: ckipper add <name> [--adopt]"
+        echo "Usage: ckipper account add <name> [--adopt]"
         return 1
     fi
     if [[ ! "$name" =~ ^[a-z0-9_-]+$ ]]; then
@@ -182,7 +182,7 @@ _ckipper_account_add_check_credentials() {
         return 0
     fi
     echo "Warning: no new Keychain entry detected and no .credentials.json on disk."
-    echo "Login may not have completed. Re-run /login or use: ckipper add $name --adopt"
+    echo "Login may not have completed. Re-run /login or use: ckipper account add $name --adopt"
     return 1
 }
 
@@ -301,7 +301,7 @@ _ckipper_account_bare_alias_safe() {
 #   0 always.
 _ckipper_account_list() {
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
-        echo "No accounts registered. Run: ckipper add <name>"
+        echo "No accounts registered. Run: ckipper account add <name>"
         return 0
     fi
     local default
@@ -312,13 +312,13 @@ _ckipper_account_list() {
             _ckipper_account_list_account_line "$name" "$dir" "$default"
         done
     echo ""
-    echo "* = default. Run: ckipper default <name>"
+    echo "* = default. Run: ckipper account default <name>"
     echo ""
     echo "Tip: don't run the same account in two terminals at once — Claude's OAuth refresh"
     echo "is single-use, so the second session gets logged out. Use a different account instead."
 }
 
-# Print a single account line for `ckipper list`.
+# Print a single account line for `ckipper account list`.
 #
 # Args:
 #   $1 — account name
@@ -350,7 +350,7 @@ _ckipper_account_list_account_line() {
 _ckipper_account_default() {
     _core_registry_check_version || return 1
     local name="$1"
-    [[ -z "$name" ]] && { echo "Usage: ckipper default <name>"; return 1; }
+    [[ -z "$name" ]] && { echo "Usage: ckipper account default <name>"; return 1; }
     if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null; then
         echo "Account '$name' is not registered."
         return 1
@@ -369,7 +369,7 @@ _ckipper_account_default() {
 _ckipper_account_remove() {
     _core_registry_check_version || return 1
     local name="$1"
-    [[ -z "$name" ]] && { echo "Usage: ckipper remove <name>"; return 1; }
+    [[ -z "$name" ]] && { echo "Usage: ckipper account remove <name>"; return 1; }
     if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null; then
         echo "Account '$name' is not registered."
         return 1
@@ -390,7 +390,7 @@ _ckipper_account_remove() {
     fi
 }
 
-# Validate arguments for `ckipper rename` before performing the rename.
+# Validate arguments for `ckipper account rename` before performing the rename.
 #
 # Args:
 #   $1 — old account name
@@ -401,7 +401,7 @@ _ckipper_account_remove() {
 _ckipper_account_rename_validate() {
     local old="$1" new="$2"
     if [[ -z "$old" || -z "$new" ]]; then
-        echo "Usage: ckipper rename <old> <new>"
+        echo "Usage: ckipper account rename <old> <new>"
         return 1
     fi
     if [[ ! "$new" =~ ^[a-z0-9_-]+$ ]]; then
@@ -422,7 +422,7 @@ _ckipper_account_rename_validate() {
     fi
 }
 
-# Perform the directory move and registry update for `ckipper rename`.
+# Perform the directory move and registry update for `ckipper account rename`.
 # Rolls back the directory rename if the registry write fails.
 # Reads old_dir and new_dir from _CKIPPER_RENAME_CTX module global.
 #

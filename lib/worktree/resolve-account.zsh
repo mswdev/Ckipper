@@ -14,14 +14,14 @@
 # Returns: 0 on success; 1 if no account found or account not in registry.
 # Errors (stderr):
 #   "Error: no account selected and no default registered." — when no account can be resolved
-#   "Error: account '<name>' is not registered. Run: ckipper list" — when account missing from registry
+#   "Error: account '<name>' is not registered. Run: ckipper account list" — when account missing from registry
 _ckipper_worktree_resolve_account() {
     local candidate
     candidate=$(_ckipper_worktree_find_account_name)
 
     if [[ -z "$candidate" ]]; then
         echo "Error: no account selected and no default registered."
-        echo "Run: ckipper list   (then: ckipper default <name>, or pass --account <name>)"
+        echo "Run: ckipper account list   (then: ckipper account default <name>, or pass --account <name>)"
         return 1
     fi
 
@@ -32,7 +32,7 @@ _ckipper_worktree_resolve_account() {
     fi
 
     if [[ -z "$config_dir" ]]; then
-        echo "Error: account '$candidate' is not registered. Run: ckipper list"
+        echo "Error: account '$candidate' is not registered. Run: ckipper account list"
         return 1
     fi
 
