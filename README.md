@@ -230,7 +230,7 @@ ckipper add work
 
 ```bash
 # Clone the repo
-git clone https://github.com/whmoro/Ckipper.git
+git clone https://github.com/mswdev/Ckipper.git
 cd Ckipper
 
 # Run the installer (copies all files, merges hooks, adds source line)
