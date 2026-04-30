@@ -139,3 +139,19 @@ teardown() {
     run_ckipper doctor
     [[ "$output" =~ [Rr]egistry ]]
 }
+
+# ── tab completion version sentinel ──────────────────────────────────
+
+# The completion-file regeneration mechanism relies on the literal
+# "# ckipper-completion-version=N" sentinel inside the single-quoted heredoc
+# matching the CKIPPER_COMPLETION_VERSION variable referenced in the grep
+# check immediately above. If a future bump only updates one side, existing
+# installs silently fail to regenerate. This test guards against that drift.
+@test "ckipper.zsh: completion version sentinel matches outer variable" {
+    local outer inner
+    outer=$(grep -E '^CKIPPER_COMPLETION_VERSION=' "$REPO_ROOT/ckipper.zsh" | head -1 | cut -d= -f2)
+    inner=$(grep -E '^# ckipper-completion-version=' "$REPO_ROOT/ckipper.zsh" | head -1 | cut -d= -f2)
+    [ -n "$outer" ]
+    [ -n "$inner" ]
+    [ "$outer" = "$inner" ]
+}

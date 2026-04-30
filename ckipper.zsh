@@ -39,6 +39,20 @@ source "$CKIPPER_REPO_DIR/lib/worktree/ports.zsh"
 source "$CKIPPER_REPO_DIR/lib/worktree/resolve-account.zsh"
 source "$CKIPPER_REPO_DIR/lib/worktree/worktree.zsh"
 
+# User config (projects/worktrees dirs, ports, extra volumes, extra env vars).
+# Renamed from w-config.zsh in the merge; install.sh handles the migration.
+_ckipper_user_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper-config.zsh"
+[[ -f "$_ckipper_user_config" ]] && source "$_ckipper_user_config"
+unset _ckipper_user_config
+
+# Defaults if user config is missing or incomplete. Set once at source time
+# and never reset per-call so users can host their projects anywhere.
+CKIPPER_PROJECTS_DIR="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
+CKIPPER_WORKTREES_DIR="${CKIPPER_WORKTREES_DIR:-$CKIPPER_PROJECTS_DIR/.worktrees}"
+(( ${#CKIPPER_PORTS[@]} == 0 )) && CKIPPER_PORTS=(3000)
+(( ${#CKIPPER_EXTRA_VOLUMES[@]} == 0 )) && CKIPPER_EXTRA_VOLUMES=()
+(( ${#CKIPPER_EXTRA_ENV[@]} == 0 )) && CKIPPER_EXTRA_ENV=()
+
 # Top-level commands. Used both for routing and for fuzzy-suggest.
 _CKIPPER_COMMANDS=(account worktree doctor help)
 
@@ -137,3 +151,137 @@ EOF
 
 # Short alias: 'ck' for 'ckipper'.
 ck() { ckipper "$@"; }
+
+# ── Tab completion ───────────────────────────────────────────────────
+# Ensure completions directory is in fpath.
+[[ -d ~/.zsh/completions ]] || mkdir -p ~/.zsh/completions
+fpath=(~/.zsh/completions $fpath)
+
+# Bump this when the heredoc body below changes so existing installs
+# regenerate the cached completion file. The version is embedded as a literal
+# comment in the generated file and matched here.
+CKIPPER_COMPLETION_VERSION=1
+if [[ ! -f ~/.zsh/completions/_ckipper ]] \
+    || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
+    # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
+    # a heredoc. It uses zsh's _arguments DSL and must remain a single
+    # function for tab completion to work. The 25-line cap in code-style.md
+    # does not apply to zsh completion definitions (this is data written to
+    # a completion file, not maintained shell logic).
+    cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
+#compdef ckipper ck
+# ckipper-completion-version=1
+
+_ckipper() {
+    local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
+    local worktrees_dir="${CKIPPER_WORKTREES_DIR:-$projects_dir/.worktrees}"
+    local -a top_commands account_subs worktree_subs
+
+    top_commands=(
+        'account:Manage Claude accounts'
+        'acct:Short alias for account'
+        'worktree:Manage git worktrees'
+        'wt:Short alias for worktree'
+        'doctor:Diagnostic check of accounts and tooling'
+        'help:Show top-level help'
+    )
+    account_subs=(
+        'add:Register a new account'
+        'list:Show registered accounts'
+        'default:Set the default account'
+        'remove:Unregister an account'
+        'rename:Rename an account in place'
+        'sync:Copy state between accounts'
+        'sync-hooks:Re-deploy hooks into every account dir'
+        'repair-plugins:Rewrite stale plugin paths'
+        'help:Show account-namespace help'
+    )
+    worktree_subs=(
+        'run:Create-or-cd worktree, optionally Docker'
+        'list:List all worktrees'
+        'rm:Remove worktree + delete branch'
+        'rebuild-image:Rebuild ckipper-dev Docker image'
+        'help:Show worktree-namespace help'
+    )
+
+    _arguments -C \
+        '1: :->cmd' \
+        '2: :->sub' \
+        '3: :->arg3' \
+        '4: :->arg4' \
+        '*:: :->args' \
+        && return 0
+
+    case $state in
+        cmd)
+            _describe -t commands 'ckipper command' top_commands && return 0
+            ;;
+        sub)
+            case "${words[2]}" in
+                account|acct)
+                    _describe -t subcommands 'account subcommand' account_subs && return 0
+                    ;;
+                worktree|wt)
+                    _describe -t subcommands 'worktree subcommand' worktree_subs && return 0
+                    ;;
+            esac
+            ;;
+        arg3)
+            case "${words[2]}/${words[3]}" in
+                worktree/run|wt/run|worktree/rm|wt/rm)
+                    local -a projects
+                    for dir in $(find "$projects_dir" -maxdepth 3 -name ".git" -type d -not -path "*/.worktrees/*" 2>/dev/null); do
+                        local repo_dir="${dir:h}"
+                        local rel="${repo_dir#$projects_dir/}"
+                        projects+=("$rel")
+                    done
+                    _describe -t projects 'project' projects && return 0
+                    ;;
+                account/default|acct/default|account/remove|acct/remove|account/rename|acct/rename|account/sync|acct/sync|account/repair-plugins|acct/repair-plugins)
+                    local -a accounts
+                    if [[ -f "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" ]]; then
+                        accounts=( $(jq -r '.accounts | keys[]' "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" 2>/dev/null) )
+                    fi
+                    _describe -t accounts 'account name' accounts && return 0
+                    ;;
+            esac
+            ;;
+        arg4)
+            case "${words[2]}/${words[3]}" in
+                worktree/run|wt/run|worktree/rm|wt/rm)
+                    local project="${words[4]}"
+                    [[ -z "$project" ]] && return 0
+                    local -a worktrees
+                    if [[ -d "$worktrees_dir/$project" ]]; then
+                        for wt in $worktrees_dir/$project/*(N/); do
+                            worktrees+=(${wt:t})
+                        done
+                    fi
+                    if (( ${#worktrees} > 0 )); then
+                        _describe -t worktrees 'existing worktree' worktrees
+                    else
+                        _message 'new worktree branch name'
+                    fi
+                    ;;
+            esac
+            ;;
+        args)
+            case "${words[2]}/${words[3]}" in
+                worktree/run|wt/run)
+                    local -a flags
+                    flags=(
+                        '--docker:Run inside the ckipper-dev Docker container'
+                        '--firewall:Add egress firewall (requires --docker)'
+                        '--account:Use a specific Ckipper account'
+                    )
+                    _describe -t flags 'flag' flags
+                    _command_names -e
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_ckipper "$@"
+COMPEOF
+fi
