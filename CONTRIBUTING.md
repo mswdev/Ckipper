@@ -30,9 +30,9 @@ We follow the rules in [`.claude/rules/`](.claude/rules/) — please read them. 
 
 ## File organization
 
-- `lib/core/` — shared primitives (registry, keychain, utils). Used by both ckipper and w.
-- `lib/ckipper/` — ckipper-specific subcommands.
-- `lib/w/` — w-specific helpers. **Must NOT call `_ckipper_*` functions** (sibling cross-import). CI enforces this.
+- `lib/core/` — shared primitives (registry, keychain, utils, fuzzy). Used by both account and worktree namespaces.
+- `lib/account/` — `ckipper account` subcommands. Function prefix: `_ckipper_account_*`.
+- `lib/worktree/` — `ckipper worktree` subcommands. Function prefix: `_ckipper_worktree_*`. **Must NOT call `_ckipper_account_*` functions** (sibling cross-import). CI enforces this via `make lint-merge-guards`.
 - Tests are colocated with source: `foo.zsh` + `foo_test.bats`.
 
 ## Testing

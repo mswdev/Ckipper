@@ -246,8 +246,7 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `hooks/docker-context.sh` | `~/.ckipper/hooks/docker-context.sh` | Context injection |
 | `hooks/notify-bell.sh` | `~/.ckipper/hooks/notify-bell.sh` | Notification bell |
 | `ckipper.zsh` | `~/.ckipper/docker/ckipper.zsh` | ckipper CLI entry (sourced by .zshrc) |
-| `ckipper.zsh` | `~/.ckipper/docker/ckipper.zsh` | ckipper CLI entry (account management) |
-| `lib/core/`, `lib/ckipper/`, `lib/w/` | `~/.ckipper/docker/lib/` | Shell module tree (sourced by entry scripts; test files excluded) |
+| `lib/core/`, `lib/account/`, `lib/worktree/` | `~/.ckipper/docker/lib/` | Shell module tree (sourced by `ckipper.zsh`; test files excluded) |
 | `templates/ckipper-config.zsh.example` | `~/.ckipper/docker/ckipper-config.zsh` | User config (ports, mounts, env vars) |
 | `templates/settings-template.json` | `~/.ckipper/settings-template.json` | Hook settings template (applied per-account by `ckipper sync-hooks`) |
 
