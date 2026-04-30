@@ -110,7 +110,7 @@ B. `.claude.json` is the per-account file (account-specific email):
 ```bash
 # Confirm the email matches the account's registered identity
 jq -r .oauthAccount.emailAddress "$CLAUDE_CONFIG_DIR/.claude.json"
-# Should match the email shown by `ckipper list` for this account.
+# Should match the email shown by `ckipper account list` for this account.
 ```
 
 C. Credentials symlinked to tmpfs:

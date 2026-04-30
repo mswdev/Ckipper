@@ -11,7 +11,7 @@ Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-
 ## The Solution
 
 ```bash
-w myorg/myapp my-feature --docker claude
+ck wt run myorg/myapp my-feature --docker claude
 ```
 
 Creates a git worktree, spins up a Docker container, and runs Claude inside it. Claude thinks it has full permissions but can only see the worktree. Your other projects, system files, and credentials are inaccessible.
@@ -29,29 +29,28 @@ Creates a git worktree, spins up a Docker container, and runs Claude inside it. 
 ## Quick Reference
 
 ```bash
-w myorg/myapp feature-x --docker claude              # Claude in Docker (skip-permissions)
-w myorg/myapp feature-x --docker --account work     # use a specific Ckipper account
-w myorg/myapp feature-x --docker                     # shell in Docker container
-w myorg/myapp feature-x --docker --firewall         # Docker + egress firewall
-w myorg/myapp feature-x                              # cd to worktree (no Docker)
-w myorg/myapp feature-x claude                       # run Claude in worktree (no Docker)
-w --list                                             # list all worktrees
-w --rm myorg/myapp feature-x                         # remove worktree + delete branch
-w --rebuild-image                                    # rebuild Docker image
+ck wt run myorg/myapp feature-x --docker claude              # Claude in Docker (skip-permissions)
+ck wt run myorg/myapp feature-x --docker --account work     # use a specific Ckipper account
+ck wt run myorg/myapp feature-x --docker                     # shell in Docker container
+ck wt run myorg/myapp feature-x --docker --firewall         # Docker + egress firewall
+ck wt run myorg/myapp feature-x                              # cd to worktree (no Docker)
+ck wt run myorg/myapp feature-x claude                       # run Claude in worktree (no Docker)
+ck wt list                                             # list all worktrees
+ck wt rm myorg/myapp feature-x                         # remove worktree + delete branch
+ck wt rebuild-image                                    # rebuild Docker image
 
-ckipper add <name>                                   # register a Claude account (interactive /login)
-ckipper list                                         # show registered accounts
-ckipper default <name>                               # set the default account
-ckipper rename <old> <new>                           # rename an account in place
-ckipper remove <name>                                # unregister (does not delete the dir)
-ckipper sync <from> <to>                             # copy MCP/settings/plugins between accounts
-ckipper sync-hooks                                   # re-deploy hooks into every account dir
-ckipper repair-plugins <name>                        # fix stale ~/.claude/ paths in plugin metadata
+ckipper account add <name>                           # register a Claude account (interactive /login)
+ckipper account list                                 # show registered accounts
+ckipper account default <name>                       # set the default account
+ckipper account rename <old> <new>                   # rename an account in place
+ckipper account remove <name>                        # unregister (does not delete the dir)
+ckipper account sync <from> <to>                     # copy MCP/settings/plugins between accounts
+ckipper account sync-hooks                           # re-deploy hooks into every account dir
+ckipper account repair-plugins <name>                # fix stale ~/.claude/ paths in plugin metadata
 ckipper doctor                                       # diagnostic checklist
-ckipper migrate                                      # one-time migration from claude-docker-sandbox
 ```
 
-`ck` is a short alias for `ckipper`. `<project>` is a relative path under `$W_PROJECTS_DIR` (default `~/Developer/`, e.g. `myorg/myapp`). Tab completion is included. See [Projects Directory](#projects-directory) to change the base path.
+`ck` is a short alias for `ckipper`. `<project>` is a relative path under `$CKIPPER_PROJECTS_DIR` (default `~/Developer/`, e.g. `myorg/myapp`). Tab completion is included. See [Projects Directory](#projects-directory) to change the base path.
 
 ## Multiple accounts
 
@@ -60,7 +59,7 @@ Run a personal account in one terminal and a work account in another, fully isol
 ### Add an account
 
 ```bash
-ckipper add work
+ckipper account add work
 ```
 
 `ckipper` walks you through `/login` and registers the account. Repeat for every account you want.
@@ -73,22 +72,22 @@ work                                         # bare-name shortcut (skipped if it
 CLAUDE_CONFIG_DIR=~/.claude-work claude      # raw form
 ```
 
-`ckipper add` re-sources `aliases.zsh` in your current shell, so new launchers are usable immediately — no `exec zsh`.
+`ckipper account add` re-sources `aliases.zsh` in your current shell, so new launchers are usable immediately — no `exec zsh`.
 
 ### Inside Docker
 
 ```bash
-w myorg/app feature --account work --docker claude
+ck wt run myorg/app feature --account work --docker claude
 ```
 
-If you're already in a terminal where `CLAUDE_CONFIG_DIR` is set (e.g., via `claude-work`), `w` picks up the account automatically — no flag needed.
+If you're already in a terminal where `CLAUDE_CONFIG_DIR` is set (e.g., via `claude-work`), `ckipper worktree run` picks up the account automatically — no flag needed.
 
 ### List, default, remove
 
 ```bash
-ckipper list
-ckipper default personal
-ckipper remove old-account
+ckipper account list
+ckipper account default personal
+ckipper account remove old-account
 ```
 
 ### How accounts are stored
@@ -96,7 +95,7 @@ ckipper remove old-account
 - Per-account state lives in `~/.claude-<name>/` (analogous to the legacy `~/.claude/`).
 - The registry mapping accounts to dirs and Keychain services lives at `~/.ckipper/accounts.json` (chmod 600, atomic writes via `flock`).
 - Auto-generated `~/.ckipper/aliases.zsh` defines `claude-<name>` (and a bare `<name>` shortcut, when it doesn't shadow an existing command) per registered account.
-- Hooks under `~/.ckipper/hooks/` are the canonical source — `ckipper sync-hooks` copies them per-account and rewrites `settings.json` paths.
+- Hooks under `~/.ckipper/hooks/` are the canonical source — `ckipper account sync-hooks` copies them per-account and rewrites `settings.json` paths.
 
 ## ⚠️ Don't run the same account in two sessions
 
@@ -174,7 +173,7 @@ Four Claude Code hooks activate inside Docker:
 ### Optional Egress Firewall
 
 ```bash
-w myorg/myapp feature-x --docker --firewall claude
+ck wt run myorg/myapp feature-x --docker --firewall claude
 ```
 
 Default-deny iptables firewall that only allows outbound traffic to whitelisted domains. Uses `iptables-legacy` (Docker Desktop doesn't support `nf_tables`). DNS auto-detected from `/etc/resolv.conf`. Blocked requests silently drop (~60s timeout).
@@ -190,34 +189,13 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 | MCPs with local files | node/uvx (mounted ro) | Yes (add mount) |
 | Docker-based MCPs | Docker-in-Docker | No (security) |
 
-For MCPs that reference local files, add entries to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
+For MCPs that reference local files, add entries to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/ckipper-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
 
 Two named Docker volumes support uvx-based MCP servers:
 - **`claude-uv-cache`** — persists the uv package cache (downloaded wheels, git clones) across container restarts
 - **`claude-uv-tools`** — persists pre-installed tool environments and the uv-managed Python interpreter
 
 The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewrites the container's `.claude.json` to invoke the installed binary directly. This eliminates the network freshness check and ephemeral venv creation that cause intermittent MCP startup timeouts.
-
-## Migrating from claude-docker-sandbox
-
-If you've been running this project under its previous name with a single `~/.claude/docker/` install, run:
-
-```bash
-ckipper migrate
-```
-
-This will:
-
-1. Refuse to run if any `claude` process is currently active (quit them first).
-2. Copy `~/.claude/docker/` → `~/.ckipper/`.
-3. Offer to register your existing `~/.claude` as the `personal` account. If you accept: rename `~/.claude` → `~/.claude-personal`, probe Keychain for the matching credential entry, and write the registry. **No symlink is created** — after migration, you launch Claude with `claude-personal` (bare `claude` will start a fresh login).
-4. If anything fails, the rename automatically reverses (rollback).
-
-Then add additional accounts:
-
-```bash
-ckipper add work
-```
 
 ## Setup
 
@@ -240,21 +218,21 @@ cd Ckipper
 ./install.sh
 
 # Customize your config
-# Edit ~/.ckipper/docker/w-config.zsh with your MCP mounts, ports, etc.
+# Edit ~/.ckipper/docker/ckipper-config.zsh with your MCP mounts, ports, etc.
 
 # Build the Docker image (takes a few minutes first time)
 source ~/.zshrc
-w --rebuild-image
+ck wt rebuild-image
 
 # Test it
-w <your-project> test-branch --docker claude
+ck wt run <your-project> test-branch --docker claude
 ```
 
 ### Option 2: Let Claude Do It
 
 Clone the repo, then open Claude Code and paste this prompt:
 
-> Read the README.md in this repo and run `./install.sh`. Then run `source ~/.zshrc && w --rebuild-image` and tell me when it's ready to test. Show me what's in `~/.ckipper/docker/w-config.zsh` so I can customize it.
+> Read the README.md in this repo and run `./install.sh`. Then run `source ~/.zshrc && ck wt rebuild-image` and tell me when it's ready to test. Show me what's in `~/.ckipper/docker/ckipper-config.zsh` so I can customize it.
 
 ### What Gets Installed Where
 
@@ -267,15 +245,14 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `hooks/bash-guardrails.sh` | `~/.ckipper/hooks/bash-guardrails.sh` | Bash command guard |
 | `hooks/docker-context.sh` | `~/.ckipper/hooks/docker-context.sh` | Context injection |
 | `hooks/notify-bell.sh` | `~/.ckipper/hooks/notify-bell.sh` | Notification bell |
-| `w-function.zsh` | `~/.ckipper/docker/w-function.zsh` | w() launcher entry (sourced by .zshrc) |
-| `ckipper.zsh` | `~/.ckipper/docker/ckipper.zsh` | ckipper CLI entry (account management) |
-| `lib/core/`, `lib/ckipper/`, `lib/w/` | `~/.ckipper/docker/lib/` | Shell module tree (sourced by entry scripts; test files excluded) |
-| `templates/w-config.zsh.example` | `~/.ckipper/docker/w-config.zsh` | User config (ports, mounts, env vars) |
-| `templates/settings-template.json` | `~/.ckipper/settings-template.json` | Hook settings template (applied per-account by `ckipper sync-hooks`) |
+| `ckipper.zsh` | `~/.ckipper/docker/ckipper.zsh` | ckipper CLI entry (sourced by .zshrc) |
+| `lib/core/`, `lib/account/`, `lib/worktree/` | `~/.ckipper/docker/lib/` | Shell module tree (sourced by `ckipper.zsh`; test files excluded) |
+| `templates/ckipper-config.zsh.example` | `~/.ckipper/docker/ckipper-config.zsh` | User config (ports, mounts, env vars) |
+| `templates/settings-template.json` | `~/.ckipper/settings-template.json` | Hook settings template (applied per-account by `ckipper account sync-hooks`) |
 
 ### macOS Keychain Authentication
 
-On macOS, Claude Code stores OAuth credentials in the macOS Keychain (service: `Claude Code-credentials`) and actively deletes the on-disk credentials file. The `w()` function extracts credentials from Keychain at launch and passes them to the container via environment variable. The entrypoint writes them to disk, authenticates `gh` CLI, then clears the env vars before starting Claude.
+On macOS, Claude Code stores OAuth credentials in the macOS Keychain (service: `Claude Code-credentials`) and actively deletes the on-disk credentials file. `ckipper worktree run` extracts credentials from Keychain at launch and passes them to the container via environment variable. The entrypoint writes them to disk, authenticates `gh` CLI, then clears the env vars before starting Claude.
 
 Tokens are short-lived (~6 hours). If they expire mid-session, exit the container, run any `claude` command on the host (refreshes the token), then restart.
 
@@ -284,7 +261,7 @@ Tokens are short-lived (~6 hours). If they expire mid-session, exit the containe
 After setup, run the comprehensive environment test to verify everything works:
 
 ```bash
-w <your-project> test-branch --docker claude
+ck wt run <your-project> test-branch --docker claude
 ```
 
 Then paste the contents of [`docs/test-prompt.md`](docs/test-prompt.md) into the Docker Claude session. It covers 12 sections:
@@ -307,27 +284,27 @@ See `docs/test-prompt.md` for the full prompt and expected results table.
 
 ### Projects Directory
 
-`w()` resolves project paths under `$W_PROJECTS_DIR` (default `$HOME/Developer`). To use a different location (e.g. `~/code`), set `W_PROJECTS_DIR` in `~/.ckipper/docker/w-config.zsh`. Worktrees default to `$W_PROJECTS_DIR/.worktrees`; override with `W_WORKTREES_DIR` if you want them elsewhere.
+`ckipper worktree run` resolves project paths under `$CKIPPER_PROJECTS_DIR` (default `$HOME/Developer`). To use a different location (e.g. `~/code`), set `CKIPPER_PROJECTS_DIR` in `~/.ckipper/docker/ckipper-config.zsh`. Worktrees default to `$CKIPPER_PROJECTS_DIR/.worktrees`; override with `CKIPPER_WORKTREES_DIR` if you want them elsewhere.
 
 ### Firewall Domains
 
-Edit `docker/init-firewall.sh` → `ALLOWED_DOMAINS` array, then `w --rebuild-image`.
+Edit `docker/init-firewall.sh` → `ALLOWED_DOMAINS` array, then `ck wt rebuild-image`.
 
 ### Forwarded Ports
 
-Edit `W_PORTS` in `~/.ckipper/docker/w-config.zsh`.
+Edit `CKIPPER_PORTS` in `~/.ckipper/docker/ckipper-config.zsh`.
 
 ### Base Branch
 
-Worktrees are created from `origin/develop`. Search for `develop` in `w-function.zsh` (or `~/.ckipper/docker/w-function.zsh` if deployed) and change to `main` or your default branch.
+Worktrees are created from `origin/develop`. Search for `develop` in `ckipper.zsh` (or `~/.ckipper/docker/ckipper.zsh` if deployed) and change to `main` or your default branch.
 
 ### MCP Mounts
 
-Add entries to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`. Format: `"host_path:container_path:mode"`.
+Add entries to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/ckipper-config.zsh`. Format: `"host_path:container_path:mode"`.
 
 ### Statusline
 
-If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`:
+If you use a custom statusline (like [ccstatusline](https://github.com/sirmalloc/ccstatusline)), add the config and cache mounts to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/ckipper-config.zsh`:
 - **Config mount** (`~/.config/ccstatusline`, read-only) — theme, widget layout, powerline settings
 - **Cache mount** (`~/.cache/ccstatusline`, read-write) — shares usage API cache with host to avoid 429 rate limits
 
@@ -344,12 +321,12 @@ git pull
 source ~/.zshrc
 ```
 
-`install.sh` is idempotent. It re-deploys `~/.ckipper/docker/` (entry scripts, Dockerfile, entrypoint, `lib/` tree) and `~/.ckipper/hooks/`. Your `accounts.json`, `aliases.zsh`, and `w-config.zsh` are preserved. If hooks changed in the update, run `ckipper sync-hooks` to push the new versions into each registered account dir.
+`install.sh` is idempotent. It re-deploys `~/.ckipper/docker/` (entry scripts, Dockerfile, entrypoint, `lib/` tree) and `~/.ckipper/hooks/`. Your `accounts.json`, `aliases.zsh`, and `ckipper-config.zsh` are preserved. If hooks changed in the update, run `ckipper account sync-hooks` to push the new versions into each registered account dir.
 
 ### Update the container
 
 ```bash
-w --rebuild-image
+ck wt rebuild-image
 ```
 
 Updates everything in the container — system packages, Claude Code, uv/uvx, bun, gh CLI, and Chromium. The build cache-busts all layers so nothing goes stale. Only the base image (`node:24-slim`) is cached; pull it manually with `docker pull node:24-slim` if needed.
@@ -407,17 +384,17 @@ This is usually a feature — your `personal` and `work` accounts working in the
 
 ### MCP servers are per-account (user-scoped only)
 
-`mcpServers` lives in each account's `.claude.json`. When you `ckipper add <new>`, the new account starts with **zero** user-scoped MCP servers. Two ways to populate:
+`mcpServers` lives in each account's `.claude.json`. When you `ckipper account add <new>`, the new account starts with **zero** user-scoped MCP servers. Two ways to populate:
 
 ```bash
-ckipper sync personal work                  # default bundle: mcpServers + plugins + statusLine + env
-ckipper sync personal work --mcp Vibma,github   # only specific MCPs
-ckipper sync personal work --dry-run         # preview before writing
+ckipper account sync personal work                  # default bundle: mcpServers + plugins + statusLine + env
+ckipper account sync personal work --mcp Vibma,github   # only specific MCPs
+ckipper account sync personal work --dry-run         # preview before writing
 ```
 
 ### Plugins and marketplaces are per-account
 
-`enabledPlugins` and `extraKnownMarketplaces` (in `settings.json`) are per-account. The `ckipper sync` default bundle includes them; the `~/.ckipper/plugins/known_marketplaces.json` cache is independent per account dir.
+`enabledPlugins` and `extraKnownMarketplaces` (in `settings.json`) are per-account. The `ckipper account sync` default bundle includes them; the `~/.ckipper/plugins/known_marketplaces.json` cache is independent per account dir.
 
 ### `~/.claude/settings.local.json` may recreate after migration
 
@@ -425,14 +402,14 @@ Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DI
 
 ### Diagnose anytime
 
-`ckipper doctor` runs a full health check: registry validity, account dir presence, `.claude.json`/`settings.json`/`hooks/` per-account, Keychain entries, `~/.zshrc` source lines, and stub-file presence. Use it after `ckipper migrate` or whenever something looks off.
+`ckipper doctor` runs a full health check: registry validity, account dir presence, `.claude.json`/`settings.json`/`hooks/` per-account, Keychain entries, `~/.zshrc` source lines, and stub-file presence. Run it whenever something looks off.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
 | Docker not running | Start Docker Desktop |
-| Image not found | `w --rebuild-image` |
+| Image not found | `ck wt rebuild-image` |
 | "Not logged in" in container | Run `claude` on host to refresh Keychain, restart |
 | "Could not extract credentials" | Run `/login` on host |
 | Credentials expired mid-session | Exit, run `claude` on host, restart |
@@ -442,16 +419,16 @@ Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DI
 | GitHub MCP failed | Expected — Docker-in-Docker disabled |
 | `gh` commands fail | Check GH_TOKEN extracted from `.claude.json` |
 | `git commit` fails (no identity) | Entrypoint should set this automatically; check `.claude.json` has `oauthAccount` |
-| Native binary errors (Exec format) | Run `w --rebuild-image` — entrypoint runs `npm install` to fix platform binaries |
-| Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `w --rebuild-image` if missing |
-| Branch already checked out | Switch main repo to different branch: `cd $W_PROJECTS_DIR/<project> && git checkout develop` |
-| Stale worktree directory | Remove manually: `rm -rf $W_WORKTREES_DIR/<project>/<branch>` |
-| Statusline not rendering correctly | Add ccstatusline mounts to `W_EXTRA_VOLUMES` in `~/.ckipper/docker/w-config.zsh`; ensure `bun` is in the image (`w --rebuild-image`) |
+| Native binary errors (Exec format) | Run `ck wt rebuild-image` — entrypoint runs `npm install` to fix platform binaries |
+| Turbo cache permission denied | Entrypoint sets `TURBO_CACHE_DIR`; run `ck wt rebuild-image` if missing |
+| Branch already checked out | Switch main repo to different branch: `cd $CKIPPER_PROJECTS_DIR/<project> && git checkout develop` |
+| Stale worktree directory | Remove manually: `rm -rf $CKIPPER_WORKTREES_DIR/<project>/<branch>` |
+| Statusline not rendering correctly | Add ccstatusline mounts to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/ckipper-config.zsh`; ensure `bun` is in the image (`ck wt rebuild-image`) |
 | `git push` fails (SSH permission denied) | Ensure SSH keys are added to your agent (`ssh-add -l` to check); Docker Desktop forwards the host's SSH agent automatically |
 | GPG signing issues in container | Handled automatically via `GIT_CONFIG_COUNT` env vars; host config is not modified |
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
-| uvx MCP server fails to start | Run `w --rebuild-image`; if still broken, delete stale volumes: `docker volume rm claude-uv-cache claude-uv-tools` |
-| Claude Code version outdated | Run `w --rebuild-image` — Claude and uv are always re-fetched |
+| uvx MCP server fails to start | Run `ck wt rebuild-image`; if still broken, delete stale volumes: `docker volume rm claude-uv-cache claude-uv-tools` |
+| Claude Code version outdated | Run `ck wt rebuild-image` — Claude and uv are always re-fetched |
 
 ## Contributing
 

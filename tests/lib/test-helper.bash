@@ -49,25 +49,10 @@ run_ckipper() {
         zsh -c "$zsh_cmd"
 }
 
-# Run the w() function in an isolated zsh subshell.
-# Usage: run_w [args...]
-run_w() {
-    local zsh_cmd="source \"$REPO_ROOT/w-function.zsh\"; w $*"
-    run env \
-        HOME="$TMP_HOME" \
-        CKIPPER_DIR="$CKIPPER_DIR" \
-        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
-        PATH="$PATH" \
-        _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-linux}" \
-        CKIPPER_FORCE="${CKIPPER_FORCE:-1}" \
-        zsh -c "$zsh_cmd"
-}
-
 # Source a Ckipper file with $REPO_ROOT as the lookup base.
 # NOTE: Only usable when the test file itself runs under zsh (i.e., when
 # running bats tests from zsh). Because bats runs under bash, zsh-only source
-# files (ckipper.zsh, w-function.zsh) cannot be sourced this way.
-# Use run_ckipper / run_w instead for those files.
+# files (ckipper.zsh) cannot be sourced this way. Use run_ckipper for those.
 source_ckipper_file() {
     local rel_path="$1"
     source "$REPO_ROOT/$rel_path"

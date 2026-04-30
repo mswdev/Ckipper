@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
-# Characterization tests for ckipper subcommands.
+# Top-level dispatcher tests for ckipper().
 #
-# Purpose: regression net for Phases 2-4 (modularization + refactoring).
-# These tests document ACTUAL current behavior — assertions were adjusted to
-# match observed output rather than idealized behavior.
+# Verifies that namespace routing (account, worktree, doctor) works, that the
+# acct/wt short forms are equivalent, that bare/help prints overview, that
+# unknown commands fuzzy-suggest, and that namespace subcommands are reachable
+# through the new dispatcher.
 #
-# Important: ckipper.zsh is zsh-only (uses read "?..." prompt syntax, setopt,
-# local-function nesting). Bats runs under bash, so every test spawns a zsh
-# subprocess via run_ckipper() in test-helper.bash.
+# ckipper.zsh is zsh-only (uses read "?..." prompt syntax, setopt, etc.).
+# Bats runs under bash, so every test spawns a zsh subprocess via run_ckipper().
 
 load "${BATS_TEST_DIRNAME}/tests/lib/test-helper.bash"
 
@@ -19,185 +19,139 @@ teardown() {
     teardown_isolated_env
 }
 
-# ── _ckipper_migrate ────────────────────────────────────────────────
+# ── Top-level routing ────────────────────────────────────────────────
 
-@test "ckipper migrate --help prints usage and exits 0" {
-    run_ckipper migrate --help
+@test "ckipper (bare) prints top-level help and exits 0" {
+    run_ckipper
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "migrate" ]]
+    [[ "$output" =~ "ckipper account" ]]
+    [[ "$output" =~ "ckipper worktree" ]]
+    [[ "$output" =~ "ckipper doctor" ]]
 }
 
-@test "ckipper migrate reports nothing-to-migrate and exits 0 when no legacy state exists" {
-    # Note: with no ~/.claude state and no ~/.claude.json the code prints
-    # "Nothing to migrate" and returns 0 (not an error — it's a no-op).
-    run_ckipper migrate
+@test "ckipper help prints top-level help" {
+    run_ckipper help
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Nothing to migrate" || "$output" =~ "nothing to migrate" ]]
+    [[ "$output" =~ "Short alias" ]]
 }
 
-@test "ckipper migrate creates accounts.json when run with legacy layout" {
-    # Copy fixture legacy layout into isolated HOME.
-    cp -r "$REPO_ROOT/tests/fixtures/legacy-claude-layout/." "$TMP_HOME/"
-    # Feed stdin: account name "personal", then confirm "y".
-    # _CKIPPER_TEST_OSTYPE=linux skips macOS Keychain probing.
-    local stdin_file="$TMP_HOME/stdin.txt"
-    printf 'personal\ny\n' > "$stdin_file"
-    run env \
-        HOME="$TMP_HOME" \
-        CKIPPER_DIR="$CKIPPER_DIR" \
-        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
-        PATH="$PATH" \
-        _CKIPPER_TEST_OSTYPE="linux" \
-        CKIPPER_FORCE=1 \
-        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; ckipper migrate" < "$stdin_file"
-    [ -f "$CKIPPER_REGISTRY" ]
-}
-
-@test "ckipper migrate aborts when user declines the prompt" {
-    cp -r "$REPO_ROOT/tests/fixtures/legacy-claude-layout/." "$TMP_HOME/"
-    # Feed stdin via a temp file: account name "personal", then decline "n".
-    # Note: bats `run` cannot capture status when the command is on the
-    # right-hand side of a pipe; use a temp stdin file instead.
-    local stdin_file="$TMP_HOME/stdin.txt"
-    printf 'personal\nn\n' > "$stdin_file"
-    run env \
-        HOME="$TMP_HOME" \
-        CKIPPER_DIR="$CKIPPER_DIR" \
-        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
-        PATH="$PATH" \
-        _CKIPPER_TEST_OSTYPE="linux" \
-        CKIPPER_FORCE=1 \
-        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; ckipper migrate" < "$stdin_file"
+@test "ckipper unknown-command fuzzy-suggests when close" {
+    run_ckipper accont
     [ "$status" -ne 0 ]
-    [[ "$output" =~ "Aborted" ]]
+    [[ "$output" =~ "Unknown command: 'accont'. Did you mean: 'account'?" ]]
 }
 
-# ── _ckipper_doctor ─────────────────────────────────────────────────
-
-@test "ckipper doctor prints diagnostic output and mentions registry" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    run_ckipper doctor
-    # doctor always exits 0 or 1 depending on FAIL count; with an empty registry
-    # and no deployed tooling it returns some WARNs/FAILs but does not crash.
-    [[ "$output" =~ [Rr]egistry ]]
+@test "ckipper unknown-command shows bare error when no close match" {
+    run_ckipper xyzzy
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Unknown command: 'xyzzy'." ]]
+    [[ ! "$output" =~ "Did you mean" ]]
 }
 
-@test "ckipper doctor prints INFO about missing registry when none exists" {
+# ── Account namespace + alias ────────────────────────────────────────
+
+@test "ckipper account help prints account-namespace help" {
+    run_ckipper account help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper account" ]]
+    [[ "$output" =~ "Short form" ]]
+}
+
+@test "ckipper acct help is equivalent to ckipper account help" {
+    run_ckipper acct help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper account" ]]
+}
+
+@test "ckipper account list prints message when no accounts registered" {
     rm -f "$CKIPPER_REGISTRY"
-    run_ckipper doctor
-    # With no registry, doctor prints an INFO line and returns 0.
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ [Rr]egistry ]]
-}
-
-@test "ckipper doctor exits 0 when registry missing (no accounts registered)" {
-    rm -f "$CKIPPER_REGISTRY"
-    run_ckipper doctor
-    [ "$status" -eq 0 ]
-}
-
-# ── _ckipper_sync ────────────────────────────────────────────────────
-
-@test "ckipper sync --help prints usage and exits 0" {
-    run_ckipper sync --help
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "sync" ]]
-}
-
-@test "ckipper sync errors when source account is not registered" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    run_ckipper sync nonexistent target
-    [ "$status" -ne 0 ]
-    [[ "$output" =~ "not registered" ]]
-}
-
-@test "ckipper sync errors when from and to are the same" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    run_ckipper sync same same
-    [ "$status" -ne 0 ]
-    [[ "$output" =~ "differ" ]]
-}
-
-# ── _ckipper_add ────────────────────────────────────────────────────
-
-@test "ckipper add rejects names containing spaces (invalid regex)" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    run_ckipper add "Invalid Name With Spaces"
-    [ "$status" -ne 0 ]
-    [[ "$output" =~ "must match" || "$output" =~ [Ii]nvalid ]]
-}
-
-@test "ckipper add rejects uppercase names" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    run_ckipper add "MyAccount"
-    [ "$status" -ne 0 ]
-    [[ "$output" =~ "must match" || "$output" =~ [Ii]nvalid ]]
-}
-
-@test "ckipper add with builtin name 'cd' fails after prompt due to missing claude binary" {
-    # Note: 'cd' passes the name-regex check (^[a-z0-9_-]+$). It does NOT get
-    # rejected at validation time. Instead, ckipper proceeds to launch 'claude'
-    # which is not available in the test env. Feeding "skip" at the
-    # "Press enter to launch" prompt causes a clean abort.
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    local stdin_file="$TMP_HOME/stdin.txt"
-    printf 'skip\n' > "$stdin_file"
-    run env \
-        HOME="$TMP_HOME" \
-        CKIPPER_DIR="$CKIPPER_DIR" \
-        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
-        PATH="$PATH" \
-        _CKIPPER_TEST_OSTYPE="linux" \
-        CKIPPER_FORCE=1 \
-        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; ckipper add cd" < "$stdin_file"
-    # After "skip" input, ckipper aborts with exit 1.
-    [ "$status" -ne 0 ]
-    [[ "$output" =~ "Aborted" || "$output" =~ "abort" ]]
-}
-
-@test "ckipper add with no name prints usage and exits 1" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    run_ckipper add
-    [ "$status" -ne 0 ]
-    [[ "$output" =~ [Uu]sage ]]
-}
-
-# ── _ckipper_list ────────────────────────────────────────────────────
-
-@test "ckipper list shows registered accounts" {
-    echo '{"version":1,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":"Claude Code-credentials-work"}}}' > "$CKIPPER_REGISTRY"
-    run_ckipper list
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "work" ]]
-}
-
-@test "ckipper list prints a message when no accounts registered" {
-    rm -f "$CKIPPER_REGISTRY"
-    run_ckipper list
+    run_ckipper account list
     [ "$status" -eq 0 ]
     [[ "$output" =~ "No accounts" || "$output" =~ "no accounts" ]]
 }
 
-# ── _ckipper_remove ──────────────────────────────────────────────────
-
-@test "ckipper remove unregisters a known account and exits 0" {
-    echo '{"version":1,"default":null,"accounts":{"tmp":{"config_dir":"/tmp/.claude-tmp","keychain_service":"Claude Code-credentials-tmp"}}}' > "$CKIPPER_REGISTRY"
-    # Note: ckipper remove has no --yes flag; it removes without prompting.
-    run_ckipper remove tmp
+@test "ckipper acct list works through the short alias" {
+    rm -f "$CKIPPER_REGISTRY"
+    run_ckipper acct list
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Unregistered" ]]
+    [[ "$output" =~ "No accounts" || "$output" =~ "no accounts" ]]
 }
 
-@test "ckipper remove errors on unknown account name" {
+@test "ckipper account add --help prints add-specific help" {
+    run_ckipper account add --help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper account add" ]]
+    [[ "$output" =~ "--adopt" ]]
+}
+
+@test "ckipper account remove rejects unknown name" {
     echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    run_ckipper remove nobody
+    run_ckipper account remove nobody
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not registered" ]]
 }
 
-@test "ckipper remove with no name prints usage and exits 1" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
-    run_ckipper remove
+# ── Worktree namespace + alias ───────────────────────────────────────
+
+@test "ckipper worktree help prints worktree-namespace help" {
+    run_ckipper worktree help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper worktree" ]]
+    [[ "$output" =~ "Short form" ]]
+}
+
+@test "ckipper wt help is equivalent to ckipper worktree help" {
+    run_ckipper wt help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper worktree" ]]
+}
+
+@test "ckipper worktree run --help prints run-specific help" {
+    run_ckipper worktree run --help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper worktree run" ]]
+    [[ "$output" =~ "--docker" ]]
+}
+
+@test "ckipper wt run with no args prints help and exits 1" {
+    run_ckipper wt run
     [ "$status" -ne 0 ]
-    [[ "$output" =~ [Uu]sage ]]
+    [[ "$output" =~ "ckipper worktree run" ]]
+}
+
+# ── Doctor (top-level command, not a namespace) ──────────────────────
+
+@test "ckipper doctor --help prints doctor-specific help" {
+    run_ckipper doctor --help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper doctor" ]]
+    [[ "$output" =~ "Registry validity" || "$output" =~ "registry" ]]
+}
+
+@test "ckipper doctor exits 0 when registry missing (no accounts)" {
+    rm -f "$CKIPPER_REGISTRY"
+    run_ckipper doctor
+    [ "$status" -eq 0 ]
+}
+
+@test "ckipper doctor mentions registry in output" {
+    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    run_ckipper doctor
+    [[ "$output" =~ [Rr]egistry ]]
+}
+
+# ── tab completion version sentinel ──────────────────────────────────
+
+# The completion-file regeneration mechanism relies on the literal
+# "# ckipper-completion-version=N" sentinel inside the single-quoted heredoc
+# matching the CKIPPER_COMPLETION_VERSION variable referenced in the grep
+# check immediately above. If a future bump only updates one side, existing
+# installs silently fail to regenerate. This test guards against that drift.
+@test "ckipper.zsh: completion version sentinel matches outer variable" {
+    local outer inner
+    outer=$(grep -E '^CKIPPER_COMPLETION_VERSION=' "$REPO_ROOT/ckipper.zsh" | head -1 | cut -d= -f2)
+    inner=$(grep -E '^# ckipper-completion-version=' "$REPO_ROOT/ckipper.zsh" | head -1 | cut -d= -f2)
+    [ -n "$outer" ]
+    [ -n "$inner" ]
+    [ "$outer" = "$inner" ]
 }

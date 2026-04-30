@@ -25,9 +25,10 @@ Omit `Args:` if the function takes none. Omit `Errors:` if it never writes to st
 Used to encode the dependency direction at a glance and let CI verify it:
 
 - `_core_*` — `lib/core/` (shared primitives)
-- `_ckipper_*` — `lib/ckipper/` (ckipper subcommands)
-- `_w_*` — `lib/w/` (w() helpers)
-- No prefix — public, callable from `.zshrc`: `ckipper`, `ck`, `w`
+- `_ckipper_account_*` — `lib/account/` (account subcommands)
+- `_ckipper_worktree_*` — `lib/worktree/` (worktree subcommands)
+- `_ckipper_*` — top-level dispatcher in `ckipper.zsh` (and `_ckipper_doctor`, kept un-namespaced because it's exposed as a top-level command, even though its source lives in `lib/account/`)
+- No prefix — public, callable from `.zshrc`: `ckipper`, `ck`
 
 ## Booleans
 
@@ -35,6 +36,11 @@ zsh has no native bool. Use string values `"true"`/`"false"` and test with `[[ "
 
 ## Module sourcing
 
-Modules under `lib/` are sourced once by an entry script (`ckipper.zsh` or `w-function.zsh`). Modules MUST NOT source siblings. Cross-feature imports between `lib/w/` and `lib/ckipper/` are forbidden — extract shared code to `lib/core/` (per `file-organization.md`'s shared-parent rule).
+Modules under `lib/` are sourced once by `ckipper.zsh` (the single entry script sourced from `~/.zshrc`). Modules MUST NOT source siblings. Cross-feature imports between `lib/account/` and `lib/worktree/` are forbidden — extract shared code to `lib/core/` (per `file-organization.md`'s shared-parent rule).
 
-CI enforces this with `grep -rE '\b_ckipper_' lib/w/`.
+CI enforces the namespace separation with the four guards from `make lint-merge-guards`:
+
+- `grep -rE '\b_w_[a-z]' lib/`   — must be empty (no leftover renames from the merge)
+- `grep -rE '\bW_[A-Z]' lib/`    — must be empty (no leftover globals from the merge)
+- `grep -rE '\b_ckipper_account_' lib/worktree/`   — must be empty (worktree mustn't reach into account)
+- `grep -rE '\b_ckipper_worktree_' lib/account/`   — must be empty (account mustn't reach into worktree)
