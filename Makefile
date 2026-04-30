@@ -31,7 +31,6 @@ lint-shell:
 
 lint-zsh:
 	zsh -n ckipper.zsh
-	zsh -n w-function.zsh
 	@if [ -d lib ]; then \
 		find lib -name '*.zsh' -not -name '*_test.bats' | while read -r f; do zsh -n "$$f" || exit 1; done; \
 	fi

@@ -52,9 +52,8 @@ chmod +x "$CKIPPER_DIR/hooks/bash-guardrails.sh"
 chmod +x "$CKIPPER_DIR/hooks/docker-context.sh"
 chmod +x "$CKIPPER_DIR/hooks/notify-bell.sh"
 
-# 4. Copy w-function.zsh, ckipper.zsh, and the lib/ tree.
-echo "Copying w-function.zsh, ckipper.zsh, and lib/ to $CKIPPER_DIR/docker/..."
-cp "$REPO_DIR/w-function.zsh" "$CKIPPER_DIR/docker/"
+# 4. Copy ckipper.zsh and the lib/ tree.
+echo "Copying ckipper.zsh and lib/ to $CKIPPER_DIR/docker/..."
 cp "$REPO_DIR/ckipper.zsh" "$CKIPPER_DIR/docker/"
 
 # Deploy lib/ tree, EXCLUDING test files (*_test.bats, *_test.py).
@@ -99,21 +98,18 @@ cp "$REPO_DIR/templates/settings-template.json" "$CKIPPER_DIR/settings-template.
 echo "  Settings template deployed. ckipper sync-hooks applies it per-account."
 
 # 7. Add or update source line in .zshrc
-# The legacy line could be any of:
-#   source "$HOME/.claude/docker/w-function.zsh"
-#   source ~/.claude/docker/w-function.zsh
-#   source $HOME/.claude/docker/w-function.zsh
-# We rewrite the whole line (consuming any trailing quote) to a canonical quoted form.
-if grep -q '\.claude/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
-    sed -i.bak -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*\.claude/docker/w-function\.zsh["'\'']?[[:space:]]*$|source "$HOME/.ckipper/docker/w-function.zsh"|' "$HOME/.zshrc"
-    echo "  Updated ~/.zshrc source line to ~/.ckipper/. Backup at ~/.zshrc.bak."
-elif ! grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
+# Pre-merge installs sourced w-function.zsh from ~/.claude/docker/ or
+# ~/.ckipper/docker/. Both rewrite to ~/.ckipper/docker/ckipper.zsh.
+if grep -qE '(claude|ckipper)/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
+    sed -i.bak -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*(claude|ckipper)/docker/w-function\.zsh["'\'']?[[:space:]]*$|source "$HOME/.ckipper/docker/ckipper.zsh"|' "$HOME/.zshrc"
+    echo "  Updated ~/.zshrc source line to ~/.ckipper/docker/ckipper.zsh. Backup at ~/.zshrc.bak."
+elif ! grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then
     echo '' >>"$HOME/.zshrc"
-    echo '# Ckipper — Worktree Manager (w function)' >>"$HOME/.zshrc"
-    echo 'source "$HOME/.ckipper/docker/w-function.zsh"' >>"$HOME/.zshrc"
-    echo "  Added w() source line to ~/.zshrc"
+    echo '# Ckipper — multi-account Claude Code manager (ckipper + ckipper worktree run)' >>"$HOME/.zshrc"
+    echo 'source "$HOME/.ckipper/docker/ckipper.zsh"' >>"$HOME/.zshrc"
+    echo "  Added ckipper source line to ~/.zshrc"
 else
-    echo "  ~/.zshrc already sources ~/.ckipper/docker/w-function.zsh"
+    echo "  ~/.zshrc already sources ~/.ckipper/docker/ckipper.zsh"
 fi
 
 # 8. Print (do not auto-append) the optional aliases.zsh source line
@@ -152,8 +148,8 @@ echo ""
 echo "Next steps:"
 echo "  1. Edit $CKIPPER_DIR/docker/w-config.zsh with your MCP mounts, ports, etc."
 echo "  2. source ~/.zshrc"
-echo "  3. w --rebuild-image"
-echo "  4. ckipper add <name>   # register an account"
-echo "  5. w <your-project> test-branch --docker claude"
+echo "  3. ckipper worktree rebuild-image   # (or: ck wt rebuild-image)"
+echo "  4. ckipper account add <name>       # register an account"
+echo "  5. ckipper worktree run <project> test-branch --docker claude"
 echo ""
 echo "To update later: git pull && ./install.sh"

@@ -19,7 +19,6 @@ teardown() {
     [ -d "$TMP_HOME/.ckipper/docker/lib/account" ]
     [ -d "$TMP_HOME/.ckipper/docker/lib/worktree" ]
     [ -f "$TMP_HOME/.ckipper/docker/ckipper.zsh" ]
-    [ -f "$TMP_HOME/.ckipper/docker/w-function.zsh" ]
 }
 
 @test "install.sh excludes test files from deployed lib/" {
