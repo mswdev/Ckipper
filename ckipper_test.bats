@@ -19,59 +19,6 @@ teardown() {
     teardown_isolated_env
 }
 
-# ── _ckipper_migrate ────────────────────────────────────────────────
-
-@test "ckipper migrate --help prints usage and exits 0" {
-    run_ckipper migrate --help
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "migrate" ]]
-}
-
-@test "ckipper migrate reports nothing-to-migrate and exits 0 when no legacy state exists" {
-    # Note: with no ~/.claude state and no ~/.claude.json the code prints
-    # "Nothing to migrate" and returns 0 (not an error — it's a no-op).
-    run_ckipper migrate
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "Nothing to migrate" || "$output" =~ "nothing to migrate" ]]
-}
-
-@test "ckipper migrate creates accounts.json when run with legacy layout" {
-    # Copy fixture legacy layout into isolated HOME.
-    cp -r "$REPO_ROOT/tests/fixtures/legacy-claude-layout/." "$TMP_HOME/"
-    # Feed stdin: account name "personal", then confirm "y".
-    # _CKIPPER_TEST_OSTYPE=linux skips macOS Keychain probing.
-    local stdin_file="$TMP_HOME/stdin.txt"
-    printf 'personal\ny\n' > "$stdin_file"
-    run env \
-        HOME="$TMP_HOME" \
-        CKIPPER_DIR="$CKIPPER_DIR" \
-        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
-        PATH="$PATH" \
-        _CKIPPER_TEST_OSTYPE="linux" \
-        CKIPPER_FORCE=1 \
-        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; ckipper migrate" < "$stdin_file"
-    [ -f "$CKIPPER_REGISTRY" ]
-}
-
-@test "ckipper migrate aborts when user declines the prompt" {
-    cp -r "$REPO_ROOT/tests/fixtures/legacy-claude-layout/." "$TMP_HOME/"
-    # Feed stdin via a temp file: account name "personal", then decline "n".
-    # Note: bats `run` cannot capture status when the command is on the
-    # right-hand side of a pipe; use a temp stdin file instead.
-    local stdin_file="$TMP_HOME/stdin.txt"
-    printf 'personal\nn\n' > "$stdin_file"
-    run env \
-        HOME="$TMP_HOME" \
-        CKIPPER_DIR="$CKIPPER_DIR" \
-        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
-        PATH="$PATH" \
-        _CKIPPER_TEST_OSTYPE="linux" \
-        CKIPPER_FORCE=1 \
-        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; ckipper migrate" < "$stdin_file"
-    [ "$status" -ne 0 ]
-    [[ "$output" =~ "Aborted" ]]
-}
-
 # ── _ckipper_doctor ─────────────────────────────────────────────────
 
 @test "ckipper doctor prints diagnostic output and mentions registry" {

@@ -213,7 +213,7 @@ _ckipper_add() {
 # Reads name, dir, and service from _CKIPPER_FINALIZE_CTX module global.
 #
 # Args:
-#   $1 — registration mode: "fresh", "adopt", or "migrate"
+#   $1 — registration mode: "fresh" or "adopt"
 #
 # Returns:
 #   0 on success; 1 on registry collision or write failure.
@@ -244,7 +244,7 @@ _ckipper_finalize_registration() {
 #
 # Args:
 #   $1 — account name
-#   $2 — registration mode label (e.g. "fresh", "adopt", "migrate")
+#   $2 — registration mode label (e.g. "fresh", "adopt")
 #
 # Returns: 0 always.
 _ckipper_finalize_announce() {

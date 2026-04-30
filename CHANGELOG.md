@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- `ckipper migrate` subcommand (legacy `claude-docker-sandbox` migration). The legacy install path is no longer supported; use `ckipper add <name>` for fresh installs.
+
 ### Added
 - `W_PROJECTS_DIR` and `W_WORKTREES_DIR` are now user-configurable via `w-config.zsh`. Defaults remain `$HOME/Developer` and `$W_PROJECTS_DIR/.worktrees`. Existing tab-completion files regenerate on next shell startup via a version sentinel.
 

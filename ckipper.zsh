@@ -20,13 +20,12 @@ source "$CKIPPER_REPO_DIR/lib/ckipper/aliases.zsh"
 source "$CKIPPER_REPO_DIR/lib/ckipper/plugin-repair.zsh"
 source "$CKIPPER_REPO_DIR/lib/ckipper/sync.zsh"
 source "$CKIPPER_REPO_DIR/lib/ckipper/doctor.zsh"
-source "$CKIPPER_REPO_DIR/lib/ckipper/migrate.zsh"
 
 # Dispatch a ckipper subcommand or print top-level help.
 #
 # Args:
 #   $1 — subcommand name (add, list, default, remove, rename, sync, sync-hooks,
-#         migrate, doctor, repair-plugins, help, -h, --help, or empty)
+#         doctor, repair-plugins, help, -h, --help, or empty)
 #   $@ — arguments forwarded to the subcommand handler
 #
 # Returns:
@@ -39,7 +38,7 @@ ckipper() {
     shift 2>/dev/null
     case "$cmd" in
         # --help on any subcommand short-circuits to subcommand help
-        add|list|default|remove|rename|sync|sync-hooks|migrate|doctor|repair-plugins)
+        add|list|default|remove|rename|sync|sync-hooks|doctor|repair-plugins)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
                 _ckipper_help_for "$cmd"
                 return 0
@@ -68,7 +67,6 @@ Usage:
   ckipper rename <old> <new>  Rename an account (dir + registry + aliases)
   ckipper sync <from> <to>    Copy MCP/settings from one account to another
   ckipper sync-hooks          Copy hooks into all registered accounts
-  ckipper migrate             One-time migration from legacy layout
   ckipper doctor              Diagnostic check of registered accounts and tooling
   ckipper repair-plugins <n>  Rewrite stale ~/.claude/ paths in plugin metadata
 
@@ -118,8 +116,8 @@ Rewrite stale absolute paths in <account_dir>/plugins/{known_marketplaces,
 installed_plugins}.json from $HOME/.claude/... to the account's actual dir.
 
 Use this when Claude Code shows "Plugin not found in marketplace ..." for
-plugins that were installed before `ckipper migrate` (or before the dir was
-renamed). Backups are written alongside each rewritten file.
+plugins that were installed before the account directory was renamed.
+Backups are written alongside each rewritten file.
 EOF
 }
 
@@ -169,7 +167,6 @@ _ckipper_help_for() {
         sync-hooks)     echo "ckipper sync-hooks — copy ~/.ckipper/hooks/* into each account's <dir>/hooks/, rewrite settings.json paths." ;;
         repair-plugins) _help_text_repair_plugins ;;
         sync)           _help_text_sync ;;
-        migrate)        echo "ckipper migrate — migrate from legacy ~/.claude/docker/ layout. Idempotent. Refuses if Claude is running." ;;
         doctor)         echo "ckipper doctor — run a diagnostic checklist on registered accounts and ckipper tooling." ;;
     esac
 }

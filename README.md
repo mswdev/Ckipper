@@ -48,7 +48,6 @@ ckipper sync <from> <to>                             # copy MCP/settings/plugins
 ckipper sync-hooks                                   # re-deploy hooks into every account dir
 ckipper repair-plugins <name>                        # fix stale ~/.claude/ paths in plugin metadata
 ckipper doctor                                       # diagnostic checklist
-ckipper migrate                                      # one-time migration from claude-docker-sandbox
 ```
 
 `ck` is a short alias for `ckipper`. `<project>` is a relative path under `$W_PROJECTS_DIR` (default `~/Developer/`, e.g. `myorg/myapp`). Tab completion is included. See [Projects Directory](#projects-directory) to change the base path.
@@ -197,27 +196,6 @@ Two named Docker volumes support uvx-based MCP servers:
 - **`claude-uv-tools`** — persists pre-installed tool environments and the uv-managed Python interpreter
 
 The entrypoint pre-installs uvx-based MCP servers before Claude starts and rewrites the container's `.claude.json` to invoke the installed binary directly. This eliminates the network freshness check and ephemeral venv creation that cause intermittent MCP startup timeouts.
-
-## Migrating from claude-docker-sandbox
-
-If you've been running this project under its previous name with a single `~/.claude/docker/` install, run:
-
-```bash
-ckipper migrate
-```
-
-This will:
-
-1. Refuse to run if any `claude` process is currently active (quit them first).
-2. Copy `~/.claude/docker/` → `~/.ckipper/`.
-3. Offer to register your existing `~/.claude` as the `personal` account. If you accept: rename `~/.claude` → `~/.claude-personal`, probe Keychain for the matching credential entry, and write the registry. **No symlink is created** — after migration, you launch Claude with `claude-personal` (bare `claude` will start a fresh login).
-4. If anything fails, the rename automatically reverses (rollback).
-
-Then add additional accounts:
-
-```bash
-ckipper add work
-```
 
 ## Setup
 
@@ -425,7 +403,7 @@ Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DI
 
 ### Diagnose anytime
 
-`ckipper doctor` runs a full health check: registry validity, account dir presence, `.claude.json`/`settings.json`/`hooks/` per-account, Keychain entries, `~/.zshrc` source lines, and stub-file presence. Use it after `ckipper migrate` or whenever something looks off.
+`ckipper doctor` runs a full health check: registry validity, account dir presence, `.claude.json`/`settings.json`/`hooks/` per-account, Keychain entries, `~/.zshrc` source lines, and stub-file presence. Run it whenever something looks off.
 
 ## Troubleshooting
 

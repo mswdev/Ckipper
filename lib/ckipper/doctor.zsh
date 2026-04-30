@@ -51,7 +51,7 @@ _ckipper_doctor_registry() {
     echo ""
     echo "── Registry ──────────────────────────────────────────"
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
-        _ckipper_doctor_check INFO "No registry yet — no accounts registered. Run: ckipper migrate (or ckipper add <name>)"
+        _ckipper_doctor_check INFO "No registry yet — no accounts registered. Run: ckipper add <name>"
         return 1
     fi
     local v; v=$(jq -r '.version // 0' "$CKIPPER_REGISTRY" 2>/dev/null)
@@ -183,7 +183,7 @@ _ckipper_doctor_shell() {
     else
         _ckipper_doctor_check PASS "~/.claude (stub dir) is absent"
     fi
-    if [[ -f "$HOME/.claude.json" ]]; then _ckipper_doctor_check WARN "~/.claude.json exists at home root — should have been migrated. If you ran migrate, this is leftover."
+    if [[ -f "$HOME/.claude.json" ]]; then _ckipper_doctor_check WARN "~/.claude.json exists at home root — leftover from a pre-ckipper claude install."
     else _ckipper_doctor_check PASS "~/.claude.json (home root) is absent"; fi
 }
 

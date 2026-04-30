@@ -7,29 +7,6 @@ echo ""
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 CKIPPER_DIR="${CKIPPER_DIR:-$HOME/.ckipper}"
 
-# Migrate legacy ~/.claude/docker/ layout if present (idempotent)
-LEGACY_DIR="$HOME/.claude/docker"
-if [ -d "$LEGACY_DIR" ] && [ ! -d "$CKIPPER_DIR/docker" ]; then
-    echo "Migrating ~/.claude/docker/ -> $CKIPPER_DIR/docker/"
-    mkdir -p "$CKIPPER_DIR/docker"
-    cp -a "$LEGACY_DIR/." "$CKIPPER_DIR/docker/"
-    echo "Migrated. The legacy directory is left intact at $LEGACY_DIR for one release cycle."
-    echo "After verifying the new location works (ckipper list shows your accounts):"
-    echo "  rm -rf $LEGACY_DIR"
-
-    # Sweep migrated w-config.zsh for stale path strings (warn only — never auto-edit user config)
-    if [ -f "$CKIPPER_DIR/docker/w-config.zsh" ]; then
-        stale=$(grep -n "\.claude/docker" "$CKIPPER_DIR/docker/w-config.zsh" 2>/dev/null || true)
-        if [ -n "$stale" ]; then
-            echo ""
-            echo "WARNING: Your migrated w-config.zsh contains stale ~/.claude/docker/ paths:"
-            echo "$stale"
-            echo "Update these to ~/.ckipper/docker/ manually."
-            echo ""
-        fi
-    fi
-fi
-
 # 1. Check prerequisites
 echo "Checking prerequisites..."
 missing_dependencies=()
