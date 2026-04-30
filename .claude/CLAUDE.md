@@ -77,14 +77,6 @@ Before approving any PR, verify:
 
 ## 4. Infrastructure & Services
 
-| Service | Purpose | Status |
-|---------|---------|--------|
-| Docker | Containerization for `--docker` mode. Image built locally from `docker/Dockerfile`. | Active |
-| macOS Keychain | Credential storage per account (service: `Claude Code-credentials-<account>`). Accessed via `security` CLI. | Active |
-| Anthropic API | Invoked transitively by Claude Code CLI inside the container. No direct API calls from Ckipper. | Indirect |
-| GitHub API | `gh` CLI used by `init-firewall.sh` to fetch GitHub IP ranges for the egress allow-list. | Active |
-| npm registry | Used inside the container by Claude Code's MCP server installation. | Indirect |
-
 CI runs `make lint` + `make test-unit` on `macos-latest` via `.github/workflows/ci.yml`.
 
 ## 5. Git Workflow

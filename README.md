@@ -230,8 +230,8 @@ ckipper add work
 
 ```bash
 # Clone the repo
-git clone https://github.com/whmoro/ckipper.git
-cd ckipper
+git clone https://github.com/whmoro/claude-docker-sandbox.git
+cd claude-docker-sandbox
 
 # Run the installer (copies all files, merges hooks, adds source line)
 ./install.sh
@@ -264,7 +264,9 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `hooks/bash-guardrails.sh` | `~/.ckipper/hooks/bash-guardrails.sh` | Bash command guard |
 | `hooks/docker-context.sh` | `~/.ckipper/hooks/docker-context.sh` | Context injection |
 | `hooks/notify-bell.sh` | `~/.ckipper/hooks/notify-bell.sh` | Notification bell |
-| `w-function.zsh` | `~/.ckipper/docker/w-function.zsh` | w() function (sourced by .zshrc) |
+| `w-function.zsh` | `~/.ckipper/docker/w-function.zsh` | w() launcher entry (sourced by .zshrc) |
+| `ckipper.zsh` | `~/.ckipper/docker/ckipper.zsh` | ckipper CLI entry (account management) |
+| `lib/core/`, `lib/ckipper/`, `lib/w/` | `~/.ckipper/docker/lib/` | Shell module tree (sourced by entry scripts; test files excluded) |
 | `w-config.zsh.example` | `~/.ckipper/docker/w-config.zsh` | User config (ports, mounts, env vars) |
 | `settings-hooks.json` | Auto-merged into `~/.claude/settings.json` | Hook registration |
 
@@ -426,3 +428,15 @@ Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DI
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
 | uvx MCP server fails to start | Run `w --rebuild-image`; if still broken, delete stale volumes: `docker volume rm claude-uv-cache claude-uv-tools` |
 | Claude Code version outdated | Run `w --rebuild-image` — Claude and uv are always re-fetched |
+
+## Contributing
+
+PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow, code style, and how to run the test suite (`make bootstrap && make test`).
+
+## Security
+
+Found a vulnerability? See [`SECURITY.md`](SECURITY.md) for private reporting. Please do not open a public issue.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
