@@ -38,11 +38,10 @@ Ckipper is a zsh-based wrapper for the [Claude Code CLI](https://claude.ai/cli) 
 **Top-level layout:**
 
 ```
-ckipper.zsh                  # ckipper CLI entry (account add/remove/sync/doctor)
-w-function.zsh               # w() launcher entry (sourced from .zshrc)
-lib/core/                    # shared primitives (registry, keychain, utils)
-lib/account/                 # account-management subcommands
-lib/w/                       # w-specific helpers
+ckipper.zsh                  # ckipper CLI entry (sourced from .zshrc)
+lib/core/                    # shared primitives (registry, keychain, utils, fuzzy)
+lib/account/                 # ckipper account subcommands
+lib/worktree/                # ckipper worktree subcommands
 hooks/                       # Claude Code safety hooks
 docker/                      # Dockerfile + entrypoint + firewall + cleanup
 tests/                       # bats + pytest tests
