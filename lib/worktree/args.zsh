@@ -19,8 +19,8 @@
 # initialized once when w-function.zsh is sourced and never reset here.
 #
 # Returns: 0 always (validation is done by the dispatcher).
-_w_parse_args() {
-    _w_reset_globals
+_ckipper_worktree_parse_args() {
+    _ckipper_worktree_reset_globals
 
     if [[ "$1" == "--list" ]]; then
         W_FLAG_LIST=true
@@ -33,11 +33,11 @@ _w_parse_args() {
     fi
 
     if [[ "$1" == "--rm" ]]; then
-        _w_parse_rm_args "$@"
+        _ckipper_worktree_parse_rm_args "$@"
         return 0
     fi
 
-    _w_parse_run_args "$@"
+    _ckipper_worktree_parse_run_args "$@"
 }
 
 # Reset per-call W_* arg globals (flags + positionals) to their default values.
@@ -45,7 +45,7 @@ _w_parse_args() {
 # by w-function.zsh and intentionally not touched here.
 #
 # Returns: 0 always.
-_w_reset_globals() {
+_ckipper_worktree_reset_globals() {
     W_FLAG_LIST=false
     W_FLAG_REBUILD_IMAGE=false
     W_FLAG_RM=false
@@ -64,7 +64,7 @@ _w_reset_globals() {
 #   $@ — original args starting with --rm
 #
 # Returns: 0 always.
-_w_parse_rm_args() {
+_ckipper_worktree_parse_rm_args() {
     W_FLAG_RM=true
     shift
     if [[ "$1" == "--force" || "$1" == "-f" ]]; then
@@ -81,7 +81,7 @@ _w_parse_rm_args() {
 #   $@ — original args (project is $1, branch is $2)
 #
 # Returns: 0 always.
-_w_parse_run_args() {
+_ckipper_worktree_parse_run_args() {
     W_PROJECT="$1"
     W_BRANCH="$2"
     shift 2 2>/dev/null

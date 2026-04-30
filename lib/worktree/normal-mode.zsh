@@ -5,7 +5,7 @@
 #
 # Reads globals: W_WT_PATH, W_BRANCH, W_COMMAND.
 # Returns: 0 on cd; exit code of command if one was given.
-_w_run_normal_mode() {
+_ckipper_worktree_run_normal_mode() {
     if [[ ${#W_COMMAND[@]} -eq 0 ]]; then
         cd "$W_WT_PATH"
         return 0

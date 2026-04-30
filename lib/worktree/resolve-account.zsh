@@ -15,9 +15,9 @@
 # Errors (stderr):
 #   "Error: no account selected and no default registered." — when no account can be resolved
 #   "Error: account '<name>' is not registered. Run: ckipper list" — when account missing from registry
-_w_resolve_account() {
+_ckipper_worktree_resolve_account() {
     local candidate
-    candidate=$(_w_find_account_name)
+    candidate=$(_ckipper_worktree_find_account_name)
 
     if [[ -z "$candidate" ]]; then
         echo "Error: no account selected and no default registered."
@@ -46,7 +46,7 @@ _w_resolve_account() {
 # Resolution order: CLI flag → env match → registry default.
 #
 # Returns: 0 always (prints account name to stdout, or empty string if none found).
-_w_find_account_name() {
+_ckipper_worktree_find_account_name() {
     if [[ -n "$W_CLI_ACCOUNT" ]]; then
         echo "$W_CLI_ACCOUNT"
         return 0

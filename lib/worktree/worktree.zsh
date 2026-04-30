@@ -6,7 +6,7 @@ readonly W_FIND_MAX_DEPTH=3
 # Print all worktrees under $W_WORKTREES_DIR, grouped by project.
 #
 # Reads W_PROJECTS_DIR and W_WORKTREES_DIR globals.
-_w_list_worktrees() {
+_ckipper_worktree_list_worktrees() {
     echo "=== All Worktrees ==="
     [[ ! -d "$W_WORKTREES_DIR" ]] && return 0
 
@@ -21,7 +21,7 @@ _w_list_worktrees() {
             [[ "$after_first" == "$rel" ]] && continue
 
             local branch
-            IFS=$'\t' read -r project branch < <(_w_get_project_and_branch "$project" "$after_first")
+            IFS=$'\t' read -r project branch < <(_ckipper_worktree_get_project_and_branch "$project" "$after_first")
 
             if [[ "$project" != "$previous_project_for_grouping" ]]; then
                 previous_project_for_grouping="$project"
@@ -40,8 +40,8 @@ _w_list_worktrees() {
 # Returns: 0 always. Prints "<project>\t<branch>" (tab-separated) to stdout.
 #
 # Caller usage:
-#   IFS=$'\t' read -r project branch < <(_w_get_project_and_branch "$proj" "$rest")
-_w_get_project_and_branch() {
+#   IFS=$'\t' read -r project branch < <(_ckipper_worktree_get_project_and_branch "$proj" "$rest")
+_ckipper_worktree_get_project_and_branch() {
     local initial_project="$1"
     local after_first="$2"
 
@@ -67,7 +67,7 @@ _w_get_project_and_branch() {
 #   "Usage: w --rm [--force] <project> <worktree>" — when project or worktree is empty
 #   "Worktree not found: <path>" — when the worktree directory does not exist
 #   "Failed to remove worktree. Use --force if it has uncommitted changes." — on git error
-_w_remove_worktree() {
+_ckipper_worktree_remove_worktree() {
     local project="$1"
     local worktree="$2"
 
@@ -90,7 +90,7 @@ _w_remove_worktree() {
         return 1
     }
 
-    _w_cleanup_project_registry "$wt_path"
+    _ckipper_worktree_cleanup_project_registry "$wt_path"
 }
 
 # Remove a worktree path from the project registry if the cleanup script exists.
@@ -99,7 +99,7 @@ _w_remove_worktree() {
 #   $1 — absolute path to the worktree that was removed
 #
 # Returns: 0 always (failure is non-fatal).
-_w_cleanup_project_registry() {
+_ckipper_worktree_cleanup_project_registry() {
     local wt_path="$1"
     local ckipper_base_dir="${CKIPPER_DIR:-$HOME/.ckipper}"
     if [[ -f "$ckipper_base_dir/docker/cleanup-projects.py" ]]; then
@@ -120,7 +120,7 @@ _w_cleanup_project_registry() {
 # Errors (stderr):
 #   "Project not found: <path>" — when the project directory does not exist
 #   "Error: <path> exists but is not a valid worktree." — when dir exists but lacks .git file
-_w_create_worktree() {
+_ckipper_worktree_create_worktree() {
     local project="$1"
     local worktree="$2"
 
@@ -130,7 +130,7 @@ _w_create_worktree() {
     fi
 
     if [[ -d "$W_WORKTREES_DIR/$project/$worktree" ]]; then
-        _w_validate_existing_worktree "$project" "$worktree" || return 1
+        _ckipper_worktree_validate_existing_worktree "$project" "$worktree" || return 1
         W_WT_PATH="$W_WORKTREES_DIR/$project/$worktree"
         return 0
     fi
@@ -139,8 +139,8 @@ _w_create_worktree() {
     mkdir -p "$W_WORKTREES_DIR/$project"
     W_WT_PATH="$W_WORKTREES_DIR/$project/$worktree"
 
-    _w_fetch_and_create "$project" "$worktree" || return 1
-    _w_post_create_setup "$project" "$worktree" || return 1
+    _ckipper_worktree_fetch_and_create "$project" "$worktree" || return 1
+    _ckipper_worktree_post_create_setup "$project" "$worktree" || return 1
 }
 
 # Validate that an existing directory at the worktree path is a real worktree.
@@ -152,7 +152,7 @@ _w_create_worktree() {
 # Returns: 0 if valid; 1 if the directory exists but has no .git file.
 # Errors (stderr):
 #   "Error: <path> exists but is not a valid worktree." — when .git file is missing
-_w_validate_existing_worktree() {
+_ckipper_worktree_validate_existing_worktree() {
     local project="$1"
     local worktree="$2"
     local wt_path="$W_WORKTREES_DIR/$project/$worktree"
@@ -175,12 +175,12 @@ _w_validate_existing_worktree() {
 #   "Failed to fetch from origin. ..." — when git fetch fails
 #   "Failed: branch '<name>' is currently checked out..." — when branch is already in use
 #   "Failed to create worktree" — on other git worktree add failures
-_w_fetch_and_create() {
+_ckipper_worktree_fetch_and_create() {
     local project="$1"
     local worktree="$2"
 
-    _w_fetch_origin "$project" "$worktree" || return 1
-    _w_add_worktree "$project" "$worktree"
+    _ckipper_worktree_fetch_origin "$project" "$worktree" || return 1
+    _ckipper_worktree_add_worktree "$project" "$worktree"
 }
 
 # Fetch origin/develop and optionally origin/<branch> for the project.
@@ -192,7 +192,7 @@ _w_fetch_and_create() {
 # Returns: 0 on success; 1 if origin/develop fetch fails.
 # Errors (stderr):
 #   "Failed to fetch from origin. Check your network connection..." — on fetch failure
-_w_fetch_origin() {
+_ckipper_worktree_fetch_origin() {
     local project="$1"
     local worktree="$2"
 
@@ -213,7 +213,7 @@ _w_fetch_origin() {
 # Errors (stderr):
 #   "Failed: branch '<name>' is currently checked out..." — when branch is in use
 #   "Failed to create worktree" — on other failures
-_w_add_worktree() {
+_ckipper_worktree_add_worktree() {
     local project="$1"
     local worktree="$2"
 
@@ -228,7 +228,7 @@ _w_add_worktree() {
             echo "Creating new branch from origin/develop"
             git worktree add "$W_WT_PATH" -b "$worktree" origin/develop
         fi
-    ) || _w_handle_worktree_add_failure "$project" "$worktree"
+    ) || _ckipper_worktree_handle_worktree_add_failure "$project" "$worktree"
 }
 
 # Handle failure from git worktree add, printing a contextual error.
@@ -241,7 +241,7 @@ _w_add_worktree() {
 # Errors (stderr):
 #   "Failed: branch '<name>' is currently checked out..." — when branch is in use
 #   "Failed to create worktree" — on other failures
-_w_handle_worktree_add_failure() {
+_ckipper_worktree_handle_worktree_add_failure() {
     local project="$1"
     local worktree="$2"
     local current_branch
@@ -264,7 +264,7 @@ _w_handle_worktree_add_failure() {
 #
 # Reads W_WT_PATH, W_ACTIVE_ACCOUNT globals.
 # Returns: 0 always (individual steps may warn on failure but don't abort).
-_w_post_create_setup() {
+_ckipper_worktree_post_create_setup() {
     local project="$1"
 
     echo "Installing dependencies..."
@@ -278,7 +278,7 @@ _w_post_create_setup() {
         echo "Copied $rel_path"
     done
 
-    _w_sync_project_registry "$project"
+    _ckipper_worktree_sync_project_registry "$project"
 }
 
 # Sync the new worktree into the project registry.
@@ -288,7 +288,7 @@ _w_post_create_setup() {
 #
 # Reads W_WT_PATH, W_ACTIVE_ACCOUNT globals.
 # Returns: 0 always (failure is non-fatal).
-_w_sync_project_registry() {
+_ckipper_worktree_sync_project_registry() {
     local project="$1"
     local main_project_path="$W_PROJECTS_DIR/$project"
     local ckipper_base_dir="${CKIPPER_DIR:-$HOME/.ckipper}"

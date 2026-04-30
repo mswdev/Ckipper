@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Module-level tests for lib/w/worktree.zsh.
+# Module-level tests for lib/worktree/worktree.zsh.
 # Covers list (empty), remove (missing path), and create (project not found).
 
 load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
@@ -30,27 +30,27 @@ _run_worktree() {
         zsh -c "
             source \"$REPO_ROOT/lib/core/utils.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
-            source \"$REPO_ROOT/lib/w/worktree.zsh\"
+            source \"$REPO_ROOT/lib/worktree/worktree.zsh\"
             $zsh_cmd
         "
 }
 
-@test "_w_list_worktrees prints header and exits 0 when worktrees dir is empty" {
-    _run_worktree "_w_list_worktrees"
+@test "_ckipper_worktree_list_worktrees prints header and exits 0 when worktrees dir is empty" {
+    _run_worktree "_ckipper_worktree_list_worktrees"
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "Worktrees" ]]
 }
 
-@test "_w_remove_worktree fails when worktree path does not exist" {
-    _run_worktree "_w_remove_worktree myapp nonexistent-branch"
+@test "_ckipper_worktree_remove_worktree fails when worktree path does not exist" {
+    _run_worktree "_ckipper_worktree_remove_worktree myapp nonexistent-branch"
 
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not found" || "$output" =~ "Worktree" ]]
 }
 
-@test "_w_create_worktree fails when project directory does not exist" {
-    _run_worktree "_w_create_worktree nosuchproject feature-x"
+@test "_ckipper_worktree_create_worktree fails when project directory does not exist" {
+    _run_worktree "_ckipper_worktree_create_worktree nosuchproject feature-x"
 
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not found" || "$output" =~ "Project" ]]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Module-level tests for lib/w/docker-mode.zsh.
+# Module-level tests for lib/worktree/docker-mode.zsh.
 # Covers compute_volumes (via build_base_args), compute_envs (add_optional_args),
 # and extract_credentials JSON validation.
 
@@ -56,32 +56,32 @@ _run_docker_mode() {
             source \"$REPO_ROOT/lib/core/utils.zsh\"
             source \"$REPO_ROOT/lib/core/keychain.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
-            source \"$REPO_ROOT/lib/w/ports.zsh\"
-            source \"$REPO_ROOT/lib/w/build-image.zsh\"
-            source \"$REPO_ROOT/lib/w/docker-mode.zsh\"
+            source \"$REPO_ROOT/lib/worktree/ports.zsh\"
+            source \"$REPO_ROOT/lib/worktree/build-image.zsh\"
+            source \"$REPO_ROOT/lib/worktree/docker-mode.zsh\"
             $zsh_cmd
         "
 }
 
-@test "_w_docker_build_base_args includes the worktree volume mount" {
-    _run_docker_mode "_w_docker_build_base_args; print -r -- \"\${W_DOCKER_ARGS[*]}\""
+@test "_ckipper_worktree_docker_build_base_args includes the worktree volume mount" {
+    _run_docker_mode "_ckipper_worktree_docker_build_base_args; print -r -- \"\${W_DOCKER_ARGS[*]}\""
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "-v" ]]
     [[ "$output" =~ "$W_WT_PATH:/workspace:rw" ]]
 }
 
-@test "_w_docker_add_optional_args emits a warning when no credentials are provided" {
-    _run_docker_mode "_w_docker_build_base_args; _w_docker_add_optional_args '' ''"
+@test "_ckipper_worktree_docker_add_optional_args emits a warning when no credentials are provided" {
+    _run_docker_mode "_ckipper_worktree_docker_build_base_args; _ckipper_worktree_docker_add_optional_args '' ''"
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "Warning" ]]
 }
 
-@test "_w_docker_extract_credentials returns empty string when no keychain service is set" {
+@test "_ckipper_worktree_docker_extract_credentials returns empty string when no keychain service is set" {
     export W_ACTIVE_KEYCHAIN_SERVICE=""
 
-    _run_docker_mode "result=\$(_w_docker_extract_credentials); print -r -- \"result=\$result\""
+    _run_docker_mode "result=\$(_ckipper_worktree_docker_extract_credentials); print -r -- \"result=\$result\""
 
     [ "$status" -eq 0 ]
     [ "$output" = "result=" ]

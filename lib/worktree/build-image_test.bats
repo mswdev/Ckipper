@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# Module-level tests for lib/w/build-image.zsh.
-# Verifies _w_build_image invokes docker build when Dockerfile exists.
+# Module-level tests for lib/worktree/build-image.zsh.
+# Verifies _ckipper_worktree_build_image invokes docker build when Dockerfile exists.
 
 load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 
@@ -14,7 +14,7 @@ teardown() {
     teardown_isolated_env
 }
 
-@test "_w_build_image invokes docker build when Dockerfile is present" {
+@test "_ckipper_worktree_build_image invokes docker build when Dockerfile is present" {
     mkdir -p "$CKIPPER_DIR/docker"
     touch "$CKIPPER_DIR/docker/Dockerfile"
 
@@ -22,7 +22,7 @@ teardown() {
         CKIPPER_DIR="$CKIPPER_DIR" \
         DOCKER_STUB_LOG="$DOCKER_STUB_LOG" \
         PATH="$PATH" \
-        zsh -c "source \"$REPO_ROOT/lib/w/build-image.zsh\"; _w_build_image"
+        zsh -c "source \"$REPO_ROOT/lib/worktree/build-image.zsh\"; _ckipper_worktree_build_image"
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "Building" ]]

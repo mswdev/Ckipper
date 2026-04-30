@@ -8,11 +8,11 @@ readonly MAX_PORT_FALLBACK_ATTEMPTS=10
 #
 # Reads: W_PORTS (array of container ports), W_DOCKER_ARGS (appended to).
 # Sets: W_RESOLVED_PORTS (array of ports for display).
-_w_resolve_ports() {
+_ckipper_worktree_resolve_ports() {
     W_RESOLVED_PORTS=("${W_PORTS[@]}")
 
     for port in "${W_PORTS[@]}"; do
-        _w_bind_port "$port"
+        _ckipper_worktree_bind_port "$port"
     done
 }
 
@@ -23,14 +23,14 @@ _w_resolve_ports() {
 #
 # Reads: W_DOCKER_ARGS (appended to).
 # Returns: 0 always (logs a warning if no port could be bound).
-_w_bind_port() {
+_ckipper_worktree_bind_port() {
     local port="$1"
     local host_port=$port
     local is_bound="false"
 
     for (( i=0; i<MAX_PORT_FALLBACK_ATTEMPTS; i++ )); do
         if ! lsof -i :"$host_port" -P -n &>/dev/null; then
-            _w_record_bound_port "$port" "$host_port"
+            _ckipper_worktree_record_bound_port "$port" "$host_port"
             is_bound="true"
             break
         fi
@@ -50,7 +50,7 @@ _w_bind_port() {
 #
 # Reads: W_DOCKER_ARGS (appended to).
 # Returns: 0 always.
-_w_record_bound_port() {
+_ckipper_worktree_record_bound_port() {
     local port="$1"
     local host_port="$2"
     W_DOCKER_ARGS+=( -p "127.0.0.1:$host_port:$port" )

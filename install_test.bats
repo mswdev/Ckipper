@@ -17,7 +17,7 @@ teardown() {
     [ "$status" -eq 0 ]
     [ -d "$TMP_HOME/.ckipper/docker/lib/core" ]
     [ -d "$TMP_HOME/.ckipper/docker/lib/account" ]
-    [ -d "$TMP_HOME/.ckipper/docker/lib/w" ]
+    [ -d "$TMP_HOME/.ckipper/docker/lib/worktree" ]
     [ -f "$TMP_HOME/.ckipper/docker/ckipper.zsh" ]
     [ -f "$TMP_HOME/.ckipper/docker/w-function.zsh" ]
 }

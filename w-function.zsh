@@ -26,18 +26,18 @@
 
 W_REPO_DIR="${0:A:h}"
 source "$W_REPO_DIR/ckipper.zsh"
-source "$W_REPO_DIR/lib/w/resolve-account.zsh"
-source "$W_REPO_DIR/lib/w/build-image.zsh"
-source "$W_REPO_DIR/lib/w/args.zsh"
-source "$W_REPO_DIR/lib/w/worktree.zsh"
-source "$W_REPO_DIR/lib/w/ports.zsh"
-source "$W_REPO_DIR/lib/w/docker-mode.zsh"
-source "$W_REPO_DIR/lib/w/normal-mode.zsh"
+source "$W_REPO_DIR/lib/worktree/resolve-account.zsh"
+source "$W_REPO_DIR/lib/worktree/build-image.zsh"
+source "$W_REPO_DIR/lib/worktree/args.zsh"
+source "$W_REPO_DIR/lib/worktree/worktree.zsh"
+source "$W_REPO_DIR/lib/worktree/ports.zsh"
+source "$W_REPO_DIR/lib/worktree/docker-mode.zsh"
+source "$W_REPO_DIR/lib/worktree/normal-mode.zsh"
 
 # Source user config (projects/worktrees dirs, ports, extra volumes, extra env vars)
-_w_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/w-config.zsh"
-if [[ -f "$_w_config" ]]; then
-    source "$_w_config"
+_ckipper_worktree_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/w-config.zsh"
+if [[ -f "$_ckipper_worktree_config" ]]; then
+    source "$_ckipper_worktree_config"
 fi
 # Defaults if config is missing or incomplete. Set once at source time and
 # never reset per-call so users can host their projects anywhere without forking.
@@ -60,30 +60,30 @@ W_WORKTREES_DIR="${W_WORKTREES_DIR:-$W_PROJECTS_DIR/.worktrees}"
 # Errors (stderr):
 #   "Error: --firewall requires --docker" — when --firewall is passed without --docker.
 w() {
-    _w_parse_args "$@"
+    _ckipper_worktree_parse_args "$@"
 
     if [[ "$W_FLAG_LIST" = true ]]; then
-        _w_list_worktrees
+        _ckipper_worktree_list_worktrees
     elif [[ "$W_FLAG_REBUILD_IMAGE" = true ]]; then
-        _w_build_image
+        _ckipper_worktree_build_image
         return $?
     elif [[ "$W_FLAG_RM" = true ]]; then
-        _w_remove_worktree "$W_PROJECT" "$W_BRANCH"
+        _ckipper_worktree_remove_worktree "$W_PROJECT" "$W_BRANCH"
         return $?
     elif [[ -z "$W_PROJECT" || -z "$W_BRANCH" ]]; then
-        _w_usage
+        _ckipper_worktree_usage
         return 1
     else
         if [[ "$W_FLAG_FIREWALL" = true && "$W_FLAG_DOCKER" = false ]]; then
             echo "Error: --firewall requires --docker"
             return 1
         fi
-        _w_resolve_account || return $?
-        _w_create_worktree "$W_PROJECT" "$W_BRANCH" || return $?
+        _ckipper_worktree_resolve_account || return $?
+        _ckipper_worktree_create_worktree "$W_PROJECT" "$W_BRANCH" || return $?
         if [[ "$W_FLAG_DOCKER" = true ]]; then
-            _w_run_docker_mode
+            _ckipper_worktree_run_docker_mode
         else
-            _w_run_normal_mode
+            _ckipper_worktree_run_normal_mode
         fi
     fi
 }
@@ -91,7 +91,7 @@ w() {
 # Print usage information for the w() command.
 #
 # Returns: 0 always.
-_w_usage() {
+_ckipper_worktree_usage() {
     echo "Usage: w <project> <worktree> [--docker [--firewall] [cmd...]]"
     echo "       w <project> <worktree> [command...]"
     echo "       w --list"
