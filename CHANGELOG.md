@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `W_PROJECTS_DIR` and `W_WORKTREES_DIR` are now user-configurable via `w-config.zsh`. Defaults remain `$HOME/Developer` and `$W_PROJECTS_DIR/.worktrees`. Existing tab-completion files regenerate on next shell startup via a version sentinel.
+
+### Changed
+- Repository layout: templates moved to `templates/` (`w-config.zsh.example`, `settings-template.json`); manual integration test prompt moved to `docs/test-prompt.md`. Source name `settings-hooks.json` renamed to `settings-template.json` to match the deployed name.
+
 ## [0.1.0] — 2026-04-28
 
 ### Added

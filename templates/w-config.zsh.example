@@ -6,6 +6,17 @@
 # After editing, run: source ~/.zshrc
 # ─────────────────────────────────────────────────────────────────
 
+# Base directory containing your git projects. The first arg to w() is
+# resolved relative to this path. Default: $HOME/Developer
+# Examples:
+#   W_PROJECTS_DIR="$HOME/code"
+#   W_PROJECTS_DIR="$HOME/work/repos"
+# W_PROJECTS_DIR="$HOME/Developer"
+
+# Where w() creates per-project worktrees. Default: $W_PROJECTS_DIR/.worktrees
+# Override only if you want worktrees outside your projects tree.
+# W_WORKTREES_DIR="$HOME/.worktrees"
+
 # Ports to forward from container to host.
 # These should match your dev servers (Next.js, Storybook, etc.)
 W_PORTS=(3000 3030 6006)

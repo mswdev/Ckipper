@@ -10,10 +10,12 @@
 #   w --rm <project> <branch-name>                 remove worktree + delete branch
 #   w --rebuild-image                              rebuild ckipper-dev Docker image
 #
-# <project> is a path relative to ~/Developer (e.g. "Whmoro/orderguard", "my-app")
+# <project> is a path relative to W_PROJECTS_DIR (default: ~/Developer; e.g. "Whmoro/orderguard", "my-app")
 #
 # ── CUSTOMIZATION ────────────────────────────────────────────────
 # Edit ~/.ckipper/docker/w-config.zsh to customize:
+#   - W_PROJECTS_DIR: base directory for git projects (default: $HOME/Developer)
+#   - W_WORKTREES_DIR: base directory for worktrees (default: $W_PROJECTS_DIR/.worktrees)
 #   - W_PORTS: dev server ports to forward
 #   - W_EXTRA_VOLUMES: MCP server mounts and other volume mounts
 #   - W_EXTRA_ENV: extra environment variables for the container
@@ -32,12 +34,15 @@ source "$W_REPO_DIR/lib/w/ports.zsh"
 source "$W_REPO_DIR/lib/w/docker-mode.zsh"
 source "$W_REPO_DIR/lib/w/normal-mode.zsh"
 
-# Source user config (ports, extra volumes, extra env vars)
+# Source user config (projects/worktrees dirs, ports, extra volumes, extra env vars)
 _w_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/w-config.zsh"
 if [[ -f "$_w_config" ]]; then
     source "$_w_config"
 fi
-# Defaults if config is missing or incomplete
+# Defaults if config is missing or incomplete. Set once at source time and
+# never reset per-call so users can host their projects anywhere without forking.
+W_PROJECTS_DIR="${W_PROJECTS_DIR:-$HOME/Developer}"
+W_WORKTREES_DIR="${W_WORKTREES_DIR:-$W_PROJECTS_DIR/.worktrees}"
 (( ${#W_PORTS[@]} == 0 )) && W_PORTS=(3000)
 (( ${#W_EXTRA_VOLUMES[@]} == 0 )) && W_EXTRA_VOLUMES=()
 (( ${#W_EXTRA_ENV[@]} == 0 )) && W_EXTRA_ENV=()
@@ -45,7 +50,7 @@ fi
 # Worktree-aware Claude Code launcher.
 #
 # Args:
-#   $1 — project path (relative to ~/Developer), or a flag (--list, --rm, --rebuild-image)
+#   $1 — project path (relative to W_PROJECTS_DIR), or a flag (--list, --rm, --rebuild-image)
 #   $2 — branch/worktree name (required unless $1 is --list or --rebuild-image)
 #   $@ — optional flags and command: [--docker] [--firewall] [--account <name>] [cmd...]
 #
@@ -109,7 +114,12 @@ _w_usage() {
 [[ -d ~/.zsh/completions ]] || mkdir -p ~/.zsh/completions
 fpath=(~/.zsh/completions $fpath)
 
-if [[ ! -f ~/.zsh/completions/_w ]]; then
+# Bump this when the heredoc body below changes so existing installs regenerate
+# the cached completion file. The version is embedded as a literal comment in
+# the generated file and matched here.
+W_COMPLETION_VERSION=2
+if [[ ! -f ~/.zsh/completions/_w ]] \
+    || ! grep -q "# w-completion-version=$W_COMPLETION_VERSION" ~/.zsh/completions/_w 2>/dev/null; then
     # Note: `_w()` below is a zsh tab-completion definition embedded in a heredoc.
     # It uses zsh's _arguments DSL and must remain a single function for tab
     # completion to work. The 25-line cap in code-style.md does not apply to
@@ -117,10 +127,11 @@ if [[ ! -f ~/.zsh/completions/_w ]]; then
     # not maintained shell logic).
     cat > ~/.zsh/completions/_w << 'COMPEOF'
 #compdef w
+# w-completion-version=2
 
 _w() {
-    local projects_dir="$HOME/Developer"
-    local worktrees_dir="$HOME/Developer/.worktrees"
+    local projects_dir="${W_PROJECTS_DIR:-$HOME/Developer}"
+    local worktrees_dir="${W_WORKTREES_DIR:-$projects_dir/.worktrees}"
 
     _arguments -C \
         '(--rm)--list[List all worktrees]' \

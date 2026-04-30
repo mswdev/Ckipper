@@ -1,5 +1,5 @@
 {
-  "_comment": "Merge this into your existing ~/.claude/settings.json hooks section. Do not replace the entire file.",
+  "_comment": "Per-account settings.json template. Copied verbatim by ckipper add; hook paths are rewritten to the account dir by ckipper sync-hooks.",
   "hooks": {
     "PreToolUse": [
       {

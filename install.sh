@@ -108,7 +108,7 @@ fi
 # Also preserve accounts.json and aliases.zsh if they already exist (managed by ckipper CLI).
 config_file="$CKIPPER_DIR/docker/w-config.zsh"
 if [[ ! -f $config_file ]]; then
-    cp "$REPO_DIR/w-config.zsh.example" "$config_file"
+    cp "$REPO_DIR/templates/w-config.zsh.example" "$config_file"
     echo "  Created w-config.zsh with defaults — edit to add your MCP mounts, ports, etc."
 else
     echo "  w-config.zsh already exists (not overwritten)"
@@ -118,7 +118,7 @@ fi
 
 # 6. Deploy settings-template.json (consumed by ckipper add / sync-hooks per-account)
 echo "Copying settings-template.json to $CKIPPER_DIR/..."
-cp "$REPO_DIR/settings-hooks.json" "$CKIPPER_DIR/settings-template.json"
+cp "$REPO_DIR/templates/settings-template.json" "$CKIPPER_DIR/settings-template.json"
 echo "  Settings template deployed. ckipper sync-hooks applies it per-account."
 
 # 7. Add or update source line in .zshrc
