@@ -1,20 +1,20 @@
 # Ckipper (pronounced "skipper")
 
-Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely, with **first-class multi-account support**: run a personal Claude account in one terminal and a work account in another, fully isolated. One command to spin up a sandboxed autonomous Claude session on any project.
+Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely, plus multi-account support: run a personal account in one terminal and a work account in another, fully isolated.
 
-Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, egress firewall, safety hooks, macOS Keychain auth integration, and per-account isolation across credentials, settings, MCP, plugins, and projects.
+Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, an egress firewall, safety hooks, macOS Keychain auth, and per-account isolation across credentials, settings, MCP, plugins, and projects.
 
 ## The Problem
 
-Claude Code's `--dangerously-skip-permissions` lets Claude work autonomously without clicking Allow for every action. But running it on your actual machine means Claude has full access to your entire filesystem, credentials, and network.
+`--dangerously-skip-permissions` lets Claude work autonomously without clicking Allow for every action — but on your actual machine it has full access to your filesystem, credentials, and network.
 
 ## The Solution
 
 ```bash
-w Whmoro/orderguard my-feature --docker claude
+w myorg/myapp my-feature --docker claude
 ```
 
-This creates a git worktree, spins up a Docker container, and runs Claude inside it. Claude thinks it has full permissions, but it can only access the worktree you gave it. Your Documents, other projects, and system files are completely inaccessible.
+Creates a git worktree, spins up a Docker container, and runs Claude inside it. Claude thinks it has full permissions but can only see the worktree. Your other projects, system files, and credentials are inaccessible.
 
 ## What It Does
 
@@ -43,16 +43,19 @@ ckipper add <name>                                   # register a Claude account
 ckipper list                                         # show registered accounts
 ckipper default <name>                               # set the default account
 ckipper rename <old> <new>                           # rename an account in place
-ckipper sync <from> <to>                             # copy MCP/settings between accounts
+ckipper remove <name>                                # unregister (does not delete the dir)
+ckipper sync <from> <to>                             # copy MCP/settings/plugins between accounts
+ckipper sync-hooks                                   # re-deploy hooks into every account dir
+ckipper repair-plugins <name>                        # fix stale ~/.claude/ paths in plugin metadata
 ckipper doctor                                       # diagnostic checklist
 ckipper migrate                                      # one-time migration from claude-docker-sandbox
 ```
 
-`<project>` is a relative path under `~/Developer/` (e.g. `Whmoro/orderguard`, `Vibma`). Tab completion is included.
+`ck` is a short alias for `ckipper`. `<project>` is a relative path under `~/Developer/` (e.g. `myorg/myapp`). Tab completion is included.
 
-## Multiple accounts (Ckipper's headline feature)
+## Multiple accounts
 
-Run a personal Claude account in one terminal and a work account in another, fully isolated. Each gets its own credentials, MCP servers, plugins, projects, and session history.
+Run a personal account in one terminal and a work account in another, fully isolated. Each gets its own credentials, MCP servers, plugins, projects, and session history.
 
 ### Add an account
 
@@ -230,8 +233,8 @@ ckipper add work
 
 ```bash
 # Clone the repo
-git clone https://github.com/whmoro/ckipper.git
-cd ckipper
+git clone https://github.com/mswdev/Ckipper.git
+cd Ckipper
 
 # Run the installer (copies all files, merges hooks, adds source line)
 ./install.sh
@@ -264,7 +267,9 @@ Clone the repo, then open Claude Code and paste this prompt:
 | `hooks/bash-guardrails.sh` | `~/.ckipper/hooks/bash-guardrails.sh` | Bash command guard |
 | `hooks/docker-context.sh` | `~/.ckipper/hooks/docker-context.sh` | Context injection |
 | `hooks/notify-bell.sh` | `~/.ckipper/hooks/notify-bell.sh` | Notification bell |
-| `w-function.zsh` | `~/.ckipper/docker/w-function.zsh` | w() function (sourced by .zshrc) |
+| `w-function.zsh` | `~/.ckipper/docker/w-function.zsh` | w() launcher entry (sourced by .zshrc) |
+| `ckipper.zsh` | `~/.ckipper/docker/ckipper.zsh` | ckipper CLI entry (account management) |
+| `lib/core/`, `lib/ckipper/`, `lib/w/` | `~/.ckipper/docker/lib/` | Shell module tree (sourced by entry scripts; test files excluded) |
 | `w-config.zsh.example` | `~/.ckipper/docker/w-config.zsh` | User config (ports, mounts, env vars) |
 | `settings-hooks.json` | Auto-merged into `~/.claude/settings.json` | Hook registration |
 
@@ -326,7 +331,24 @@ The `bun` runtime is included in the container image. The entrypoint creates a `
 
 ## Updating
 
-Run `w --rebuild-image` to update everything in the container — system packages, Claude Code, uv/uvx, bun, gh CLI, and Chromium. The build cache-busts all layers so nothing goes stale. Only the base image (`node:24-slim`) is cached; pull it manually with `docker pull node:24-slim` if needed.
+### Update the host-side install (Ckipper itself)
+
+```bash
+cd /path/to/Ckipper
+git pull
+./install.sh           # or: make install
+source ~/.zshrc
+```
+
+`install.sh` is idempotent. It re-deploys `~/.ckipper/docker/` (entry scripts, Dockerfile, entrypoint, `lib/` tree) and `~/.ckipper/hooks/`. Your `accounts.json`, `aliases.zsh`, and `w-config.zsh` are preserved. If hooks changed in the update, run `ckipper sync-hooks` to push the new versions into each registered account dir.
+
+### Update the container
+
+```bash
+w --rebuild-image
+```
+
+Updates everything in the container — system packages, Claude Code, uv/uvx, bun, gh CLI, and Chromium. The build cache-busts all layers so nothing goes stale. Only the base image (`node:24-slim`) is cached; pull it manually with `docker pull node:24-slim` if needed.
 
 To clear stale uv/MCP caches (e.g., after permission errors or broken tool installs):
 
@@ -426,3 +448,15 @@ Despite docs saying every `~/.claude/...` path redirects under `CLAUDE_CONFIG_DI
 | `.env.local` not copied to worktree | Fixed: worktree creation now copies all `.env*` files except `.env.example` |
 | uvx MCP server fails to start | Run `w --rebuild-image`; if still broken, delete stale volumes: `docker volume rm claude-uv-cache claude-uv-tools` |
 | Claude Code version outdated | Run `w --rebuild-image` — Claude and uv are always re-fetched |
+
+## Contributing
+
+PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow, code style, and how to run the test suite (`make bootstrap && make test`).
+
+## Security
+
+Found a vulnerability? See [`SECURITY.md`](SECURITY.md) for private reporting. Please do not open a public issue.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).

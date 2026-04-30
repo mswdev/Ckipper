@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Test stub for gtimeout. Pass-through: run the command unchanged.
+# Satisfies _core_keychain_detect_timeout_cmd's gtimeout branch without
+# actually timing out commands in tests.
+# The first arg is the timeout duration — discard it, execute the rest.
+shift
+exec "$@"

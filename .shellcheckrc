@@ -1,0 +1,38 @@
+# Project-wide shellcheck config.
+# Strict mode: enable all checks, then explicitly disable rules with reasons.
+enable=all
+
+# SC1090: "Can't follow non-constant source" — intentional for dynamic module loading
+#         (e.g., `source "$CKIPPER_DIR/lib/core/registry.zsh"`).
+disable=SC1090
+
+# SC1091: "Not following: file path" — same reason as SC1090 for sourced modules
+#         that aren't on disk during lint runs.
+disable=SC1091
+
+# Baseline disables — TODO(phase-4): resolve and remove each entry as the
+# corresponding code is refactored. These rules currently fire in unrefactored
+# bash scripts (.sh files only — zsh files use `zsh -n` for syntax checks).
+
+# TODO(phase-4): SC2001 — sed could be replaced with parameter expansion.
+disable=SC2001
+
+# TODO(phase-4): SC2016 — single quotes around $VAR don't expand (often intentional in jq filters).
+disable=SC2016
+
+# TODO(phase-4): SC2086 — unquoted variable expansions; review case-by-case.
+disable=SC2086
+
+# TODO(phase-4): SC2129 — multiple consecutive redirects; consider grouping.
+disable=SC2129
+
+# TODO(phase-4): SC2154 — variable referenced but not assigned (often set elsewhere).
+disable=SC2154
+
+# Style-only rules (`enable=all` includes these). Defer to project preference; keep disabled.
+# SC2250: prefer braces around variable references — adds noise, low value.
+# SC2292: prefer [[ ]] over [ ] — fine but pre-existing convention.
+# SC2312: consider invoking command separately to take exit code — case-by-case.
+disable=SC2250
+disable=SC2292
+disable=SC2312

@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Constants
+readonly CREDENTIALS_MAX_BYTES=1048576 # 1 MiB (2^20)
+readonly GIT_CONFIG_COUNT=2
+
 # Require CLAUDE_CONFIG_DIR — Ckipper's account context. No silent fallback.
 if [ -z "$CLAUDE_CONFIG_DIR" ]; then
     echo "Error: CLAUDE_CONFIG_DIR is not set inside the container." >&2
@@ -17,8 +21,8 @@ fi
 # prevents concurrent host/container use of the same file.
 if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null; then
     jq '.claudeInChromeDefaultEnabled = false | .cachedChromeExtensionInstalled = false' \
-        "$CLAUDE_CONFIG_DIR/.claude.json" > "$CLAUDE_CONFIG_DIR/.claude.json.tmp" \
-        && mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
+        "$CLAUDE_CONFIG_DIR/.claude.json" >"$CLAUDE_CONFIG_DIR/.claude.json.tmp" &&
+        mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
 fi
 
 # Copy SSH config from staging mount, stripping macOS-specific options.
@@ -36,8 +40,13 @@ fi
 # leakage to the host filesystem). The tmpfs mount at /tmp/claude-creds is
 # container-local and disappears when the container exits.
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
+    creds_byte_count=$(printf '%s' "$CLAUDE_CREDENTIALS" | wc -c)
+    if [ "$creds_byte_count" -gt "$CREDENTIALS_MAX_BYTES" ]; then
+        echo "Error: CLAUDE_CREDENTIALS exceeds $CREDENTIALS_MAX_BYTES bytes; refusing to write" >&2
+        exit 1
+    fi
     mkdir -p /tmp/claude-creds
-    echo "$CLAUDE_CREDENTIALS" > /tmp/claude-creds/.credentials.json
+    printf '%s' "$CLAUDE_CREDENTIALS" >/tmp/claude-creds/.credentials.json
     chmod 700 /tmp/claude-creds
     chmod 600 /tmp/claude-creds/.credentials.json
     # Symlink from the account dir — Claude Code reads $CLAUDE_CONFIG_DIR/.credentials.json
@@ -56,7 +65,7 @@ fi
 # Uses GIT_CONFIG_COUNT instead of git config so we never modify the host's
 # .git/config (mounted rw). Env vars take highest priority, overriding both
 # local and global config, and disappear when the container exits.
-export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_COUNT
 export GIT_CONFIG_KEY_0=commit.gpgsign
 export GIT_CONFIG_VALUE_0=false
 export GIT_CONFIG_KEY_1=tag.gpgsign
@@ -91,7 +100,7 @@ export TURBO_CACHE_DIR=/workspace/.turbo/cache
 # unsets NO_COLOR to prevent chalk from stripping ANSI codes.
 export FORCE_COLOR=3
 export COLORTERM=truecolor
-cat > "$HOME/.local/bin/bunx" << 'WRAPPER'
+cat >"$HOME/.local/bin/bunx" <<'WRAPPER'
 #!/bin/bash
 export FORCE_COLOR=3
 export COLORTERM=truecolor
@@ -158,13 +167,13 @@ if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null && comm
                 jq --arg n "$name" --arg b "$bin_path" '
                     .mcpServers[$n].command = $b |
                     .mcpServers[$n].args = .mcpServers[$n].args[1:]
-                ' "$CLAUDE_CONFIG_DIR/.claude.json" > "$CLAUDE_CONFIG_DIR/.claude.json.tmp" \
-                    && mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
+                ' "$CLAUDE_CONFIG_DIR/.claude.json" >"$CLAUDE_CONFIG_DIR/.claude.json.tmp" &&
+                    mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
                 echo "  $name -> $bin_path"
             else
                 echo "  $name: binary not found at $bin_path, keeping uvx"
             fi
-        done <<< "$uvx_servers"
+        done <<<"$uvx_servers"
     fi
 fi
 

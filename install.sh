@@ -32,17 +32,17 @@ fi
 
 # 1. Check prerequisites
 echo "Checking prerequisites..."
-missing=()
-command -v docker &>/dev/null || missing+=("docker (install Docker Desktop)")
-command -v jq &>/dev/null || missing+=("jq (brew install jq)")
-command -v git &>/dev/null || missing+=("git")
+missing_dependencies=()
+command -v docker &>/dev/null || missing_dependencies+=("docker (install Docker Desktop)")
+command -v jq &>/dev/null || missing_dependencies+=("jq (brew install jq)")
+command -v git &>/dev/null || missing_dependencies+=("git")
 if [[ "$(uname)" == "Darwin" ]]; then
-    command -v security &>/dev/null || missing+=("security (macOS Keychain CLI)")
+    command -v security &>/dev/null || missing_dependencies+=("security (macOS Keychain CLI)")
 fi
 
-if [[ ${#missing[@]} -gt 0 ]]; then
+if [[ ${#missing_dependencies[@]} -gt 0 ]]; then
     echo "Missing prerequisites:"
-    for dep in "${missing[@]}"; do
+    for dep in "${missing_dependencies[@]}"; do
         echo "  - $dep"
     done
     echo ""
@@ -75,15 +75,39 @@ chmod +x "$CKIPPER_DIR/hooks/bash-guardrails.sh"
 chmod +x "$CKIPPER_DIR/hooks/docker-context.sh"
 chmod +x "$CKIPPER_DIR/hooks/notify-bell.sh"
 
-# 4. Copy w-function.zsh and ckipper.zsh
-echo "Copying w-function.zsh and ckipper.zsh to $CKIPPER_DIR/docker/..."
+# 4. Copy w-function.zsh, ckipper.zsh, and the lib/ tree.
+echo "Copying w-function.zsh, ckipper.zsh, and lib/ to $CKIPPER_DIR/docker/..."
 cp "$REPO_DIR/w-function.zsh" "$CKIPPER_DIR/docker/"
 cp "$REPO_DIR/ckipper.zsh" "$CKIPPER_DIR/docker/"
+
+# Deploy lib/ tree, EXCLUDING test files (*_test.bats, *_test.py).
+# Tests must NOT ship to user installs:
+#   - they're noise in the runtime tree
+#   - test stubs in tests/lib/stubs/ would appear as binaries on PATH if accidentally exposed
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+        --exclude='*_test.bats' \
+        --exclude='*_test.py' \
+        --exclude='__pycache__' \
+        "$REPO_DIR/lib/" "$CKIPPER_DIR/docker/lib/"
+else
+    # Fallback: tar pipe with excludes (no rsync available).
+    rm -rf "$CKIPPER_DIR/docker/lib"
+    (cd "$REPO_DIR" && tar -cf - --exclude='*_test.bats' --exclude='*_test.py' --exclude='__pycache__' lib) |
+        (cd "$CKIPPER_DIR/docker" && tar -xf -)
+fi
+
+# Defense in depth: verify no test files leaked into the install.
+if find "$CKIPPER_DIR/docker/lib" \( -name '*_test.*' -o -name '__pycache__' \) 2>/dev/null | grep -q .; then
+    echo "ERROR: test files leaked into $CKIPPER_DIR/docker/lib/" >&2
+    find "$CKIPPER_DIR/docker/lib" \( -name '*_test.*' -o -name '__pycache__' \) >&2
+    exit 1
+fi
 
 # 5. Generate w-config.zsh (only if it doesn't exist — never overwrite user customizations)
 # Also preserve accounts.json and aliases.zsh if they already exist (managed by ckipper CLI).
 config_file="$CKIPPER_DIR/docker/w-config.zsh"
-if [[ ! -f "$config_file" ]]; then
+if [[ ! -f $config_file ]]; then
     cp "$REPO_DIR/w-config.zsh.example" "$config_file"
     echo "  Created w-config.zsh with defaults — edit to add your MCP mounts, ports, etc."
 else
@@ -107,9 +131,9 @@ if grep -q '\.claude/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
     sed -i.bak -E 's|^[[:space:]]*source[[:space:]]+["'\'']?[$~/][^"'\'']*\.claude/docker/w-function\.zsh["'\'']?[[:space:]]*$|source "$HOME/.ckipper/docker/w-function.zsh"|' "$HOME/.zshrc"
     echo "  Updated ~/.zshrc source line to ~/.ckipper/. Backup at ~/.zshrc.bak."
 elif ! grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then
-    echo '' >> "$HOME/.zshrc"
-    echo '# Ckipper — Worktree Manager (w function)' >> "$HOME/.zshrc"
-    echo 'source "$HOME/.ckipper/docker/w-function.zsh"' >> "$HOME/.zshrc"
+    echo '' >>"$HOME/.zshrc"
+    echo '# Ckipper — Worktree Manager (w function)' >>"$HOME/.zshrc"
+    echo 'source "$HOME/.ckipper/docker/w-function.zsh"' >>"$HOME/.zshrc"
     echo "  Added w() source line to ~/.zshrc"
 else
     echo "  ~/.zshrc already sources ~/.ckipper/docker/w-function.zsh"
@@ -141,7 +165,7 @@ if [ -z "$existing_hookspath" ] || [ "$existing_hookspath" = "$HOME/.git-hooks" 
 else
     echo "  Skipping core.hooksPath: existing value is '$existing_hookspath' (not overwriting)."
     echo "  If you want Ckipper's hook isolation, set manually:"
-    echo "    git config --global core.hooksPath \"\$HOME/.git-hooks\""
+    echo '    git config --global core.hooksPath "$HOME/.git-hooks"'
 fi
 
 # 11. Print summary

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+for arg in "$@"; do
+    case "$arg" in
+        -i:*) port="${arg#-i:}" ;;
+        :*)   port="${arg#:}" ;;
+    esac
+done
+for busy in $LSOF_STUB_BUSY; do
+    [[ "$port" = "$busy" ]] && exit 0
+done
+exit 1

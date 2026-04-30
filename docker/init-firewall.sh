@@ -7,6 +7,10 @@ set -e
 # Must run as root (via sudo from entrypoint.sh).
 # Uses iptables-legacy because Docker Desktop's VM doesn't support nf_tables.
 
+# Constants
+readonly FIREWALL_VERIFY_TIMEOUT=5
+readonly FIREWALL_MIN_ACCEPT_RULES=5
+
 # Whitelisted domains — edit this list to add/remove allowed destinations
 ALLOWED_DOMAINS=(
     # Claude / Anthropic
@@ -45,6 +49,12 @@ echo "=== Configuring egress firewall ==="
 DNS_SERVER=$(grep '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2}')
 echo "  DNS server: $DNS_SERVER"
 
+# Validate DNS server is a proper IPv4 address
+if [[ ! $DNS_SERVER =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: invalid DNS server '$DNS_SERVER'" >&2
+    exit 1
+fi
+
 # Flush existing rules
 iptables-legacy -F OUTPUT 2>/dev/null || true
 
@@ -65,12 +75,16 @@ for domain in "${ALLOWED_DOMAINS[@]}"; do
     for ip in $ips; do
         iptables-legacy -A OUTPUT -d "$ip" -j ACCEPT 2>/dev/null && ((ip_count++)) || true
     done
-    echo "  Allowed: $domain ($(echo $ips | tr '\n' ' '))"
+    echo "  Allowed: $domain ($(echo "$ips" | tr '\n' ' '))"
 done
 
 # Fetch GitHub IP ranges dynamically (CIDR blocks — iptables handles them natively)
 echo "  Fetching GitHub IP ranges..."
-gh_ranges=$(curl -s https://api.github.com/meta 2>/dev/null | jq -r '.git[],.api[],.web[]' 2>/dev/null || true)
+gh_ranges=$(curl -fsSL https://api.github.com/meta | jq -r '.git[],.api[],.web[]' | grep -E '^[0-9.]+/[0-9]+$')
+if [ -z "$gh_ranges" ]; then
+    echo "Error: GitHub API returned no valid CIDR ranges" >&2
+    exit 1
+fi
 for cidr in $gh_ranges; do
     iptables-legacy -A OUTPUT -d "$cidr" -j ACCEPT 2>/dev/null && ((ip_count++)) || true
 done
@@ -80,9 +94,16 @@ iptables-legacy -P OUTPUT DROP
 
 echo "=== Firewall active: $ip_count rules added ==="
 
+# Post-check: verify expected number of ACCEPT rules were installed
+rule_count=$(iptables-legacy -L OUTPUT -n | grep -c ACCEPT)
+if [ "$rule_count" -lt "$FIREWALL_MIN_ACCEPT_RULES" ]; then
+    echo "Error: only $rule_count ACCEPT rules — firewall appears inactive" >&2
+    exit 1
+fi
+
 # Verification
 echo "=== Verifying firewall ==="
-if curl -s --max-time 5 https://api.anthropic.com > /dev/null 2>&1; then
+if curl -s --max-time "$FIREWALL_VERIFY_TIMEOUT" https://api.anthropic.com >/dev/null 2>&1; then
     echo "  ok api.anthropic.com: reachable"
 else
     echo "  FAIL api.anthropic.com: BLOCKED (this is a problem)"

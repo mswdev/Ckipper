@@ -2,9 +2,8 @@
 
 See @README.md for project overview.
 
-> **Owner:** [Your Name / Org]
-> **Product:** [Brief product description]
-> **Repo:** [Repo name and structure]
+> **Product:** Ckipper — multi-account Claude Code manager with Docker isolation.
+> **Repo:** Single-package zsh project. Top-level layout in §1.
 
 ## Quick Reference
 
@@ -28,13 +27,28 @@ See @README.md for project overview.
 
 ## 1. Project Overview
 
-<!-- Replace this section with your project's domain context -->
-<!-- Include: what the product does, key user flows, revenue model, and a domain terms table -->
-<!-- Example:
-| Term | Definition |
-|------|-----------|
-| **Widget** | A configurable UI element that customers embed on their site |
--->
+Ckipper is a zsh-based wrapper for the [Claude Code CLI](https://claude.ai/cli) that provides:
+
+- **Multi-account isolation** — separate `~/.claude-<account>/` config dirs per registered account, with macOS Keychain integration for credentials.
+- **Worktree-aware launchers** — `w <project> <branch>` creates a git worktree, syncs settings, and either runs Claude Code locally or launches it inside a hardened Docker container.
+- **Per-account aliases** — auto-generated `<account>` shell functions (e.g., `personal`, `work`) that route to the correct config dir.
+- **Safety hooks** — Claude Code hooks (`bash-guardrails.sh`, `protect-claude-config.sh`) that block destructive commands and protect Ckipper-owned config files from accidental modification.
+- **Docker sandbox** — Dockerfile + entrypoint that isolate Claude Code with an egress firewall, credential injection via tmpfs, and pre-installed MCP server tooling.
+
+**Top-level layout:**
+
+```
+ckipper.zsh                  # ckipper CLI entry (account add/remove/sync/doctor/migrate)
+w-function.zsh               # w() launcher entry (sourced from .zshrc)
+lib/core/                    # shared primitives (registry, keychain, utils)
+lib/ckipper/                 # ckipper-specific subcommands
+lib/w/                       # w-specific helpers
+hooks/                       # Claude Code safety hooks
+docker/                      # Dockerfile + entrypoint + firewall + cleanup
+tests/                       # bats + pytest tests
+install.sh                   # one-shot installer (copies to ~/.ckipper/)
+.claude/                     # rules + project Claude config
+```
 
 ## 2. Core Engineering Philosophy
 
@@ -63,15 +77,7 @@ Before approving any PR, verify:
 
 ## 4. Infrastructure & Services
 
-<!-- Replace with your project's infrastructure -->
-<!-- Example:
-| Service | Purpose | Status |
-|---------|---------|--------|
-| PostgreSQL | Primary database | Active |
-| Redis | Caching & sessions | Active |
-| Clerk | Authentication | Active |
-| Sentry | Error monitoring | Active |
--->
+CI runs `make lint` + `make test-unit` on `macos-latest` via `.github/workflows/ci.yml`.
 
 ## 5. Git Workflow
 
