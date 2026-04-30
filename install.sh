@@ -80,14 +80,14 @@ if find "$CKIPPER_DIR/docker/lib" \( -name '*_test.*' -o -name '__pycache__' \) 
     exit 1
 fi
 
-# 5. Generate w-config.zsh (only if it doesn't exist — never overwrite user customizations)
+# 5. Generate ckipper-config.zsh (only if it doesn't exist — never overwrite user customizations)
 # Also preserve accounts.json and aliases.zsh if they already exist (managed by ckipper CLI).
-config_file="$CKIPPER_DIR/docker/w-config.zsh"
+config_file="$CKIPPER_DIR/docker/ckipper-config.zsh"
 if [[ ! -f $config_file ]]; then
-    cp "$REPO_DIR/templates/w-config.zsh.example" "$config_file"
-    echo "  Created w-config.zsh with defaults — edit to add your MCP mounts, ports, etc."
+    cp "$REPO_DIR/templates/ckipper-config.zsh.example" "$config_file"
+    echo "  Created ckipper-config.zsh with defaults — edit to add your MCP mounts, ports, etc."
 else
-    echo "  w-config.zsh already exists (not overwritten)"
+    echo "  ckipper-config.zsh already exists (not overwritten)"
 fi
 [[ -f "$CKIPPER_DIR/accounts.json" ]] && echo "  accounts.json already exists (not overwritten — managed by ckipper)"
 [[ -f "$CKIPPER_DIR/aliases.zsh" ]] && echo "  aliases.zsh already exists (not overwritten — auto-generated)"
@@ -146,7 +146,7 @@ echo ""
 echo "=== Setup Complete ==="
 echo ""
 echo "Next steps:"
-echo "  1. Edit $CKIPPER_DIR/docker/w-config.zsh with your MCP mounts, ports, etc."
+echo "  1. Edit $CKIPPER_DIR/docker/ckipper-config.zsh with your MCP mounts, ports, etc."
 echo "  2. source ~/.zshrc"
 echo "  3. ckipper worktree rebuild-image   # (or: ck wt rebuild-image)"
 echo "  4. ckipper account add <name>       # register an account"

@@ -1,19 +1,21 @@
-# ── w-config.zsh ─────────────────────────────────────────────────
-# User-specific configuration for the w() worktree manager.
-# This file is sourced by w-function.zsh. It is never overwritten
-# by install.sh — your customizations are safe across updates.
+# ── ckipper-config.zsh ───────────────────────────────────────────
+# User-specific configuration for ckipper (the worktree manager + account
+# tools). This file is sourced by ckipper.zsh. It is never overwritten by
+# install.sh — your customizations are safe across updates.
 #
 # After editing, run: source ~/.zshrc
 # ─────────────────────────────────────────────────────────────────
 
-# Base directory containing your git projects. The first arg to w() is
-# resolved relative to this path. Default: $HOME/Developer
+# Base directory containing your git projects. The first arg to
+# `ckipper worktree run` is resolved relative to this path. Default:
+# $HOME/Developer
 # Examples:
 #   CKIPPER_PROJECTS_DIR="$HOME/code"
 #   CKIPPER_PROJECTS_DIR="$HOME/work/repos"
 # CKIPPER_PROJECTS_DIR="$HOME/Developer"
 
-# Where w() creates per-project worktrees. Default: $CKIPPER_PROJECTS_DIR/.worktrees
+# Where `ckipper worktree run` creates per-project worktrees. Default:
+# $CKIPPER_PROJECTS_DIR/.worktrees
 # Override only if you want worktrees outside your projects tree.
 # CKIPPER_WORKTREES_DIR="$HOME/.worktrees"
 

@@ -32,9 +32,8 @@ _ckipper_doctor_check() {
 _ckipper_doctor_tooling() {
     echo "── Tooling ───────────────────────────────────────────"
     if [[ -d "$CKIPPER_DIR" ]]; then _ckipper_doctor_check PASS "$CKIPPER_DIR exists"; else _ckipper_doctor_check FAIL "$CKIPPER_DIR is missing — run install.sh"; fi
-    if [[ -f "$CKIPPER_DIR/docker/w-function.zsh" ]]; then _ckipper_doctor_check PASS "w-function.zsh deployed"; else _ckipper_doctor_check FAIL "w-function.zsh missing in $CKIPPER_DIR/docker/"; fi
     if [[ -f "$CKIPPER_DIR/docker/ckipper.zsh" ]]; then _ckipper_doctor_check PASS "ckipper.zsh deployed"; else _ckipper_doctor_check FAIL "ckipper.zsh missing in $CKIPPER_DIR/docker/"; fi
-    if [[ -f "$CKIPPER_DIR/docker/cleanup-projects.py" ]]; then _ckipper_doctor_check PASS "cleanup-projects.py deployed"; else _ckipper_doctor_check WARN "cleanup-projects.py missing — w --rm cleanup will silently skip"; fi
+    if [[ -f "$CKIPPER_DIR/docker/cleanup-projects.py" ]]; then _ckipper_doctor_check PASS "cleanup-projects.py deployed"; else _ckipper_doctor_check WARN "cleanup-projects.py missing — ckipper worktree rm cleanup will silently skip"; fi
     if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then _ckipper_doctor_check PASS "settings-template.json deployed"; else _ckipper_doctor_check WARN "settings-template.json missing — ckipper add will skip seeding settings.json"; fi
     if [[ -d "$CKIPPER_DIR/hooks" ]] && (( $(ls -1 "$CKIPPER_DIR/hooks" 2>/dev/null | wc -l) >= MIN_HOOK_FILES )); then
         _ckipper_doctor_check PASS "hooks/ has ${MIN_HOOK_FILES}+ files"
@@ -173,8 +172,8 @@ _ckipper_doctor_shell() {
     else _ckipper_doctor_check WARN "aliases.zsh missing — will be regenerated on next add/remove"; fi
     if grep -q 'ckipper/aliases.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources aliases.zsh"
     else _ckipper_doctor_check WARN "~/.zshrc does NOT source aliases.zsh — add: [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh"; fi
-    if grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources w-function.zsh"
-    else _ckipper_doctor_check FAIL "~/.zshrc does NOT source w-function.zsh — re-run install.sh"; fi
+    if grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources ckipper.zsh"
+    else _ckipper_doctor_check FAIL "~/.zshrc does NOT source ckipper.zsh — re-run install.sh"; fi
     echo ""
     echo "── Stub files (cosmetic) ────────────────────────────"
     if [[ -d "$HOME/.claude" ]]; then
