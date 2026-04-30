@@ -237,6 +237,18 @@ _ckipper_finalize_registration() {
         _ckipper_finalize_diagnose_error "$name" "$dir"
         return 1
     fi
+    _ckipper_finalize_announce "$name" "$mode"
+}
+
+# Regenerate aliases, sync hooks, and print the post-registration usage hint.
+#
+# Args:
+#   $1 — account name
+#   $2 — registration mode label (e.g. "fresh", "adopt", "migrate")
+#
+# Returns: 0 always.
+_ckipper_finalize_announce() {
+    local name="$1" mode="$2"
     _ckipper_regenerate_aliases
     _ckipper_sync_hooks_for "$name"
     echo "Registered '$name' (mode: $mode)."
@@ -420,10 +432,15 @@ _ckipper_rename_validate() {
 #
 # Returns:
 #   0 on success; 1 on directory move or registry write failure.
-_ckipper_rename_perform() {
-    local old="$1" new="$2"
-    local old_dir="${_CKIPPER_RENAME_CTX[old_dir]}"
-    local new_dir="${_CKIPPER_RENAME_CTX[new_dir]}"
+# Verify the rename is safe before performing destructive actions.
+#
+# Args:
+#   $1 — new directory path (must not exist)
+#   $2 — old directory path (must be a directory)
+#
+# Returns: 0 if preconditions pass; 1 if any check fails.
+_ckipper_rename_check_preconditions() {
+    local new_dir="$1" old_dir="$2"
     if [[ -e "$new_dir" ]]; then
         echo "Error: $new_dir already exists. Pick a different name or remove it first."
         return 1
@@ -433,6 +450,13 @@ _ckipper_rename_perform() {
         return 1
     fi
     _core_assert_no_running_claude || return 1
+}
+
+_ckipper_rename_perform() {
+    local old="$1" new="$2"
+    local old_dir="${_CKIPPER_RENAME_CTX[old_dir]}"
+    local new_dir="${_CKIPPER_RENAME_CTX[new_dir]}"
+    _ckipper_rename_check_preconditions "$new_dir" "$old_dir" || return 1
     if ! mv "$old_dir" "$new_dir" 2>/dev/null; then
         echo "Error: failed to rename $old_dir → $new_dir." >&2
         return 1

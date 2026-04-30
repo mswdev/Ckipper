@@ -79,14 +79,17 @@ _ckipper_sync_mcp_servers() {
     local to_dir="${_CKIPPER_SYNC_CTX[to_dir]}"
     local dry_run="${_CKIPPER_SYNC_CTX[dry_run]}"
     local mcp_filter
+    local -a jq_filter_args
     if [[ -z "$mcp_names" ]]; then
         mcp_filter='.mcpServers // {}'
+        jq_filter_args=("$mcp_filter")
     else
         local jq_array
         jq_array=$(printf '%s' "$mcp_names" | jq -R 'split(",") | map(. | gsub("^\\s+|\\s+$"; ""))')
-        mcp_filter='.mcpServers // {} | with_entries(select(.key as $k | '"$jq_array"' | index($k)))'
+        mcp_filter='.mcpServers // {} | with_entries(select(.key as $k | $keys | index($k)))'
+        jq_filter_args=(--argjson keys "$jq_array" "$mcp_filter")
     fi
-    local servers; servers=$(jq "$mcp_filter" "$from_dir/.claude.json")
+    local servers; servers=$(jq "${jq_filter_args[@]}" "$from_dir/.claude.json")
     local server_keys; server_keys=$(printf '%s' "$servers" | jq -r 'keys[]?' | tr '\n' ' ')
     if [[ -z "$server_keys" || "$server_keys" == " " ]]; then
         pending_msgs+=("MCP: nothing to sync (no matching servers in source)")

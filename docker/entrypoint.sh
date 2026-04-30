@@ -2,7 +2,7 @@
 set -e
 
 # Constants
-readonly CREDENTIALS_MAX_BYTES=1000000
+readonly CREDENTIALS_MAX_BYTES=1048576 # 1 MiB (2^20)
 readonly GIT_CONFIG_COUNT=2
 
 # Require CLAUDE_CONFIG_DIR — Ckipper's account context. No silent fallback.
@@ -40,8 +40,9 @@ fi
 # leakage to the host filesystem). The tmpfs mount at /tmp/claude-creds is
 # container-local and disappears when the container exits.
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
-    if [ "${#CLAUDE_CREDENTIALS}" -gt "$CREDENTIALS_MAX_BYTES" ]; then
-        echo "Error: CLAUDE_CREDENTIALS exceeds 1MB; refusing to write" >&2
+    creds_byte_count=$(printf '%s' "$CLAUDE_CREDENTIALS" | wc -c)
+    if [ "$creds_byte_count" -gt "$CREDENTIALS_MAX_BYTES" ]; then
+        echo "Error: CLAUDE_CREDENTIALS exceeds $CREDENTIALS_MAX_BYTES bytes; refusing to write" >&2
         exit 1
     fi
     mkdir -p /tmp/claude-creds

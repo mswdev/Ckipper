@@ -3,6 +3,18 @@
 
 readonly SHASUM_BITS=256
 
+# Container user identity. Must match useradd -u/-g in docker/Dockerfile.
+readonly CLAUDE_CONTAINER_UID=1000
+readonly CLAUDE_CONTAINER_GID=1000
+
+# tmpfs for /tmp/claude-creds inside the container.
+readonly CREDS_TMPFS_MODE=700
+readonly CREDS_TMPFS_SIZE="1m"
+
+# Host gid 0 (wheel/root) added so the container user can read host-mounted files
+# owned by macOS staff/wheel without needing world-readable bits.
+readonly DOCKER_GROUP_ADD_HOST_ROOT=0
+
 # Run the worktree in a Docker container.
 #
 # Reads globals: W_WT_PATH, W_PROJECTS_DIR, W_PROJECT, W_BRANCH, W_COMMAND,
@@ -128,8 +140,8 @@ _w_docker_build_base_args() {
         -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
         -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
         -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
-        --group-add 0
-        --tmpfs /tmp/claude-creds:mode=700,uid=1000,gid=1000,size=1m
+        --group-add "$DOCKER_GROUP_ADD_HOST_ROOT"
+        --tmpfs "/tmp/claude-creds:mode=$CREDS_TMPFS_MODE,uid=$CLAUDE_CONTAINER_UID,gid=$CLAUDE_CONTAINER_GID,size=$CREDS_TMPFS_SIZE"
         -v "claude-uv-cache:/home/claude/.cache/uv"
         -v "claude-uv-tools:/home/claude/.uv-tools"
         -e "UV_TOOL_DIR=/home/claude/.uv-tools/envs"

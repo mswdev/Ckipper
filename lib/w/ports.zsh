@@ -30,11 +30,8 @@ _w_bind_port() {
 
     for (( i=0; i<MAX_PORT_FALLBACK_ATTEMPTS; i++ )); do
         if ! lsof -i :"$host_port" -P -n &>/dev/null; then
-            W_DOCKER_ARGS+=( -p "127.0.0.1:$host_port:$port" )
+            _w_record_bound_port "$port" "$host_port"
             is_bound="true"
-            if (( host_port != port )); then
-                echo "  Port $port mapped to host:$host_port (original in use)"
-            fi
             break
         fi
         (( host_port++ ))
@@ -43,4 +40,20 @@ _w_bind_port() {
     if [[ "$is_bound" != "true" ]]; then
         echo "  Port $port: no available host port found ($port-$((port+MAX_PORT_FALLBACK_ATTEMPTS-1)) all in use)"
     fi
+}
+
+# Append the resolved -p flag to W_DOCKER_ARGS and log if the host port differs.
+#
+# Args:
+#   $1 — original container port
+#   $2 — host port that was bound (may equal $1 or be a fallback)
+#
+# Reads: W_DOCKER_ARGS (appended to).
+# Returns: 0 always.
+_w_record_bound_port() {
+    local port="$1"
+    local host_port="$2"
+    W_DOCKER_ARGS+=( -p "127.0.0.1:$host_port:$port" )
+    (( host_port != port )) && echo "  Port $port mapped to host:$host_port (original in use)"
+    return 0
 }
