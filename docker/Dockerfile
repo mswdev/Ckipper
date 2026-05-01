@@ -37,8 +37,10 @@ ENV CHROMIUM_FLAGS="--no-sandbox"
 ENV PUPPETEER_CHROMIUM_ARGS="--no-sandbox"
 
 # Install uv/uvx (Python package runner — needed for Python-based MCP servers)
-# TODO(public-release): pin SHA256 checksum of installer.
+# SHA256 fetched 2026-04-30 from https://astral.sh/uv/install.sh
+ARG UV_INSTALLER_SHA256=facbed3a7e2750df3aef698537c6d50869b025a58bdd13154cfdcc2f30354ca2
 RUN curl -LsSf https://astral.sh/uv/install.sh -o /tmp/install.sh && \
+    echo "${UV_INSTALLER_SHA256}  /tmp/install.sh" | sha256sum -c - && \
     sh /tmp/install.sh && \
     rm /tmp/install.sh \
     && cp /root/.local/bin/uv /usr/local/bin/uv \
@@ -46,8 +48,13 @@ RUN curl -LsSf https://astral.sh/uv/install.sh -o /tmp/install.sh && \
     && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
 
 # Install Claude Code via native installer
-# TODO(public-release): pin SHA256 checksum of installer.
+# SHA256 fetched 2026-04-30 from https://claude.ai/install.sh
+# Note: this is a bootstrap installer that fetches the actual binary from
+# downloads.claude.ai. The bootstrap script itself changes infrequently, but
+# refresh this hash if a Claude Code release ships an updated installer.
+ARG CLAUDE_INSTALLER_SHA256=b315b46925a9bfb9422f2503dd5aa649f680832f4c076b22d87c39d578c3d830
 RUN curl -fsSL https://claude.ai/install.sh -o /tmp/install.sh && \
+    echo "${CLAUDE_INSTALLER_SHA256}  /tmp/install.sh" | sha256sum -c - && \
     bash /tmp/install.sh && \
     rm /tmp/install.sh \
     && cp /root/.local/bin/claude /usr/local/bin/claude \
@@ -64,8 +71,10 @@ RUN userdel -r node 2>/dev/null; groupdel node 2>/dev/null; \
     && chown -R claude:claude /home/claude/.local /home/claude/.ssh /home/claude/.config /home/claude/.cache /home/claude/.uv-tools
 
 # Install bun (fast JS runtime — needed for bunx-based statusline commands and general use)
-# TODO(public-release): pin SHA256 checksum of installer.
+# SHA256 fetched 2026-04-30 from https://bun.sh/install
+ARG BUN_INSTALLER_SHA256=bab8acfb046aac8c72407bdcce903957665d655d7acaa3e11c7c4616beae68dd
 RUN curl -fsSL https://bun.sh/install -o /tmp/install.sh && \
+    echo "${BUN_INSTALLER_SHA256}  /tmp/install.sh" | sha256sum -c - && \
     bash /tmp/install.sh && \
     rm /tmp/install.sh \
     && cp /root/.bun/bin/bun /usr/local/bin/bun \

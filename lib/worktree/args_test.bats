@@ -101,3 +101,107 @@ _parse_and_print() {
     [ "$status" -eq 0 ]
     [ "$output" = "myapp" ]
 }
+
+# ── _ckipper_worktree_validate_branch_name ───────────────────────────
+
+# Helper: source args.zsh and call $validator with $candidate as its sole
+# argument (passed via the env so leading dashes and special chars don't get
+# mangled by the outer shell quoting). Captures combined stdout/stderr.
+_run_validator() {
+    local validator="$1" candidate="$2"
+    run env HOME="$TMP_HOME" PATH="$PATH" CKIPPER_TEST_CANDIDATE="$candidate" \
+        zsh -c "source \"$REPO_ROOT/lib/worktree/args.zsh\"; ${validator} \"\$CKIPPER_TEST_CANDIDATE\" 2>&1"
+}
+
+@test "validate_branch_name accepts a normal feature branch" {
+    _run_validator _ckipper_worktree_validate_branch_name "feature/foo-bar"
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "validate_branch_name rejects a name that starts with a dash" {
+    _run_validator _ckipper_worktree_validate_branch_name "--upload-pack=/tmp/x"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+@test "validate_branch_name rejects a leading-dash short flag (-h)" {
+    _run_validator _ckipper_worktree_validate_branch_name "-h"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+@test "validate_branch_name rejects a name with .. (path traversal)" {
+    _run_validator _ckipper_worktree_validate_branch_name "feature/..foo"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+@test "validate_branch_name rejects an empty name" {
+    _run_validator _ckipper_worktree_validate_branch_name ""
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+# ── _ckipper_worktree_validate_project_name ──────────────────────────
+
+@test "validate_project_name accepts a normal namespaced project" {
+    _run_validator _ckipper_worktree_validate_project_name "mswdev/ckipper"
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "validate_project_name accepts a single-segment project" {
+    _run_validator _ckipper_worktree_validate_project_name "myapp"
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "validate_project_name rejects a path with a .. component" {
+    _run_validator _ckipper_worktree_validate_project_name "../../etc"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid project path" ]]
+}
+
+@test "validate_project_name rejects a path with .. inside a segment chain" {
+    _run_validator _ckipper_worktree_validate_project_name "myorg/../etc"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid project path" ]]
+}
+
+@test "validate_project_name allows .. as a substring inside a segment" {
+    _run_validator _ckipper_worktree_validate_project_name "myorg/my..app"
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "validate_project_name rejects a name with shell metacharacters" {
+    _run_validator _ckipper_worktree_validate_project_name "myorg/app;rm"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid project path" ]]
+}
+
+@test "validate_project_name rejects a name that starts with a dash" {
+    _run_validator _ckipper_worktree_validate_project_name "-rf"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid project path" ]]
+}
+
+@test "validate_project_name rejects an empty name" {
+    _run_validator _ckipper_worktree_validate_project_name ""
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid project path" ]]
+}
