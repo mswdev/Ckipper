@@ -1,6 +1,11 @@
 #!/usr/bin/env bats
 # Unit tests for lib/account/doctor.zsh helpers.
 # Sources ckipper.zsh (which wires up all lib/core/ + lib/account/ modules).
+#
+# Doctor.zsh also owns plugin-metadata path-rewrite logic (formerly in
+# lib/account/plugin-repair.zsh). The plugin-repair tests below were merged
+# into this file when `ckipper account repair-plugins` was retired in favour
+# of `ckipper doctor --fix`.
 
 load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 
@@ -118,4 +123,124 @@ run_helper() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "PASS" ]]
     [[ "$output" =~ "exists" ]]
+}
+
+# ── plugin-metadata path rewrite (merged from plugin-repair_test.bats) ─
+
+# ── _ckipper_account_detect_stale_plugin_prefix ──────────────────────────────
+
+@test "detect_stale_plugin_prefix finds old prefix in known_marketplaces.json" {
+    local acc_dir="$TMP_HOME/.claude-personal"
+    mkdir -p "$acc_dir/plugins"
+    # Write a marketplace file with a stale ~/.claude/ prefix.
+    printf '{"url":"%s/plugins/marketplace.json"}' "$TMP_HOME/.claude/" \
+        > "$acc_dir/plugins/known_marketplaces.json"
+
+    run_helper "_ckipper_account_detect_stale_plugin_prefix \"$acc_dir\""
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ ".claude/" ]]
+}
+
+# ── _ckipper_account_rewrite_plugin_paths ─────────────────────────────────────
+
+@test "rewrite_plugin_paths replaces old prefix with new prefix in plugin files" {
+    local old_dir="$TMP_HOME/.claude/"
+    local new_dir="$TMP_HOME/.claude-personal/"
+    mkdir -p "${new_dir}plugins"
+    # Seed a marketplace file using the old prefix path.
+    printf '{"url":"%s/plugins/marketplace.json"}' "$old_dir" \
+        > "${new_dir}plugins/known_marketplaces.json"
+
+    # Use darwin ostype so the code picks `sed -i ''` (macOS compatible form).
+    run env \
+        HOME="$TMP_HOME" \
+        CKIPPER_DIR="$CKIPPER_DIR" \
+        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" \
+        _CKIPPER_TEST_OSTYPE="darwin" \
+        CKIPPER_FORCE=1 \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_account_rewrite_plugin_paths \"$old_dir\" \"$new_dir\""
+
+    [ "$status" -eq 0 ]
+    grep -q "$new_dir" "${new_dir}plugins/known_marketplaces.json"
+    ! grep -q "$old_dir" "${new_dir}plugins/known_marketplaces.json"
+}
+
+@test "rewrite_plugin_paths is idempotent — running twice produces the same result" {
+    local old_dir="$TMP_HOME/.claude/"
+    local new_dir="$TMP_HOME/.claude-personal/"
+    mkdir -p "${new_dir}plugins"
+    printf '{"url":"%s/plugins/marketplace.json"}' "$old_dir" \
+        > "${new_dir}plugins/known_marketplaces.json"
+
+    # First run — replaces old prefix with new prefix.
+    run env \
+        HOME="$TMP_HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" _CKIPPER_TEST_OSTYPE="darwin" CKIPPER_FORCE=1 \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_account_rewrite_plugin_paths \"$old_dir\" \"$new_dir\""
+    local content_after_first; content_after_first=$(cat "${new_dir}plugins/known_marketplaces.json")
+
+    # Second run — old prefix is gone so this is a no-op; output must be identical.
+    run env \
+        HOME="$TMP_HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" _CKIPPER_TEST_OSTYPE="darwin" CKIPPER_FORCE=1 \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_account_rewrite_plugin_paths \"$old_dir\" \"$new_dir\""
+    local content_after_second; content_after_second=$(cat "${new_dir}plugins/known_marketplaces.json")
+
+    [ "$content_after_first" = "$content_after_second" ]
+}
+
+# ── doctor --fix integration ──────────────────────────────────────────
+
+# Helper: seed registry + account dir + stale plugin metadata for --fix tests.
+# Uses darwin ostype so the rewrite picks the macOS-compatible `sed -i ''` form,
+# matching the host running these tests.
+_seed_account_with_stale_plugins() {
+    local name="$1"
+    local acc_dir="$TMP_HOME/.claude-$name"
+    mkdir -p "$acc_dir/plugins"
+    # The fixture must use a prefix that differs from the new dir AND ends with `/`.
+    # Using $TMP_HOME/.claude/ guarantees both conditions in the isolated env.
+    printf '{"url":"%s/plugins/marketplace.json"}' "$TMP_HOME/.claude/" \
+        > "$acc_dir/plugins/known_marketplaces.json"
+    printf '{"version":2,"default":"%s","accounts":{"%s":{"config_dir":"%s","keychain_service":null}}}' \
+        "$name" "$name" "$acc_dir" > "$CKIPPER_REGISTRY"
+}
+
+@test "doctor (no --fix) just WARNs on stale plugin paths and leaves the file unchanged" {
+    _seed_account_with_stale_plugins personal
+    local pm_file="$TMP_HOME/.claude-personal/plugins/known_marketplaces.json"
+    local before; before=$(cat "$pm_file")
+
+    run_helper '_ckipper_doctor'
+
+    [[ "$output" =~ "WARN" ]]
+    [[ "$output" =~ "stale" ]]
+    # File was NOT rewritten.
+    local after; after=$(cat "$pm_file")
+    [ "$before" = "$after" ]
+}
+
+@test "doctor --fix repairs stale plugin paths and re-emits PASS for plugin metadata" {
+    _seed_account_with_stale_plugins personal
+    local pm_file="$TMP_HOME/.claude-personal/plugins/known_marketplaces.json"
+
+    run env \
+        HOME="$TMP_HOME" \
+        CKIPPER_DIR="$CKIPPER_DIR" \
+        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" \
+        _CKIPPER_TEST_OSTYPE="darwin" \
+        CKIPPER_FORCE=1 \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_doctor --fix"
+
+    [[ "$output" =~ "PASS" ]]
+    [[ "$output" =~ "plugin metadata repaired" ]]
+    # File now references the new prefix and the seeded stale prefix
+    # ($TMP_HOME/.claude/) is gone. The rewrite produces a `.claude-<name>/`
+    # substring (with a trailing slash from the new prefix), so we assert on
+    # the substring `.claude-personal` rather than a specific concatenation.
+    grep -q ".claude-personal" "$pm_file"
+    ! grep -q "$TMP_HOME/.claude/" "$pm_file"
 }

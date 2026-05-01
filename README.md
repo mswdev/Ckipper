@@ -49,9 +49,8 @@ ckipper account default <name>                       # set the default account
 ckipper account rename <old> <new>                   # rename an account in place
 ckipper account remove <name>                        # unregister (does not delete the dir)
 ckipper account sync <from> <to>                     # copy MCP/settings/plugins between accounts
-ckipper account sync-hooks                           # re-deploy hooks into every account dir
-ckipper account repair-plugins <name>                # fix stale ~/.claude/ paths in plugin metadata
 ckipper doctor                                       # diagnostic checklist
+ckipper doctor --fix                                 # diagnostic checklist + apply in-place repairs
 ```
 
 `ck` is a short alias for `ckipper`. `<project>` is a relative path under `$CKIPPER_PROJECTS_DIR` (default `~/Developer/`, e.g. `myorg/myapp`). Tab completion is included. See [Projects Directory](#projects-directory) to change the base path.

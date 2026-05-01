@@ -1,11 +1,19 @@
 #!/usr/bin/env zsh
-# Diagnostic check subcommand: doctor.
+# Diagnostic check subcommand: doctor (with --fix to apply repairs).
+#
+# Also owns plugin-metadata path-rewrite logic (formerly lib/account/plugin-repair.zsh):
+# in --fix mode, doctor calls _ckipper_account_repair_plugins for any account whose
+# plugin metadata has stale ~/.claude/ paths. The repair functions kept their
+# original names so their existing tests work unchanged.
 
 readonly MIN_HOOK_FILES=4
 
 # Module-level counters shared across all doctor helpers.
 typeset -g _CKIPPER_DOCTOR_FAIL=0
 typeset -g _CKIPPER_DOCTOR_WARN=0
+# Module-level fix-mode flag set by `_ckipper_doctor --fix` and consumed by
+# per-account checks (e.g. plugin metadata) to decide warn-only vs. repair.
+typeset -g _CKIPPER_DOCTOR_FIX_MODE="false"
 
 # Print a single check result and increment the appropriate counter.
 #
@@ -86,7 +94,45 @@ _ckipper_doctor_registry() {
     fi
 }
 
+# Detect whether an account's plugin metadata files contain stale ~/.claude/ paths.
+#
+# Args:
+#   $1 — account config directory
+#
+# Returns:
+#   0 if stale paths found; 1 otherwise.
+_ckipper_doctor_has_stale_plugin_metadata() {
+    local dir="$1" pm
+    for pm in known_marketplaces.json installed_plugins.json; do
+        [[ -f "$dir/plugins/$pm" ]] || continue
+        grep -q -- "$HOME/.claude/" "$dir/plugins/$pm" 2>/dev/null && return 0
+    done
+    return 1
+}
+
+# Apply repair and report PASS/FAIL based on the post-repair state.
+#
+# Args:
+#   $1 — account name
+#   $2 — account config directory
+#
+# Returns:
+#   0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_apply_plugin_repair() {
+    local name="$1" dir="$2"
+    _ckipper_account_repair_plugins "$name" >/dev/null 2>&1
+    if _ckipper_doctor_has_stale_plugin_metadata "$dir"; then
+        _ckipper_doctor_check FAIL "    plugins/*.json still has stale ~/.claude/ paths after repair attempt"
+        return 0
+    fi
+    _ckipper_doctor_check PASS "    plugin metadata repaired (stale ~/.claude/ paths rewritten)"
+}
+
 # Check plugin metadata files for a single account for stale paths.
+#
+# In fix-mode (when _CKIPPER_DOCTOR_FIX_MODE is "true"), runs the in-place
+# rewrite via _ckipper_account_repair_plugins and re-checks; emits PASS on
+# successful repair. Otherwise emits WARN with a hint to run `doctor --fix`.
 #
 # Args:
 #   $1 — account name
@@ -96,17 +142,139 @@ _ckipper_doctor_registry() {
 #   0 always.
 _ckipper_doctor_account_plugins() {
     local name="$1" dir="$2"
-    local has_stale_plugin_metadata="false"
-    local pm
-    for pm in known_marketplaces.json installed_plugins.json; do
-        [[ -f "$dir/plugins/$pm" ]] || continue
-        if grep -q -- "$HOME/.claude/" "$dir/plugins/$pm" 2>/dev/null; then
-            has_stale_plugin_metadata="true"
+    _ckipper_doctor_has_stale_plugin_metadata "$dir" || return 0
+    if [[ "$_CKIPPER_DOCTOR_FIX_MODE" = "true" ]]; then
+        _ckipper_doctor_apply_plugin_repair "$name" "$dir"
+        return 0
+    fi
+    _ckipper_doctor_check WARN "    plugins/*.json has stale ~/.claude/ paths — plugins will fail to load. Repair: ckipper doctor --fix"
+}
+
+# Rewrite stale absolute paths embedded in Claude Code's plugin metadata files
+# (known_marketplaces.json, installed_plugins.json). After moving an account
+# directory (legacy ~/.claude → ~/.claude-<name>), the plugin cache files on
+# disk have moved with the rename, but the JSON metadata still has the old
+# absolute paths baked in — Claude Code then fails to resolve plugins with
+# "Plugin not found in marketplace ..." errors.
+#
+# Args:
+#   $1 — old prefix (must end with `/`), e.g. "$HOME/.claude/"
+#   $2 — new prefix (must end with `/`), e.g. "$HOME/.claude-personal/"
+#
+# Returns:
+#   0 always (idempotent: if neither file contains old prefix, this is a no-op);
+#   1 if arguments are invalid.
+_ckipper_account_rewrite_plugin_paths() {
+    local old="$1" new="$2"
+    [[ -z "$old" || -z "$new" || "$old" != */ || "$new" != */ ]] && return 1
+    [[ "$old" == "$new" ]] && return 0
+    local f
+    for f in plugins/known_marketplaces.json plugins/installed_plugins.json; do
+        _ckipper_account_rewrite_single_plugin_file "$old" "$new" "$f"
+    done
+    return 0
+}
+
+# Rewrite stale paths in a single plugin metadata file using sed (in-place).
+# Creates a timestamped backup before modifying the file.
+#
+# Args:
+#   $1 — old prefix (must end with `/`)
+#   $2 — new prefix (must end with `/`)
+#   $3 — relative plugin file path (e.g. plugins/known_marketplaces.json)
+#
+# Returns:
+#   0 always (no-op if file absent or old prefix not found).
+_ckipper_account_rewrite_single_plugin_file() {
+    local old="$1" new="$2" rel_path="$3"
+    local fp="$new$rel_path"
+    [[ -f "$fp" ]] || return 0
+    grep -q -- "$old" "$fp" 2>/dev/null || return 0
+    cp "$fp" "$fp.pre-rewrite-backup-$(date +%s)"
+    if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
+        sed -i '' "s|$old|$new|g" "$fp"
+    else
+        sed -i "s|$old|$new|g" "$fp"
+    fi
+}
+
+# Detect the stale prefix in the plugin metadata files for the given account.
+#
+# Args:
+#   $1 — account config directory path
+#
+# Returns:
+#   0 always; prints stale prefix to stdout (empty if none found).
+_ckipper_account_detect_stale_plugin_prefix() {
+    local dir="$1"
+    local f
+    for f in plugins/known_marketplaces.json plugins/installed_plugins.json; do
+        [[ -f "$dir/$f" ]] || continue
+        local hit
+        hit=$(grep -oE "$HOME/\.claude(-[a-z0-9_-]+)?/" "$dir/$f" 2>/dev/null \
+            | sort -u | grep -v "^$dir/$" | head -1)
+        if [[ -n "$hit" ]]; then
+            printf '%s' "$hit"
+            return 0
         fi
     done
-    if [[ "$has_stale_plugin_metadata" = "true" ]]; then
-        _ckipper_doctor_check WARN "    plugins/*.json has stale ~/.claude/ paths — plugins will fail to load. Repair: ckipper account repair-plugins $name"
+}
+
+# Rewrite stale absolute paths in plugin metadata for a single registered account.
+#
+# This is internal to doctor's --fix path; the public `ckipper account
+# repair-plugins` subcommand was retired in favour of `ckipper doctor --fix`.
+#
+# Args:
+#   $1 — registered account name
+#
+# Returns:
+#   0 on success or when no repair is needed; 1 on error.
+#
+# Errors (stderr):
+#   "Usage: ckipper doctor --fix (account: <name> required)" — when name is empty.
+#   "Account '...' is not registered." — when account not found.
+#   "Account dir does not exist: ..." — when directory is missing.
+_ckipper_account_repair_plugins() {
+    local name="$1"
+    if [[ -z "$name" ]]; then
+        echo "Usage: _ckipper_account_repair_plugins <name> (called from ckipper doctor --fix)" >&2
+        return 1
     fi
+    _core_registry_check_version || return 1
+    local dir
+    dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir // empty' "$CKIPPER_REGISTRY")
+    if [[ -z "$dir" ]]; then
+        echo "Account '$name' is not registered. Run: ckipper account list" >&2
+        return 1
+    fi
+    if [[ ! -d "$dir" ]]; then
+        echo "Account dir does not exist: $dir" >&2
+        return 1
+    fi
+    _ckipper_account_repair_plugins_apply "$name" "$dir"
+}
+
+# Apply stale-prefix repair to an account directory once validation has passed.
+#
+# Args:
+#   $1 — account name (for messages)
+#   $2 — account config directory
+#
+# Returns:
+#   0 on success or when no repair is needed.
+_ckipper_account_repair_plugins_apply() {
+    local name="$1" dir="$2"
+    local stale_prefix
+    stale_prefix=$(_ckipper_account_detect_stale_plugin_prefix "$dir")
+    if [[ -z "$stale_prefix" ]]; then
+        echo "No stale paths found in $dir/plugins/. Nothing to repair."
+        return 0
+    fi
+    echo "Rewriting plugin metadata for '$name':"
+    echo "  $stale_prefix → $dir/"
+    _ckipper_account_rewrite_plugin_paths "$stale_prefix" "$dir/"
+    echo "Done. Backups saved alongside each rewritten file (.pre-rewrite-backup-<ts>)."
 }
 
 # Check macOS Keychain entry presence for a single account.
@@ -224,11 +392,19 @@ _ckipper_doctor_summary() {
 
 # Run all diagnostic checks and print results to stdout.
 #
+# Args:
+#   $1 — optional `--fix` flag; when set, doctor applies in-place repairs for
+#        check categories that support it (currently: stale plugin metadata
+#        paths). Without --fix, the same checks emit WARN with a hint.
+#
 # Returns:
 #   0 if all checks pass (warnings are non-fatal); 1 if any FAIL checks are found.
 _ckipper_doctor() {
+    local should_fix="false"
+    [[ "$1" == "--fix" ]] && { should_fix="true"; shift; }
     _CKIPPER_DOCTOR_FAIL=0
     _CKIPPER_DOCTOR_WARN=0
+    _CKIPPER_DOCTOR_FIX_MODE="$should_fix"
     _ckipper_doctor_tooling
     if ! _ckipper_doctor_registry; then
         return 0

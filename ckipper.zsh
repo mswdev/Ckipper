@@ -29,7 +29,6 @@ source "$CKIPPER_REPO_DIR/lib/core/prompt.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/account-management.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/cleanup.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/aliases.zsh"
-source "$CKIPPER_REPO_DIR/lib/account/plugin-repair.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/sync.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/doctor.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/dispatcher.zsh"
@@ -93,7 +92,7 @@ typeset -gA _CKIPPER_LEGACY_COMMANDS=(
     [rename]='account rename'
     [sync]='account sync'
     [sync-hooks]='account sync-hooks'
-    [repair-plugins]='account repair-plugins'
+    [repair-plugins]='doctor --fix'
     [migrate]=''
 )
 
@@ -214,7 +213,7 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs
 # regenerate the cached completion file. The version is embedded as a literal
 # comment in the generated file and matched here.
-CKIPPER_COMPLETION_VERSION=4
+CKIPPER_COMPLETION_VERSION=5
 if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
     # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
@@ -224,7 +223,7 @@ if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     # a completion file, not maintained shell logic).
     cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
 #compdef ckipper ck
-# ckipper-completion-version=4
+# ckipper-completion-version=5
 
 _ckipper() {
     local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
@@ -249,8 +248,6 @@ _ckipper() {
         'remove:Unregister an account'
         'rename:Rename an account in place'
         'sync:Copy state between accounts'
-        'sync-hooks:Re-deploy hooks into every account dir'
-        'repair-plugins:Rewrite stale plugin paths'
         'help:Show account-namespace help'
     )
     worktree_subs=(
@@ -314,7 +311,7 @@ _ckipper() {
                     done
                     _describe -t projects 'project' projects && return 0
                     ;;
-                account/default|acct/default|account/remove|acct/remove|account/rename|acct/rename|account/sync|acct/sync|account/repair-plugins|acct/repair-plugins)
+                account/default|acct/default|account/remove|acct/remove|account/rename|acct/rename|account/sync|acct/sync)
                     local -a accounts
                     if [[ -f "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" ]]; then
                         accounts=( $(jq -r '.accounts | keys[]' "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" 2>/dev/null) )
