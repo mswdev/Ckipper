@@ -30,6 +30,7 @@ _run_config_list() {
         zsh -c "
             source \"$REPO_ROOT/lib/config/schema.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"
+            source \"$REPO_ROOT/lib/core/registry.zsh\"
             _core_style_header() { print -- \"## \$1\"; }
             _core_style_divider() { print -- \"---\"; }
             source \"$REPO_ROOT/lib/config/list.zsh\"

@@ -7,6 +7,8 @@
 # the file is sourced lazily by ckipper.zsh on next shell startup.
 #
 # Returns: editor exit status.
+# Errors (stderr): editor errors (e.g. "command not found") pass through
+#   unchanged from the underlying $EDITOR invocation.
 _ckipper_config_edit_global() {
     local file
     file=$(_core_config_global_file)
@@ -36,8 +38,10 @@ _ckipper_config_edit_dump_prefs() {
 # Args: $1 — path to candidate JSON file.
 # Returns: 0 if parseable; 1 otherwise. Errors go to stderr via jq.
 _ckipper_config_edit_validate_json() {
-    local path="$1"
-    jq empty "$path" >/dev/null 2>&1
+    # NB: zsh's `path` is tied to $PATH — declaring `local path=...` would wipe
+    # PATH for the duration of the function and break every external command.
+    local file="$1"
+    jq empty "$file" >/dev/null 2>&1
 }
 
 # Slurp the edited preferences JSON back into the registry under
@@ -62,22 +66,28 @@ _ckipper_config_edit_writeback() {
 # is not parseable JSON.
 #
 # Args: $1 — account name.
-# Returns: 0 on success; 1 on dump/validate/writeback failure.
-# Errors (stderr): "Edited file is not valid JSON; registry not updated."
+# Returns: 0 on success; 1 on dump/validate/writeback failure or unregistered
+#   account.
+# Errors (stderr):
+#   "Account '<name>' is not registered." — propagated from _core_account_dir.
+#   "Edited file is not valid JSON; registry not updated." — when the edited
+#     tmpfile fails jq parse.
 _ckipper_config_edit_account() {
     local account="$1"
+    _core_account_dir "$account" >/dev/null || return 1
+    # Ensure the tmpfile is removed even if the user kills the editor (Ctrl-C)
+    # or the shell receives a TERM signal mid-edit. local_traps scopes the
+    # trap to this function so it doesn't leak to callers.
+    setopt local_options local_traps
     local tmp
     tmp=$(_ckipper_config_edit_dump_prefs "$account") || return 1
+    trap 'rm -f "$tmp"' EXIT INT TERM
     "${EDITOR:-vi}" "$tmp"
     if ! _ckipper_config_edit_validate_json "$tmp"; then
         echo "Edited file is not valid JSON; registry not updated." >&2
-        rm -f "$tmp"
         return 1
     fi
     _ckipper_config_edit_writeback "$account" "$tmp"
-    local rc=$?
-    rm -f "$tmp"
-    return $rc
 }
 
 # Public edit entry point. Routes between the global-file editor and the
@@ -85,8 +95,15 @@ _ckipper_config_edit_account() {
 #
 # Args: $1..$N — `[--account <name>]`.
 #
-# Returns: editor / handler exit status; 1 on unknown flag.
-# Errors (stderr): "Unknown flag: '<flag>'" — see Returns.
+# Returns: editor / handler exit status; 1 on unknown flag, stray positional
+#   argument, or unregistered account.
+# Errors (stderr):
+#   "Unknown flag: '<flag>'" — when an unrecognized --flag is encountered.
+#   "Flag --account requires a value." — when --account has no following arg.
+#   "ckipper config edit takes no positional arguments. Did you mean: --account <arg>?"
+#     — when the user passes a bare positional (e.g. `ckipper config edit work`).
+#   "Account '<name>' is not registered." — propagated from _core_account_dir
+#     via _ckipper_config_edit_account.
 _ckipper_config_edit() {
     local account=""
     while (( $# > 0 )); do
@@ -96,8 +113,12 @@ _ckipper_config_edit() {
                 account="$2"; shift 2
                 ;;
             --account=*) account="${1#--account=}"; shift ;;
-            *)
+            -*)
                 echo "Unknown flag: '$1'" >&2
+                return 1
+                ;;
+            *)
+                echo "ckipper config edit takes no positional arguments. Did you mean: --account $1?" >&2
                 return 1
                 ;;
         esac

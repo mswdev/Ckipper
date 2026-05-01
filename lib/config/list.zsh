@@ -11,45 +11,6 @@
 # lib/core/style.zsh (not yet landed). Tests stub them; production callers
 # source style.zsh from ckipper.zsh before list.zsh.
 
-# Module-level argument-parse output. Populated by _ckipper_config_list_parse_args
-# and consumed by the format printers.
-typeset -gA _CKIPPER_CONFIG_LIST_ARGS
-
-# Parse `[--account <name>] [--format=<fmt>]` into _CKIPPER_CONFIG_LIST_ARGS.
-#
-# Args: $1..$N — raw CLI arguments forwarded from _ckipper_config_list.
-#
-# Returns: 0 on success; 1 on unknown flag or unsupported format.
-# Errors (stderr):
-#   "Unknown flag: '<flag>'" — when an unrecognized argument is encountered.
-#   "Unknown format: '<fmt>' (expected: table, json, env)"
-_ckipper_config_list_parse_args() {
-    _CKIPPER_CONFIG_LIST_ARGS=([account]="" [format]="table")
-    while (( $# > 0 )); do
-        case "$1" in
-            --account)
-                [[ -z "${2:-}" ]] && { echo "Flag --account requires a value." >&2; return 1; }
-                _CKIPPER_CONFIG_LIST_ARGS[account]="$2"; shift 2
-                ;;
-            --account=*) _CKIPPER_CONFIG_LIST_ARGS[account]="${1#--account=}"; shift ;;
-            --format=*) _CKIPPER_CONFIG_LIST_ARGS[format]="${1#--format=}"; shift ;;
-            --format)
-                [[ -z "${2:-}" ]] && { echo "Flag --format requires a value." >&2; return 1; }
-                _CKIPPER_CONFIG_LIST_ARGS[format]="$2"; shift 2
-                ;;
-            *)
-                echo "Unknown flag: '$1'" >&2
-                return 1
-                ;;
-        esac
-    done
-    case "${_CKIPPER_CONFIG_LIST_ARGS[format]}" in
-        table | json | env) return 0 ;;
-    esac
-    echo "Unknown format: '${_CKIPPER_CONFIG_LIST_ARGS[format]}' (expected: table, json, env)" >&2
-    return 1
-}
-
 # Decide whether a schema key should appear in the listing for the current
 # scope choice. Global keys always appear; account-scoped keys appear only
 # when --account was supplied.
@@ -120,18 +81,66 @@ _ckipper_config_list_env() {
     done < <(_ckipper_config_list_keys "$account")
 }
 
-# Public list entry point. Parses flags then delegates to a format printer.
+# Validate the format token against the supported renderers.
 #
-# Args: $1..$N — `[--account <name>] [--format=table|json|env]`.
+# Args: $1 — format string.
+# Returns: 0 if recognized; 1 otherwise.
+# Errors (stderr): "Unknown format: '<fmt>' (expected: table, json, env)".
+_ckipper_config_list_validate_format() {
+    case "$1" in
+        table | json | env) return 0 ;;
+    esac
+    echo "Unknown format: '$1' (expected: table, json, env)" >&2
+    return 1
+}
+
+# Dispatch to the renderer matching the resolved format. Caller is responsible
+# for having validated the format already via _ckipper_config_list_validate_format.
 #
-# Returns: 0 on success; 1 on argument-parse failure.
-_ckipper_config_list() {
-    _ckipper_config_list_parse_args "$@" || return 1
-    local account="${_CKIPPER_CONFIG_LIST_ARGS[account]}"
-    local format="${_CKIPPER_CONFIG_LIST_ARGS[format]}"
+# Args: $1 — format ("table" | "json" | "env"), $2 — account ("" if global).
+# Returns: renderer's exit status.
+_ckipper_config_list_render() {
+    local format="$1" account="$2"
     case "$format" in
         table) _ckipper_config_list_table "$account" ;;
         json)  _ckipper_config_list_json "$account" ;;
         env)   _ckipper_config_list_env "$account" ;;
     esac
+}
+
+# Public list entry point. Parses flags then delegates to a format printer.
+#
+# Args: $1..$N — `[--account <name>] [--format=table|json|env]`.
+#
+# Returns: 0 on success; 1 on argument-parse failure or unregistered account.
+#
+# Errors (stderr):
+#   "Unknown flag: '<flag>'" — when an unrecognized argument is encountered.
+#   "Flag --account requires a value." — when --account has no following arg.
+#   "Flag --format requires a value." — when --format has no following arg.
+#   "Unknown format: '<fmt>' (expected: table, json, env)" — invalid format.
+#   "Account '<name>' is not registered." — propagated from _core_account_dir.
+_ckipper_config_list() {
+    local account="" format="table"
+    while (( $# > 0 )); do
+        case "$1" in
+            --account)
+                [[ -z "${2:-}" ]] && { echo "Flag --account requires a value." >&2; return 1; }
+                account="$2"; shift 2
+                ;;
+            --account=*) account="${1#--account=}"; shift ;;
+            --format=*) format="${1#--format=}"; shift ;;
+            --format)
+                [[ -z "${2:-}" ]] && { echo "Flag --format requires a value." >&2; return 1; }
+                format="$2"; shift 2
+                ;;
+            *)
+                echo "Unknown flag: '$1'" >&2
+                return 1
+                ;;
+        esac
+    done
+    _ckipper_config_list_validate_format "$format" || return 1
+    [[ -n "$account" ]] && { _core_account_dir "$account" >/dev/null || return 1; }
+    _ckipper_config_list_render "$format" "$account"
 }

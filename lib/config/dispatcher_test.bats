@@ -3,8 +3,12 @@
 # Verifies routing of `ckipper config <subcommand>` to the per-subcommand
 # handlers, plus the unknown-subcommand path. The dispatcher and handlers are
 # zsh-only, so each test spawns a zsh subshell that sources schema.zsh +
-# core/config.zsh + core/fuzzy.zsh + every config handler + dispatcher (matching
-# the pattern in lib/core/config_test.bats).
+# core/config.zsh + core/fuzzy.zsh + core/registry.zsh + every config handler +
+# dispatcher (matching the pattern in lib/core/config_test.bats).
+#
+# core/registry.zsh is sourced because handlers call _core_account_dir to
+# validate that --account names refer to registered accounts (rejects typos
+# that would otherwise silently create phantom registry records).
 
 load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 
@@ -32,6 +36,7 @@ _run_config_dispatch() {
         zsh -c "
             source \"$REPO_ROOT/lib/config/schema.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"
+            source \"$REPO_ROOT/lib/core/registry.zsh\"
             source \"$REPO_ROOT/lib/core/fuzzy.zsh\"
             source \"$REPO_ROOT/lib/config/get.zsh\"
             source \"$REPO_ROOT/lib/config/set.zsh\"
