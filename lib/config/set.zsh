@@ -7,26 +7,6 @@
 # lib/core/prompt.zsh (not yet landed). Tests exercise only the explicit-value
 # path; the prompt branches are unreachable until prompt.zsh is sourced.
 
-# Absorb a positional token into the caller's key/value/has_value slots.
-# First positional becomes the key; subsequent positionals overwrite the value
-# and flip the has_value sentinel.
-#
-# Uses zsh indirect assignment via `(P)`-flagged parameter expansion — zsh
-# 5.9 has no `typeset -n` namerefs.
-#
-# Args: $1 — token, $2 — name of caller's `key` var, $3 — name of caller's
-#       `value` var, $4 — name of caller's `has_value` var.
-# Returns: 0 always.
-_ckipper_config_set_absorb_positional() {
-    local token="$1" key_var="$2" value_var="$3" hasv_var="$4"
-    if [[ -z "${(P)key_var}" ]]; then
-        : ${(P)key_var::=$token}
-        return 0
-    fi
-    : ${(P)value_var::=$token}
-    : ${(P)hasv_var::=true}
-}
-
 # Verify the user supplied a key and that it exists in the schema. Surfaces
 # both the no-key usage line and the unknown-key error so the caller can
 # treat the result as a single validation gate.
@@ -92,7 +72,15 @@ _ckipper_config_set() {
                 ;;
             --account=*) account="${1#--account=}"; shift ;;
             -*) echo "Unknown flag: '$1'" >&2; return 1 ;;
-            *) _ckipper_config_set_absorb_positional "$1" key value has_value; shift ;;
+            *)
+                if [[ -z "$key" ]]; then
+                    key="$1"
+                else
+                    value="$1"
+                    has_value="true"
+                fi
+                shift
+                ;;
         esac
     done
     _ckipper_config_set_validate_key "$key" || return 1
