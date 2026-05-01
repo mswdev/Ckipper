@@ -43,6 +43,7 @@ _run_setup() {
             source \"$REPO_ROOT/lib/core/registry.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"
             source \"$REPO_ROOT/lib/core/style.zsh\"
+            source \"$REPO_ROOT/lib/core/help.zsh\"
             source \"$REPO_ROOT/lib/core/prompt.zsh\"
             source \"$REPO_ROOT/lib/setup/prereqs.zsh\"
             source \"$REPO_ROOT/lib/setup/prompts.zsh\"

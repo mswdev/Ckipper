@@ -46,19 +46,17 @@ _ckipper_config_unknown() {
 #
 # Returns: 0 always.
 _ckipper_config_help() {
-    cat <<'EOF'
-ckipper config — read and write Ckipper configuration
-
-Usage:
-  ckipper config get [--account <name>] <key>           Print the resolved value
-  ckipper config set [--account <name>] <key> [value]   Set a key (prompts if value omitted)
-  ckipper config unset [--account <name>] <key>         Remove an override (revert to default)
-  ckipper config list [--account <name>] [--format=fmt] List every key (table | json | env)
-  ckipper config edit [--account <name>]                Open the underlying file in $EDITOR
-
-Scope:
-  Global keys live in ~/.ckipper/docker/ckipper-config.zsh.
-  Account-scoped keys live under accounts.<name>.preferences in the registry
-  and require --account on set/unset.
-EOF
+    _core_help_render "ckipper config — read and write Ckipper configuration" \
+        "" \
+        "Usage:" \
+        "  ckipper config get [--account <name>] <key>           Print the resolved value" \
+        "  ckipper config set [--account <name>] <key> [value]   Set a key (prompts if value omitted)" \
+        "  ckipper config unset [--account <name>] <key>         Remove an override (revert to default)" \
+        "  ckipper config list [--account <name>] [--format=fmt] List every key (table | json | env)" \
+        "  ckipper config edit [--account <name>]                Open the underlying file in \$EDITOR" \
+        "" \
+        "Scope:" \
+        "  Global keys live in ~/.ckipper/docker/ckipper-config.zsh." \
+        "  Account-scoped keys live under accounts.<name>.preferences in the registry" \
+        "  and require --account on set/unset."
 }

@@ -7,7 +7,7 @@ readonly CKIPPER_WT_FIND_MAX_DEPTH=3
 #
 # Reads CKIPPER_PROJECTS_DIR and CKIPPER_WORKTREES_DIR globals.
 _ckipper_worktree_list_worktrees() {
-    echo "=== All Worktrees ==="
+    _core_style_header "All Worktrees"
     [[ ! -d "$CKIPPER_WORKTREES_DIR" ]] && return 0
 
     local previous_project_for_grouping=""
@@ -25,7 +25,8 @@ _ckipper_worktree_list_worktrees() {
 
             if [[ "$project" != "$previous_project_for_grouping" ]]; then
                 previous_project_for_grouping="$project"
-                echo "\n[$project]"
+                echo ""
+                _core_style_color cyan "[$project]"
             fi
             echo "  • $branch"
         done

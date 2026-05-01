@@ -38,6 +38,8 @@ _run_config_dispatch() {
             source \"$REPO_ROOT/lib/core/config.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
             source \"$REPO_ROOT/lib/core/fuzzy.zsh\"
+            source \"$REPO_ROOT/lib/core/style.zsh\"
+            source \"$REPO_ROOT/lib/core/help.zsh\"
             source \"$REPO_ROOT/lib/config/get.zsh\"
             source \"$REPO_ROOT/lib/config/set.zsh\"
             source \"$REPO_ROOT/lib/config/unset.zsh\"

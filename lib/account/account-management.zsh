@@ -300,6 +300,25 @@ _ckipper_account_bare_alias_safe() {
     return 0
 }
 
+# Column widths (chars) used when rendering `ckipper account list` rows.
+# Matched against the header printed by _ckipper_account_list_header.
+readonly _CKIPPER_ACCOUNT_LIST_COL_NAME=14
+readonly _CKIPPER_ACCOUNT_LIST_COL_DIR=32
+readonly _CKIPPER_ACCOUNT_LIST_COL_EMAIL=28
+readonly _CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN=10
+
+# Print the column-header row for `ckipper account list`.
+#
+# Returns: 0 always.
+_ckipper_account_list_header() {
+    printf '%-*s%-*s%-*s%-*s%s\n' \
+        "$_CKIPPER_ACCOUNT_LIST_COL_NAME" "NAME" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_DIR" "DIR" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_EMAIL" "EMAIL" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN" "KEYCHAIN" \
+        "DEFAULT"
+}
+
 # Print all registered accounts with their directories and email addresses.
 #
 # Returns:
@@ -311,10 +330,12 @@ _ckipper_account_list() {
     fi
     local default
     default=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
-    echo "Registered accounts:"
-    jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)"' "$CKIPPER_REGISTRY" | \
-        while IFS=$'\t' read -r name dir; do
-            _ckipper_account_list_account_line "$name" "$dir" "$default"
+    _core_style_header "Registered accounts"
+    _ckipper_account_list_header
+    _core_style_divider
+    jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)\t\(.value.keychain_service // "null")"' "$CKIPPER_REGISTRY" | \
+        while IFS=$'\t' read -r name dir keychain; do
+            _ckipper_account_list_row "$name" "$dir" "$keychain" "$default"
         done
     echo ""
     echo "* = default. Run: ckipper account default <name>"
@@ -323,26 +344,43 @@ _ckipper_account_list() {
     echo "is single-use, so the second session gets logged out. Use a different account instead."
 }
 
-# Print a single account line for `ckipper account list`.
+# Shorten an absolute path under $HOME to a `~/`-prefixed form for display.
+#
+# Args: $1 — absolute path.
+# Returns: 0 always; prints the (possibly shortened) path.
+_ckipper_account_list_short_dir() {
+    local dir="$1"
+    [[ "$dir" == "$HOME"* ]] && printf '~%s' "${dir#$HOME}" || printf '%s' "$dir"
+}
+
+# Print a single account row for `ckipper account list`.
 #
 # Args:
 #   $1 — account name
 #   $2 — config directory
-#   $3 — default account name
+#   $3 — keychain service ("null" string when unset)
+#   $4 — default account name
 #
 # Returns:
 #   0 always.
-_ckipper_account_list_account_line() {
-    local name="$1" dir="$2" default="$3"
-    local marker="  "
-    [[ "$name" == "$default" ]] && marker="* "
-    local email=""
+_ckipper_account_list_row() {
+    local name="$1" dir="$2" keychain="$3" default="$4"
+    local short_dir; short_dir=$(_ckipper_account_list_short_dir "$dir")
+    local email="-"
     if [[ -f "$dir/.claude.json" ]]; then
-        email=$(jq -r '.oauthAccount.emailAddress // ""' "$dir/.claude.json" 2>/dev/null)
+        email=$(jq -r '.oauthAccount.emailAddress // "-"' "$dir/.claude.json" 2>/dev/null)
     fi
-    local exists="(missing)"
-    [[ -d "$dir" ]] && exists=""
-    echo "$marker$name  $dir  ${email:+($email)} $exists"
+    local keychain_status="no"
+    [[ "$keychain" == "null" ]] && keychain_status="null"
+    [[ "$keychain" != "null" && -n "$keychain" ]] && keychain_status="yes"
+    local marker=" "
+    [[ "$name" == "$default" ]] && marker=$(_core_style_color green "*")
+    printf '%-*s%-*s%-*s%-*s%s\n' \
+        "$_CKIPPER_ACCOUNT_LIST_COL_NAME" "$name" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_DIR" "$short_dir" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_EMAIL" "$email" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN" "$keychain_status" \
+        "$marker"
 }
 
 # Set the default account in the registry.

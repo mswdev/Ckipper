@@ -32,6 +32,7 @@ _run_worktree() {
         zsh -c "
             source \"$REPO_ROOT/lib/core/utils.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
+            source \"$REPO_ROOT/lib/core/style.zsh\"
             source \"$REPO_ROOT/lib/worktree/args.zsh\"
             source \"$REPO_ROOT/lib/worktree/worktree.zsh\"
             $zsh_cmd

@@ -159,47 +159,43 @@ _ckipper_unknown() {
 #
 # Returns: 0 always.
 _ckipper_help() {
-    cat <<'EOF'
-ckipper (pronounced "skipper") — multi-account Claude Code manager
-
-Usage:
-  ckipper account <subcommand>   Manage Claude accounts (alias: acct)
-  ckipper worktree <subcommand>  Manage git worktrees (alias: wt)
-  ckipper run <project> <branch> Shortcut for `ckipper worktree run`
-  ckipper config <subcommand>    View and modify Ckipper settings
-  ckipper setup                  Run / re-run the interactive setup wizard
-  ckipper doctor                 Diagnostic check of accounts and tooling
-  ckipper help                   Show this overview
-
-Companion commands (sourced via aliases.zsh):
-  claude-<name> [args...]        Auto-generated launcher per registered account
-  <name> [args...]               Bare-name shortcut (skipped if it would shadow
-                                 an existing command, builtin, alias, or word)
-
-Run `ckipper <namespace> help` (e.g. `ckipper account help`) for the
-subcommand list, and `ckipper <namespace> <subcommand> --help` for per-
-subcommand details.
-
-Short alias: `ck` is the same as `ckipper`.
-EOF
+    _core_help_render 'ckipper (pronounced "skipper") — multi-account Claude Code manager' \
+        "" \
+        "Usage:" \
+        "  ckipper account <subcommand>   Manage Claude accounts (alias: acct)" \
+        "  ckipper worktree <subcommand>  Manage git worktrees (alias: wt)" \
+        "  ckipper run <project> <branch> Shortcut for \`ckipper worktree run\`" \
+        "  ckipper config <subcommand>    View and modify Ckipper settings" \
+        "  ckipper setup                  Run / re-run the interactive setup wizard" \
+        "  ckipper doctor                 Diagnostic check of accounts and tooling" \
+        "  ckipper help                   Show this overview" \
+        "" \
+        "Companion commands (sourced via aliases.zsh):" \
+        "  claude-<name> [args...]        Auto-generated launcher per registered account" \
+        "  <name> [args...]               Bare-name shortcut (skipped if it would shadow" \
+        "                                 an existing command, builtin, alias, or word)" \
+        "" \
+        "Run \`ckipper <namespace> help\` (e.g. \`ckipper account help\`) for the" \
+        "subcommand list, and \`ckipper <namespace> <subcommand> --help\` for per-" \
+        "subcommand details." \
+        "" \
+        "Short alias: \`ck\` is the same as \`ckipper\`."
 }
 
 # Print help text for the top-level `doctor` command.
 #
 # Returns: 0 always.
 _ckipper_help_text_doctor() {
-    cat <<'EOF'
-ckipper doctor
-
-Run a diagnostic checklist on registered accounts and ckipper tooling:
-  - Registry validity (version, JSON shape)
-  - Per-account: config dir presence, .claude.json/settings.json/hooks/
-  - Keychain entries reachable on macOS
-  - ~/.zshrc sources ckipper.zsh
-  - Stub ~/.claude state is absent
-
-Exits 0 if every check passes (or only INFOs/WARNs); exits 1 if any FAIL.
-EOF
+    _core_help_render "ckipper doctor" \
+        "" \
+        "Run a diagnostic checklist on registered accounts and ckipper tooling:" \
+        "  - Registry validity (version, JSON shape)" \
+        "  - Per-account: config dir presence, .claude.json/settings.json/hooks/" \
+        "  - Keychain entries reachable on macOS" \
+        "  - ~/.zshrc sources ckipper.zsh" \
+        "  - Stub ~/.claude state is absent" \
+        "" \
+        "Exits 0 if every check passes (or only INFOs/WARNs); exits 1 if any FAIL."
 }
 
 # Short alias: 'ck' for 'ckipper'.

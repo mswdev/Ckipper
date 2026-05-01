@@ -47,22 +47,20 @@ _ckipper_setup() {
 #
 # Returns: 0 always.
 _ckipper_setup_help() {
-    cat <<'EOF'
-ckipper setup — interactive wizard to configure Ckipper
-
-Re-runnable: every prompt defaults to your current value, so you can flip
-a single setting without redoing the whole flow.
-
-The wizard:
-  1. Verifies prereqs (gum, jq, docker) and offers to brew-install missing.
-  2. Shows your current global config and lets you customize any subset.
-  3. Offers to register a Claude account and configure its preferences.
-  4. Offers to build the ckipper-dev Docker image.
-
-Usage:
-  ckipper setup            Run the wizard.
-  ckipper setup --help     Show this help.
-EOF
+    _core_help_render "ckipper setup — interactive wizard to configure Ckipper" \
+        "" \
+        "Re-runnable: every prompt defaults to your current value, so you can flip" \
+        "a single setting without redoing the whole flow." \
+        "" \
+        "The wizard:" \
+        "  1. Verifies prereqs (gum, jq, docker) and offers to brew-install missing." \
+        "  2. Shows your current global config and lets you customize any subset." \
+        "  3. Offers to register a Claude account and configure its preferences." \
+        "  4. Offers to build the ckipper-dev Docker image." \
+        "" \
+        "Usage:" \
+        "  ckipper setup            Run the wizard." \
+        "  ckipper setup --help     Show this help."
 }
 
 # Customize-loop: pick a subset of global keys, prompt fresh values for each,

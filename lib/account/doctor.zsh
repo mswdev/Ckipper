@@ -17,6 +17,10 @@ typeset -g _CKIPPER_DOCTOR_FIX_MODE="false"
 
 # Print a single check result and increment the appropriate counter.
 #
+# Uses _core_style_badge so badge color follows the project-wide style policy
+# (NO_COLOR / TTY detection / CKIPPER_FORCE_COLOR override) instead of
+# emitting raw ANSI codes that ignore the user's preferences.
+#
 # Args:
 #   $1 — symbol: PASS, WARN, FAIL, or INFO
 #   $2 — message text
@@ -25,12 +29,14 @@ typeset -g _CKIPPER_DOCTOR_FIX_MODE="false"
 #   0 always.
 _ckipper_doctor_check() {
     local sym="$1" msg="$2"
+    local badge
     case "$sym" in
-        PASS) printf "  \033[32m[PASS]\033[0m %s\n" "$msg" ;;
-        WARN) printf "  \033[33m[WARN]\033[0m %s\n" "$msg"; (( _CKIPPER_DOCTOR_WARN += 1 )) ;;
-        FAIL) printf "  \033[31m[FAIL]\033[0m %s\n" "$msg"; (( _CKIPPER_DOCTOR_FAIL += 1 )) ;;
-        INFO) printf "  [INFO] %s\n" "$msg" ;;
+        PASS) badge=$(_core_style_badge PASS green) ;;
+        WARN) badge=$(_core_style_badge WARN yellow); (( _CKIPPER_DOCTOR_WARN += 1 )) ;;
+        FAIL) badge=$(_core_style_badge FAIL red); (( _CKIPPER_DOCTOR_FAIL += 1 )) ;;
+        INFO) badge="[INFO]" ;;
     esac
+    printf '  %s %s\n' "$badge" "$msg"
 }
 
 # Check that all required ckipper tool files and hook files are deployed.
@@ -38,7 +44,7 @@ _ckipper_doctor_check() {
 # Returns:
 #   0 always (results printed via _ckipper_doctor_check).
 _ckipper_doctor_tooling() {
-    echo "── Tooling ───────────────────────────────────────────"
+    _core_style_header "Tooling"
     if [[ -d "$CKIPPER_DIR" ]]; then _ckipper_doctor_check PASS "$CKIPPER_DIR exists"; else _ckipper_doctor_check FAIL "$CKIPPER_DIR is missing — run install.sh"; fi
     if [[ -f "$CKIPPER_DIR/docker/ckipper.zsh" ]]; then _ckipper_doctor_check PASS "ckipper.zsh deployed"; else _ckipper_doctor_check FAIL "ckipper.zsh missing in $CKIPPER_DIR/docker/"; fi
     if [[ -f "$CKIPPER_DIR/docker/cleanup-projects.py" ]]; then _ckipper_doctor_check PASS "cleanup-projects.py deployed"; else _ckipper_doctor_check WARN "cleanup-projects.py missing — ckipper worktree rm cleanup will silently skip"; fi
@@ -73,7 +79,7 @@ _ckipper_doctor_check_stale_w_vars() {
 #   0 if registry exists and checks run; 1 if registry file is missing.
 _ckipper_doctor_registry() {
     echo ""
-    echo "── Registry ──────────────────────────────────────────"
+    _core_style_header "Registry"
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
         _ckipper_doctor_check INFO "No registry yet — no accounts registered. Run: ckipper account add <name>"
         return 1
@@ -334,7 +340,7 @@ _ckipper_doctor_account() {
 #   0 always.
 _ckipper_doctor_accounts() {
     echo ""
-    echo "── Per-account state ────────────────────────────────"
+    _core_style_header "Per-account state"
     local names; names=$(jq -r '.accounts | keys[]?' "$CKIPPER_REGISTRY")
     if [[ -z "$names" ]]; then
         _ckipper_doctor_check WARN "registry has no accounts"
@@ -352,7 +358,7 @@ _ckipper_doctor_accounts() {
 #   0 always.
 _ckipper_doctor_shell() {
     echo ""
-    echo "── Aliases & shell integration ──────────────────────"
+    _core_style_header "Aliases & shell integration"
     if [[ -f "$CKIPPER_DIR/aliases.zsh" ]]; then _ckipper_doctor_check PASS "aliases.zsh exists at $CKIPPER_DIR/aliases.zsh"
     else _ckipper_doctor_check WARN "aliases.zsh missing — will be regenerated on next add/remove"; fi
     if grep -q 'ckipper/aliases.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources aliases.zsh"
@@ -360,7 +366,7 @@ _ckipper_doctor_shell() {
     if grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources ckipper.zsh"
     else _ckipper_doctor_check FAIL "~/.zshrc does NOT source ckipper.zsh — re-run install.sh"; fi
     echo ""
-    echo "── Stub files (cosmetic) ────────────────────────────"
+    _core_style_header "Stub files (cosmetic)"
     if [[ -d "$HOME/.claude" ]]; then
         local stub_count; stub_count=$(ls -1A "$HOME/.claude" 2>/dev/null | wc -l | tr -d ' ')
         _ckipper_doctor_check WARN "~/.claude exists ($stub_count files) — Claude Code may have recreated it. Safe to: rm -rf ~/.claude"
@@ -377,17 +383,19 @@ _ckipper_doctor_shell() {
 #   0 if no FAILs; 1 if any FAILs.
 _ckipper_doctor_summary() {
     echo ""
-    echo "──────────────────────────────────────────────────────"
+    _core_style_divider
     if (( _CKIPPER_DOCTOR_FAIL > 0 )); then
-        printf "Result: \033[31m%d FAIL\033[0m, \033[33m%d WARN\033[0m\n" "$_CKIPPER_DOCTOR_FAIL" "$_CKIPPER_DOCTOR_WARN"
+        local fail_part warn_part
+        fail_part=$(_core_style_color red "$_CKIPPER_DOCTOR_FAIL FAIL")
+        warn_part=$(_core_style_color yellow "$_CKIPPER_DOCTOR_WARN WARN")
+        printf 'Result: %s, %s\n' "$fail_part" "$warn_part"
         return 1
-    elif (( _CKIPPER_DOCTOR_WARN > 0 )); then
-        printf "Result: \033[33m%d WARN\033[0m\n" "$_CKIPPER_DOCTOR_WARN"
-        return 0
-    else
-        printf "Result: \033[32mall checks passed\033[0m\n"
+    fi
+    if (( _CKIPPER_DOCTOR_WARN > 0 )); then
+        printf 'Result: %s\n' "$(_core_style_color yellow "$_CKIPPER_DOCTOR_WARN WARN")"
         return 0
     fi
+    printf 'Result: %s\n' "$(_core_style_color green "all checks passed")"
 }
 
 # Run all diagnostic checks and print results to stdout.

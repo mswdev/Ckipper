@@ -26,12 +26,10 @@ _ckipper_run() {
 #
 # Returns: 0 always.
 _ckipper_run_help() {
-    cat <<'EOF'
-ckipper run <project> <branch> [flags] [cmd...]
-
-Shortcut for `ckipper worktree run`. Per-account preferences
-(always_docker, always_firewall, ssh_forward) populate flag
-defaults; pass --no-docker / --no-firewall / --no-ssh-forward
-to override per invocation.
-EOF
+    _core_help_render "ckipper run <project> <branch> [flags] [cmd...]" \
+        "" \
+        "Shortcut for \`ckipper worktree run\`. Per-account preferences" \
+        "(always_docker, always_firewall, ssh_forward) populate flag" \
+        "defaults; pass --no-docker / --no-firewall / --no-ssh-forward" \
+        "to override per invocation."
 }

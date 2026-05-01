@@ -137,7 +137,13 @@ run_helper() {
     run_helper '_ckipper_account_list'
 
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "* work" ]]
+    # Default marker is rendered in the trailing DEFAULT column (post-restyle).
+    # Require `work` then non-newline padding then `*` on the SAME line.
+    # [[:blank:]] is space/tab only (no \n) and [^[:cntrl:]] excludes \n, so
+    # the legend line `* = default ...` cannot satisfy this regex via
+    # cross-line matching.
+    [[ "$output" =~ work[[:blank:]]+[^[:cntrl:]]*\* ]]
+    [[ "$output" =~ "* = default" ]]
 }
 
 # ── _ckipper_account_default ──────────────────────────────────────────────────

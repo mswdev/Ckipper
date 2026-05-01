@@ -25,6 +25,8 @@ _run_run_dispatcher() {
     run env HOME="$TMP_HOME" PATH="$PATH" \
         zsh -c "
             _ckipper_worktree_run() { echo STUB-RUN \"\$@\"; return 0; }
+            source \"$REPO_ROOT/lib/core/style.zsh\"
+            source \"$REPO_ROOT/lib/core/help.zsh\"
             source \"$REPO_ROOT/lib/run/dispatcher.zsh\"
             $1
         "
