@@ -21,12 +21,16 @@ teardown() {
 
 # ── Top-level routing ────────────────────────────────────────────────
 
-@test "ckipper (bare) prints top-level help and exits 0" {
+@test "ckipper (bare) opens the launcher menu" {
+    # Bare `ck` opens the interactive launcher (Phase 5.2). With no stdin, the
+    # underlying choose prompt hits EOF (or gum errors out without a TTY) and
+    # the menu exits non-zero. We assert on the banner + tagline because they
+    # render before the prompt regardless of the gum / pure-zsh code path.
     run_ckipper
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "ckipper account" ]]
-    [[ "$output" =~ "ckipper worktree" ]]
-    [[ "$output" =~ "ckipper doctor" ]]
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Ckipper" ]]
+    [[ "$output" =~ "Multi-account" ]]
 }
 
 @test "ckipper help prints top-level help" {

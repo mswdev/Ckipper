@@ -58,6 +58,10 @@ source "$CKIPPER_REPO_DIR/lib/setup/prompts.zsh"
 source "$CKIPPER_REPO_DIR/lib/setup/apply.zsh"
 source "$CKIPPER_REPO_DIR/lib/setup/dispatcher.zsh"
 
+# Top-level shortcuts (run / launcher)
+source "$CKIPPER_REPO_DIR/lib/run/dispatcher.zsh"
+source "$CKIPPER_REPO_DIR/lib/launcher/menu.zsh"
+
 # User config (projects/worktrees dirs, ports, extra volumes, extra env vars).
 # Renamed from w-config.zsh in the merge; install.sh handles the migration.
 _ckipper_user_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper-config.zsh"
@@ -73,7 +77,7 @@ CKIPPER_WORKTREES_DIR="${CKIPPER_WORKTREES_DIR:-$CKIPPER_PROJECTS_DIR/.worktrees
 (( ${#CKIPPER_EXTRA_ENV[@]} == 0 )) && CKIPPER_EXTRA_ENV=()
 
 # Top-level commands. Used both for routing and for fuzzy-suggest.
-_CKIPPER_COMMANDS=(account worktree config setup doctor help)
+_CKIPPER_COMMANDS=(account worktree run config setup doctor help)
 
 # Pre-merge top-level commands → their post-merge namespaced replacement.
 # Used by _ckipper_unknown so a user typing the old form (e.g. `ckipper add`)
@@ -113,6 +117,7 @@ ckipper() {
     case "$cmd" in
         account)  _ckipper_account_dispatch "$@" ;;
         worktree) _ckipper_worktree_dispatch "$@" ;;
+        run)      _ckipper_run "$@" ;;
         config)   _ckipper_config_dispatch "$@" ;;
         setup)    _ckipper_setup "$@" ;;
         doctor)
@@ -122,7 +127,8 @@ ckipper() {
             fi
             _ckipper_doctor "$@"
             ;;
-        ""|help|-h|--help) _ckipper_help ;;
+        "")               _ckipper_launcher_menu ;;
+        help|-h|--help)   _ckipper_help ;;
         *) _ckipper_unknown "$cmd"; return 1 ;;
     esac
 }
@@ -159,6 +165,7 @@ ckipper (pronounced "skipper") — multi-account Claude Code manager
 Usage:
   ckipper account <subcommand>   Manage Claude accounts (alias: acct)
   ckipper worktree <subcommand>  Manage git worktrees (alias: wt)
+  ckipper run <project> <branch> Shortcut for `ckipper worktree run`
   ckipper config <subcommand>    View and modify Ckipper settings
   ckipper setup                  Run / re-run the interactive setup wizard
   ckipper doctor                 Diagnostic check of accounts and tooling
@@ -206,7 +213,7 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs
 # regenerate the cached completion file. The version is embedded as a literal
 # comment in the generated file and matched here.
-CKIPPER_COMPLETION_VERSION=3
+CKIPPER_COMPLETION_VERSION=4
 if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
     # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
@@ -216,7 +223,7 @@ if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     # a completion file, not maintained shell logic).
     cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
 #compdef ckipper ck
-# ckipper-completion-version=3
+# ckipper-completion-version=4
 
 _ckipper() {
     local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
@@ -228,6 +235,7 @@ _ckipper() {
         'acct:Short alias for account'
         'worktree:Manage git worktrees'
         'wt:Short alias for worktree'
+        'run:Shortcut for worktree run'
         'config:View and modify Ckipper settings'
         'setup:Run / re-run the setup wizard'
         'doctor:Diagnostic check of accounts and tooling'
@@ -283,6 +291,15 @@ _ckipper() {
                 config)
                     _describe -t subcommands 'config subcommand' config_subs && return 0
                     ;;
+                run)
+                    local -a projects
+                    for dir in $(find "$projects_dir" -maxdepth 3 -name ".git" -type d -not -path "*/.worktrees/*" 2>/dev/null); do
+                        local repo_dir="${dir:h}"
+                        local rel="${repo_dir#$projects_dir/}"
+                        projects+=("$rel")
+                    done
+                    _describe -t projects 'project' projects && return 0
+                    ;;
             esac
             ;;
         arg3)
@@ -302,6 +319,23 @@ _ckipper() {
                         accounts=( $(jq -r '.accounts | keys[]' "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" 2>/dev/null) )
                     fi
                     _describe -t accounts 'account name' accounts && return 0
+                    ;;
+            esac
+            case "${words[2]}" in
+                run)
+                    local project="${words[3]}"
+                    [[ -z "$project" ]] && return 0
+                    local -a worktrees
+                    if [[ -d "$worktrees_dir/$project" ]]; then
+                        for wt in $worktrees_dir/$project/*(N/); do
+                            worktrees+=(${wt:t})
+                        done
+                    fi
+                    if (( ${#worktrees} > 0 )); then
+                        _describe -t worktrees 'existing worktree' worktrees
+                    else
+                        _message 'new worktree branch name'
+                    fi
                     ;;
             esac
             ;;
@@ -327,6 +361,18 @@ _ckipper() {
         args)
             case "${words[2]}/${words[3]}" in
                 worktree/run|wt/run)
+                    local -a flags
+                    flags=(
+                        '--docker:Run inside the ckipper-dev Docker container'
+                        '--firewall:Add egress firewall (requires --docker)'
+                        '--account:Use a specific Ckipper account'
+                    )
+                    _describe -t flags 'flag' flags
+                    _command_names -e
+                    ;;
+            esac
+            case "${words[2]}" in
+                run)
                     local -a flags
                     flags=(
                         '--docker:Run inside the ckipper-dev Docker container'
