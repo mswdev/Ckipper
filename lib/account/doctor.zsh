@@ -55,6 +55,7 @@ _ckipper_doctor_tooling() {
         _ckipper_doctor_check WARN "hooks/ is missing or has fewer than $MIN_HOOK_FILES hook files"
     fi
     _ckipper_doctor_check_stale_w_vars
+    _ckipper_doctor_check_config_keys
 }
 
 # Detect pre-merge W_* variable assignments in ckipper-config.zsh.
@@ -70,6 +71,37 @@ _ckipper_doctor_check_stale_w_vars() {
     [[ -f "$cfg" ]] || return 0
     if grep -qE '^[[:space:]]*W_(PROJECTS_DIR|WORKTREES_DIR|PORTS|EXTRA_VOLUMES|EXTRA_ENV)[[:space:]]*=' "$cfg"; then
         _ckipper_doctor_check FAIL "ckipper-config.zsh has stale W_* assignments — they're being ignored. Rename to CKIPPER_* (e.g. W_PORTS → CKIPPER_PORTS)."
+    fi
+}
+
+# Validate every CKIPPER_<KEY>= assignment in ckipper-config.zsh against the
+# config schema (lib/config/schema.zsh). Unknown keys produce a WARN — they
+# are likely typos that the source loader will silently set into a global
+# variable that nothing reads.
+#
+# Honors a small allowlist for legacy power-user keys that are documented in
+# the example file but intentionally absent from the schema (extra_volumes,
+# extra_env). They predate the schema and remain as raw zsh arrays.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_check_config_keys() {
+    local file="${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper-config.zsh"
+    [[ -f "$file" ]] || return 0
+    local -a unknown
+    local -a power_user_keys=(extra_volumes extra_env)
+    local line key lower
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*CKIPPER_([A-Z0-9_]+)= ]] || continue
+        key="${match[1]}"
+        lower="${key:l}"
+        (( ${+_CKIPPER_SCHEMA_TYPE[$lower]} )) && continue
+        (( ${power_user_keys[(I)$lower]} )) && continue
+        unknown+=("CKIPPER_$key")
+    done < "$file"
+    if (( ${#unknown[@]} > 0 )); then
+        _ckipper_doctor_check WARN "unknown keys in ckipper-config.zsh: ${unknown[*]}"
+    else
+        _ckipper_doctor_check PASS "ckipper-config.zsh keys all known"
     fi
 }
 
@@ -97,6 +129,39 @@ _ckipper_doctor_registry() {
         _ckipper_doctor_check INFO "default account: $default_acc"
     else
         _ckipper_doctor_check FAIL "default account '$default_acc' is NOT in registry — fix with: ckipper account default <existing-account>"
+    fi
+    _ckipper_doctor_check_preferences
+}
+
+# Verify every registered account has the v2 `preferences` block with the
+# three required account-scoped keys (always_docker, always_firewall,
+# ssh_forward). Migration runs at registry-load, but a user who hand-edits
+# accounts.json between bumps can end up with a partial block — surface it.
+#
+# Emits WARN (not FAIL) listing the offending accounts. Migration will fix
+# them on next registry-touch operation; this is a heads-up, not a halt.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_check_preferences() {
+    [[ -f "$CKIPPER_REGISTRY" ]] || return 0
+    local missing
+    missing=$(jq -r '
+        .accounts |
+        to_entries[] |
+        select(
+            .value.preferences == null or
+            (.value.preferences | type) != "object" or
+            (((.value.preferences | has("always_docker")) and
+              (.value.preferences | has("always_firewall")) and
+              (.value.preferences | has("ssh_forward"))) | not)
+        ) |
+        .key
+    ' "$CKIPPER_REGISTRY" 2>/dev/null)
+    if [[ -n "$missing" ]]; then
+        local list; list=$(echo "$missing" | paste -sd "," -)
+        _ckipper_doctor_check WARN "accounts missing preferences block: $list"
+    else
+        _ckipper_doctor_check PASS "accounts.json v2 preferences blocks valid"
     fi
 }
 

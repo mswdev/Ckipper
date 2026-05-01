@@ -244,3 +244,83 @@ _seed_account_with_stale_plugins() {
     grep -q ".claude-personal" "$pm_file"
     ! grep -q "$TMP_HOME/.claude/" "$pm_file"
 }
+
+# ── _ckipper_doctor_check_preferences ─────────────────────────────────
+
+@test "doctor flags account missing preferences block" {
+    local acc_dir="$TMP_HOME/.claude-work"
+    mkdir -p "$acc_dir"
+    cat >"$CKIPPER_REGISTRY" <<JSON
+{"version":2,"default":"work","accounts":{"work":{"config_dir":"$acc_dir","keychain_service":null,"registered_at":"t"}}}
+JSON
+
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_check_preferences'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "WARN" ]]
+    [[ "$output" =~ "preferences" ]]
+    [[ "$output" =~ "work" ]]
+}
+
+@test "doctor passes when accounts have valid preferences blocks" {
+    local acc_dir="$TMP_HOME/.claude-work"
+    mkdir -p "$acc_dir"
+    cat >"$CKIPPER_REGISTRY" <<JSON
+{"version":2,"default":"work","accounts":{"work":{"config_dir":"$acc_dir","keychain_service":null,"registered_at":"t","preferences":{"always_docker":false,"always_firewall":false,"ssh_forward":true}}}}
+JSON
+
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_check_preferences'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "PASS" ]]
+    [[ "$output" =~ "preferences blocks valid" ]]
+}
+
+# ── _ckipper_doctor_check_config_keys ─────────────────────────────────
+
+@test "doctor warns on unknown CKIPPER_ keys in ckipper-config.zsh" {
+    mkdir -p "$CKIPPER_DIR/docker"
+    cat >"$CKIPPER_DIR/docker/ckipper-config.zsh" <<'CFG'
+CKIPPER_NOTIFY_BELL=true
+CKIPPER_TYPO_KEY=foo
+CFG
+
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_check_config_keys'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "WARN" ]]
+    [[ "$output" =~ "CKIPPER_TYPO_KEY" ]]
+}
+
+@test "doctor passes when every CKIPPER_ key in config file is in the schema" {
+    mkdir -p "$CKIPPER_DIR/docker"
+    cat >"$CKIPPER_DIR/docker/ckipper-config.zsh" <<'CFG'
+CKIPPER_NOTIFY_BELL=true
+CKIPPER_DEP_INSTALL_CMD="pnpm install"
+CFG
+
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_check_config_keys'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "PASS" ]]
+    [[ "$output" =~ "all known" ]]
+}
+
+@test "doctor accepts EXTRA_VOLUMES and EXTRA_ENV as power-user keys" {
+    mkdir -p "$CKIPPER_DIR/docker"
+    cat >"$CKIPPER_DIR/docker/ckipper-config.zsh" <<'CFG'
+CKIPPER_EXTRA_VOLUMES=("foo:/foo")
+CKIPPER_EXTRA_ENV=("BAR=baz")
+CFG
+
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_check_config_keys'
+
+    [ "$status" -eq 0 ]
+    [[ ! "$output" =~ "unknown keys" ]]
+    [[ ! "$output" =~ "WARN" ]]
+}
