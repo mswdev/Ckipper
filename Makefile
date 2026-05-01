@@ -9,7 +9,7 @@ help:
 	@echo "make install          - run ./install.sh"
 
 bootstrap:
-	brew install bats-core shellcheck shfmt
+	brew install bats-core shellcheck shfmt gum
 	pip install ruff pytest
 
 test: test-unit
