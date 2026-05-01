@@ -24,9 +24,3 @@ jobs:
 
       - name: Test (unit)
         run: make test-unit
-
-      - name: Verify no sibling cross-imports (lib/w/ -> lib/ckipper/)
-        run: |
-          if [ -d lib/w ]; then
-            ! grep -rE '\b_ckipper_' lib/w/
-          fi

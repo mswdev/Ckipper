@@ -4,9 +4,7 @@
 
 Please do **NOT** open a public GitHub issue for security vulnerabilities.
 
-Instead, report privately via:
-- GitHub Security Advisories: https://github.com/mswdev/Ckipper/security/advisories/new
-- Email: matt@msw.dev
+Instead, report privately via [GitHub Security Advisories](https://github.com/mswdev/Ckipper/security/advisories/new).
 
 We aim to acknowledge reports within 72 hours and to provide a fix or mitigation timeline within 7 days.
 

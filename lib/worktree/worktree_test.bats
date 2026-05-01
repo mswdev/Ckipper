@@ -15,7 +15,9 @@ teardown() {
     teardown_isolated_env
 }
 
-# Helper: source worktree.zsh (and its utils dep) then run zsh_cmd.
+# Helper: source worktree.zsh (with its utils, registry, and args.zsh deps —
+# args.zsh provides the validate_*_name helpers worktree.zsh now calls) then
+# run zsh_cmd.
 _run_worktree() {
     local zsh_cmd="$1"
     run env HOME="$TMP_HOME" \
@@ -30,6 +32,7 @@ _run_worktree() {
         zsh -c "
             source \"$REPO_ROOT/lib/core/utils.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
+            source \"$REPO_ROOT/lib/worktree/args.zsh\"
             source \"$REPO_ROOT/lib/worktree/worktree.zsh\"
             $zsh_cmd
         "
@@ -54,4 +57,32 @@ _run_worktree() {
 
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not found" || "$output" =~ "Project" ]]
+}
+
+@test "_ckipper_worktree_create_worktree rejects a branch name starting with --" {
+    _run_worktree '_ckipper_worktree_create_worktree myapp "--upload-pack=/tmp/x"'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+@test "_ckipper_worktree_create_worktree rejects a project path with a .. component" {
+    _run_worktree '_ckipper_worktree_create_worktree "../../etc" feature-x'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid project path" ]]
+}
+
+@test "_ckipper_worktree_remove_worktree rejects a branch name starting with -" {
+    _run_worktree '_ckipper_worktree_remove_worktree myapp "-h"'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+@test "_ckipper_worktree_remove_worktree rejects a project path with shell metacharacters" {
+    _run_worktree '_ckipper_worktree_remove_worktree "myorg/app;rm" feature-x'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid project path" ]]
 }

@@ -1,12 +1,16 @@
 # Ckipper (pronounced "skipper")
 
+> _This project is vibe-engineered. I use it personally for my own setup and it works well; use it at your own risk. Works on my machine ;) See [Contributing](#contributing)._
+
+> **Platform:** macOS only — uses macOS Keychain, Docker Desktop, and host SSH agent forwarding.
+
 Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely, plus multi-account support: run a personal account in one terminal and a work account in another, fully isolated.
 
 Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, an egress firewall, safety hooks, macOS Keychain auth, and per-account isolation across credentials, settings, MCP, plugins, and projects.
 
 ## The Problem
 
-`--dangerously-skip-permissions` lets Claude work autonomously without clicking Allow for every action — but on your actual machine it has full access to your filesystem, credentials, and network.
+`--dangerously-skip-permissions` lets Claude work autonomously without clicking Allow for every action — but on your actual machine it has full access to your filesystem, credentials, and network. The flag means Claude executes every command it decides to run for the entire session without asking; running it inside a container is the whole point.
 
 ## The Solution
 
@@ -142,31 +146,45 @@ On every container start, `entrypoint.sh` automatically:
 
 Claude **cannot**: access files outside the worktree, reach your Documents/Desktop/other projects, install system packages, persist processes after exit, create other Docker containers, or access your LAN (ports bound to `127.0.0.1` only).
 
+**What Claude *can* do inside the container:**
+
+- Full read/write on the worktree (`/workspace`).
+- Read/write on the parent repo's `.git/` directory (so commits, fetches, and branch ops work).
+- Read/write on the active per-account dir (`~/.claude-<name>/`).
+- Read a copy of your `~/.ssh` contents — staged read-only at `~/.ssh-host` and copied into the container's tmpfs at `~/.ssh` on startup. If you keep private key files in `~/.ssh`, treat the container as having the same SSH access you do. The copy lives only in container RAM and disappears when the container exits.
+- Use the host's SSH agent (forwarded via `/run/host-services/ssh-auth.sock`) and a `gh`-authenticated session for HTTPS pushes.
+- Outbound network — unrestricted by default; default-deny with a domain whitelist when `--firewall` is set.
+
+### Prompt injection: the agent inside is still a target
+
+Container isolation contains accidents and outright host-level escalation; it does not stop a successful prompt-injection attack from doing damage *with* Claude's legitimate access. An attacker-controlled input — a poisoned README in a dependency, a hostile MCP server, a fetched URL, a GitHub issue body that Claude reads, a malicious commit message — can try to convince Claude to act against you using the access it already has. That includes writing files anywhere in the worktree, committing and pushing to your remote (the SSH agent is forwarded and `gh` is authenticated), reading the in-container copy of `~/.ssh` and the per-account `.claude.json`, and sending data outbound to any whitelisted domain. Treat untrusted inputs accordingly: be cautious about what repos you point Claude at, what MCP servers you install, and what URLs you ask it to fetch. The `--firewall` mode meaningfully shrinks the exfiltration surface but does not eliminate it (GitHub itself is whitelisted).
+
 ### Safety Hooks (Docker-only, no-op on host)
 
-Four Claude Code hooks activate inside Docker:
+These hooks are UX guardrails, not a security boundary — the container, the optional egress firewall, and the absence of host write access are the actual isolation. Four Claude Code hooks activate inside Docker:
 
 1. **Config Protection** (`protect-claude-config.sh`) — Blocks Edit/Write to Claude config files (settings.json, hooks, plugins, etc.) that could execute code on the host
-2. **Bash Guardrails** (`bash-guardrails.sh`) — Blocks destructive commands:
+2. **Bash Guardrails** (`bash-guardrails.sh`) — Blocks destructive commands run via the Bash tool (the Read tool is not hooked, so this is not a defense against direct file reads):
    - `rm -rf` (except build artifacts like `node_modules`, `dist`, `.next`)
    - `git push --force` (suggests `--force-with-lease`)
    - `git reset --hard` (suggests `git stash`)
    - Writing to `.git/hooks/` or `.git/config` (these execute on the host)
    - Recursive `chmod`/`chown`
-   - Reading SSH keys or credential files directly
+   - Reading SSH keys or credential files via shell commands like `cat`/`cp`/`base64` (Bash-tool only — the Read tool is not hooked, so this catches scripted exfiltration, not direct reads)
    - Modifying Claude config files via shell
 3. **Context Injection** (`docker-context.sh`) — Tells Claude the safety rules at startup so it avoids triggering guardrails
 4. **Notification Bell** (`notify-bell.sh`) — Sends a terminal bell character (`\a`) on Claude Code notification events, which passes through Docker's TTY to the host terminal. Triggers native notifications (dock bounce, sound) in Ghostty, iTerm2, Warp, and other terminals that support terminal bell
 
 ### Additional Security
 
-- `core.hooksPath` set globally to `~/.git-hooks` — git ignores `.git/hooks/` so planted hooks can't execute on host
+- `core.hooksPath` set globally to `~/.git-hooks` — git ignores `.git/hooks/` so planted hooks can't execute on host. `install.sh` only sets this if you don't already have a different value (so husky/pre-commit/etc. are preserved); the global setting is overridable by per-repo config, so it isn't an absolute backstop.
 - GPG signing disabled via `GIT_CONFIG_COUNT` env vars — no file modification, overrides both local and global config, disappears when container exits
 - Post-session `.git/config` tamper detection
 - Credentials cleared from environment before launching the command (invisible to `env` and `/proc/self/environ`)
 - Per-account `.claude.json` is bind-mounted RW; container mutations propagate to the host file (intentional, gated by the same-account-twice advisory)
-- SSH config mounted read-only as staging copy (`.ssh-host`), copied and sanitized by entrypoint — macOS-specific `UseKeychain` stripped
-- SSH agent forwarded from host via Docker Desktop socket (`/run/host-services/ssh-auth.sock`) — no private keys copied into container
+- SSH config mounted read-only as staging copy (`.ssh-host`), copied and sanitized by entrypoint — macOS-specific `UseKeychain` stripped. The contents of `~/.ssh` (including any private key files) are copied into the container's tmpfs as part of this — see "What Claude *can* do" above.
+- SSH agent forwarded from host via Docker Desktop socket (`/run/host-services/ssh-auth.sock`)
+- SSH agent forwarding and the `~/.ssh` staging mount are currently always-on for `--docker` mode. Making this configurable via the planned setup wizard is on the roadmap.
 - Per-account `~/.claude-<name>` mounted at the same host path inside the container so plugins with hardcoded absolute paths resolve correctly
 - No Docker socket mounted (cannot create sibling containers)
 
@@ -180,6 +198,8 @@ Default-deny iptables firewall that only allows outbound traffic to whitelisted 
 
 Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP services (Atlassian, Clerk, Figma, ClickUp, Context7, Google Fonts). Edit `docker/init-firewall.sh` to customize.
 
+Default-deny applies to IPv4. Container IPv6 is off by default in Docker Desktop; if you've enabled it, keep it disabled when running with `--firewall` until IPv6 default-deny is in place.
+
 ## MCP Support
 
 | MCP Server | Type | Works? |
@@ -188,6 +208,8 @@ Default whitelist: Anthropic API, GitHub, npm, PyPI, Sentry, and common MCP serv
 | HTTP/SSE MCPs | network | Yes |
 | MCPs with local files | node/uvx (mounted ro) | Yes (add mount) |
 | Docker-based MCPs | Docker-in-Docker | No (security) |
+
+> **Supply-chain note:** an MCP server is third-party code that runs inside the container with the same access Claude has — full RW on the worktree, the per-account `.claude.json`, and outbound network. Pin versions where the registry supports it, audit servers before adding them, and remove servers you no longer use (`ckipper account sync` doesn't prune; edit `.claude.json` or use `claude mcp remove`).
 
 For MCPs that reference local files, add entries to `CKIPPER_EXTRA_VOLUMES` in `~/.ckipper/docker/ckipper-config.zsh`. Mount at the exact same host path so MCP configs work unchanged.
 

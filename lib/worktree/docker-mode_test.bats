@@ -86,3 +86,73 @@ _run_docker_mode() {
     [ "$status" -eq 0 ]
     [ "$output" = "result=" ]
 }
+
+@test "_ckipper_worktree_docker_build_base_args includes --cap-drop=ALL hardening flag" {
+    _run_docker_mode "_ckipper_worktree_docker_build_base_args; print -r -- \"\${CKIPPER_WT_DOCKER_ARGS[*]}\""
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "--cap-drop=ALL" ]]
+}
+
+@test "_ckipper_worktree_docker_add_optional_args passes credentials via -e VAR (no value in argv)" {
+    # Secret value: must NOT appear anywhere in CKIPPER_WT_DOCKER_ARGS.
+    local sentinel='SENTINEL_CREDS_VALUE_NOT_IN_ARGV_xyz123'
+
+    _run_docker_mode "
+        _ckipper_worktree_docker_build_base_args
+        _ckipper_worktree_docker_add_optional_args '$sentinel' ''
+        print -r -- \"ARGS=\${CKIPPER_WT_DOCKER_ARGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    # `-e CLAUDE_CREDENTIALS` (bare) appears as two adjacent argv tokens.
+    [[ "$output" =~ "-e CLAUDE_CREDENTIALS" ]]
+    # The value MUST NOT appear in argv — that would defeat the leak fix.
+    if [[ "$output" == *"$sentinel"* ]]; then
+        echo "FAIL: credential sentinel leaked into argv: $output" >&2
+        return 1
+    fi
+    # And critically, the old `CLAUDE_CREDENTIALS=` form must be gone.
+    if [[ "$output" == *"CLAUDE_CREDENTIALS="* ]]; then
+        echo "FAIL: -e CLAUDE_CREDENTIALS=<value> form still present: $output" >&2
+        return 1
+    fi
+}
+
+@test "_ckipper_worktree_docker_add_optional_args passes gh token via -e VAR (no value in argv)" {
+    local sentinel='SENTINEL_GH_TOKEN_VALUE_NOT_IN_ARGV_abc789'
+
+    _run_docker_mode "
+        _ckipper_worktree_docker_build_base_args
+        _ckipper_worktree_docker_add_optional_args '' '$sentinel'
+        print -r -- \"ARGS=\${CKIPPER_WT_DOCKER_ARGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "-e GH_TOKEN" ]]
+    if [[ "$output" == *"$sentinel"* ]]; then
+        echo "FAIL: gh token sentinel leaked into argv: $output" >&2
+        return 1
+    fi
+    if [[ "$output" == *"GH_TOKEN="* ]]; then
+        echo "FAIL: -e GH_TOKEN=<value> form still present: $output" >&2
+        return 1
+    fi
+}
+
+@test "firewall flag still adds --cap-add=NET_ADMIN after --cap-drop=ALL" {
+    # Re-grant of NET_ADMIN must apply on top of cap-drop=ALL so init-firewall.sh
+    # can run iptables-legacy. cap-add applies after cap-drop in Docker.
+    export CKIPPER_WT_FLAG_FIREWALL=true
+
+    _run_docker_mode "
+        CKIPPER_WT_FLAG_FIREWALL=true
+        _ckipper_worktree_docker_build_base_args
+        [[ \"\$CKIPPER_WT_FLAG_FIREWALL\" = true ]] && CKIPPER_WT_DOCKER_ARGS+=( --cap-add=NET_ADMIN -e ENABLE_FIREWALL=1 )
+        print -r -- \"\${CKIPPER_WT_DOCKER_ARGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "--cap-drop=ALL" ]]
+    [[ "$output" =~ "--cap-add=NET_ADMIN" ]]
+}

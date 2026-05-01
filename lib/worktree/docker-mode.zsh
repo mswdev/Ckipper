@@ -37,6 +37,15 @@ _ckipper_worktree_run_docker_mode() {
     claude_creds=$(_ckipper_worktree_docker_extract_credentials) || return 1
     gh_token=$(_ckipper_worktree_docker_extract_gh_token)
 
+    # Export credentials in this shell scope so `docker run -e VAR` (without =value)
+    # inherits them from the parent process env. This keeps the values OUT of argv
+    # (and therefore out of `ps`/`/proc/<pid>/cmdline` and `docker inspect`).
+    # We always unset before returning — see the trap below.
+    export CLAUDE_CREDENTIALS="$claude_creds"
+    export GH_TOKEN="$gh_token"
+    # shellcheck disable=SC2064 # intentional immediate expansion: unset by exact name.
+    trap "unset CLAUDE_CREDENTIALS GH_TOKEN; trap - EXIT INT TERM" EXIT INT TERM
+
     typeset -ga CKIPPER_WT_DOCKER_ARGS=()
     _ckipper_worktree_docker_build_base_args
     _ckipper_worktree_docker_add_optional_args "$claude_creds" "$gh_token"
@@ -134,9 +143,23 @@ _ckipper_worktree_docker_extract_gh_token() {
 #   CKIPPER_EXTRA_VOLUMES globals.
 # Sets: CKIPPER_WT_DOCKER_ARGS (initialised from scratch).
 # Returns: 0 always.
+#
+# Hardening notes:
+# - --cap-drop=ALL drops the default Linux caps (NET_RAW, FOWNER, SETUID, etc.).
+#   The conditional --cap-add=NET_ADMIN appended later when --firewall is set
+#   re-grants what init-firewall.sh needs (iptables-legacy). Side effect: the
+#   `chown` in fix-volume-perms.sh becomes a silent no-op (loses CAP_CHOWN); the
+#   script already wraps it in `|| true`, and new installs get the right UID
+#   from initial volume creation, so this only affects upgrade paths with stale
+#   named-volume UIDs — accepted trade-off.
+# - We deliberately do NOT add --security-opt=no-new-privileges. It would block
+#   sudo's setuid bit at exec time, breaking `sudo init-firewall.sh` and the
+#   unconditional `sudo fix-volume-perms.sh` in entrypoint.sh. Refactoring the
+#   sudo path is out of scope for this script.
 _ckipper_worktree_docker_build_base_args() {
     CKIPPER_WT_DOCKER_ARGS=(
         docker run --rm -it
+        --cap-drop=ALL
         -e TERM="${TERM:-xterm-256color}"
         -v "$CKIPPER_WT_PATH:/workspace:rw"
         -v "$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:rw"
@@ -161,8 +184,13 @@ _ckipper_worktree_docker_build_base_args() {
 # Add credentials, gh token, and extra env vars to CKIPPER_WT_DOCKER_ARGS.
 #
 # Args:
-#   $1 — claude_creds: Claude credentials string (may be empty)
-#   $2 — gh_token: GitHub personal access token (may be empty)
+#   $1 — claude_creds: Claude credentials string (may be empty). Used only for
+#        the empty/non-empty branch decision; the actual value is passed to the
+#        container via the parent shell's exported CLAUDE_CREDENTIALS env var
+#        (set by the caller) — `docker run -e VAR` (no `=value`) inherits it.
+#        This keeps the secret out of argv (`ps`, `/proc/*/cmdline`, `docker inspect`).
+#   $2 — gh_token: GitHub personal access token (may be empty). Same handling
+#        as $1: passed via inherited GH_TOKEN env var, not via argv.
 #
 # Reads: CKIPPER_EXTRA_ENV global. Appends to CKIPPER_WT_DOCKER_ARGS.
 # Returns: 0 always.
@@ -171,13 +199,13 @@ _ckipper_worktree_docker_add_optional_args() {
     local gh_token="$2"
 
     if [[ -n "$claude_creds" ]]; then
-        CKIPPER_WT_DOCKER_ARGS+=( -e "CLAUDE_CREDENTIALS=$claude_creds" )
+        CKIPPER_WT_DOCKER_ARGS+=( -e CLAUDE_CREDENTIALS )
     else
         echo "  Warning: Could not extract Claude credentials from Keychain"
     fi
 
     if [[ -n "$gh_token" ]]; then
-        CKIPPER_WT_DOCKER_ARGS+=( -e "GH_TOKEN=$gh_token" )
+        CKIPPER_WT_DOCKER_ARGS+=( -e GH_TOKEN )
     else
         echo "  Warning: No GitHub token found (gh commands won't work in container)"
     fi
