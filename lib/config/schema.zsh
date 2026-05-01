@@ -2,9 +2,9 @@
 # Single source of truth for Ckipper's user-configurable settings.
 #
 # Consumed by:
-#   - _ckipper_config_*  (lib/config/) — user-facing get/set/unset/list
-#   - _ckipper_setup_*   (lib/setup/)  — wizard prompts
-#   - _ckipper_doctor    (lib/account/doctor.zsh) — schema verification
+#   - lib/config/   — user-facing get/set/unset/list
+#   - lib/setup/    — wizard prompts
+#   - lib/account/doctor.zsh — schema verification
 #
 # To add a new key: append to all four arrays below. The dispatcher and
 # wizard pick it up automatically.

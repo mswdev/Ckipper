@@ -52,6 +52,10 @@ lint-merge-guards:
 	@! grep -rE --exclude=doctor.zsh '\bW_[A-Z]' lib/ ckipper.zsh templates/ 2>/dev/null || (echo "lint-merge-guards: leftover W_* globals in lib/, ckipper.zsh, or templates/" >&2 && exit 1)
 	@! grep -rE '\b_ckipper_account_' lib/worktree/ 2>/dev/null || (echo "lint-merge-guards: lib/worktree/ contains account-namespace functions" >&2 && exit 1)
 	@! grep -rE '\b_ckipper_worktree_' lib/account/ 2>/dev/null || (echo "lint-merge-guards: lib/account/ contains worktree-namespace functions" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_setup_' lib/account/ lib/worktree/ lib/config/ lib/run/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: setup-namespace function in wrong dir" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_config_' lib/account/ lib/worktree/ lib/setup/ lib/run/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: config-namespace function in wrong dir" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_run_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: run-namespace function in wrong dir" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_launcher_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/run/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: launcher-namespace function in wrong dir" >&2 && exit 1)
 
 install:
 	./install.sh

@@ -40,8 +40,8 @@ _ckipper_setup_apply_global() {
 
 # Apply each entry of an associative array as an account-scoped preference
 # write. Validates account existence up front (mirroring the guard in
-# `_ckipper_config_set`) so a typo in the account name is rejected instead of
-# silently creating a phantom account record.
+# `lib/config/`'s set handler) so a typo in the account name is rejected
+# instead of silently creating a phantom account record.
 #
 # Args: $1 — account name; $2 — name of an associative array of preferences.
 # Returns: 0 if the account exists and every write succeeded; 1 if the account
