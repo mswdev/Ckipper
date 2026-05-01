@@ -165,7 +165,10 @@ run_helper() {
 # ── _ckipper_account_remove ───────────────────────────────────────────────────
 
 @test "remove unregisters a known account and exits 0" {
-    echo '{"version":1,"default":null,"accounts":{"tmp":{"config_dir":"/tmp/.claude-tmp","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+    # Use $TMP_HOME-relative dir so the cleanup helpers find no directory and
+    # don't prompt — this test only asserts the unregistration outcome.
+    printf '{"version":1,"default":null,"accounts":{"tmp":{"config_dir":"%s/.claude-tmp","keychain_service":null}}}\n' \
+        "$TMP_HOME" > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_remove "tmp"'
 

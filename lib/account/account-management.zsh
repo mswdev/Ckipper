@@ -387,12 +387,8 @@ _ckipper_account_remove() {
     unset -f "$name" 2>/dev/null
     _ckipper_account_regenerate_aliases
     echo "Unregistered '$name'."
-    echo ""
-    echo "The directory and Keychain entry were not deleted. To remove them manually:"
-    printf "  rm -rf %q\n" "$dir"
-    if [[ -n "$service" ]]; then
-        printf "  security delete-generic-password -s %q\n" "$service"
-    fi
+    _ckipper_account_cleanup_dir "$name" "$dir"
+    _ckipper_account_cleanup_keychain "$name" "$service"
 }
 
 # Validate arguments for `ckipper account rename` before performing the rename.

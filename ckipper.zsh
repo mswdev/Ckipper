@@ -27,6 +27,7 @@ source "$CKIPPER_REPO_DIR/lib/core/prompt.zsh"
 
 # Account-namespace modules
 source "$CKIPPER_REPO_DIR/lib/account/account-management.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/cleanup.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/aliases.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/plugin-repair.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/sync.zsh"
