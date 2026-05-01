@@ -36,3 +36,22 @@ CKIPPER_EXTRA_VOLUMES=()
 # Examples:
 #   "MY_MCP_SERVER=host.docker.internal"
 CKIPPER_EXTRA_ENV=()
+
+# Fallback base branch when origin/HEAD is unset for a project. Empty
+# (default) means: always require origin/HEAD or fail explicitly.
+# CKIPPER_DEFAULT_BRANCH=""
+
+# Command run after worktree creation to install dependencies. Empty
+# string skips the install. Examples: "pnpm install", "yarn install",
+# "bun install".
+# CKIPPER_DEP_INSTALL_CMD="npm install"
+
+# Install the notification-bell hook into account dirs (forwards Claude
+# Code's bell-on-notification through Docker's TTY to your host
+# terminal).
+# CKIPPER_NOTIFY_BELL=true
+
+# install.sh auto-adds `source ~/.ckipper/aliases.zsh` to your .zshrc
+# when enabled (so claude-<account> launchers work without manual
+# setup).
+# CKIPPER_ALIASES_AUTO_SOURCE=true

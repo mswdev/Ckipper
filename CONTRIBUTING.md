@@ -35,6 +35,29 @@ We follow the rules in [`.claude/rules/`](.claude/rules/) — please read them. 
 - `lib/worktree/` — `ckipper worktree` subcommands. Function prefix: `_ckipper_worktree_*`. **Must NOT call `_ckipper_account_*` functions** (sibling cross-import). CI enforces this via `make lint-merge-guards`.
 - Tests are colocated with source: `foo.zsh` + `foo_test.bats`.
 
+## Adding a new config key
+
+1. Add the key to all four arrays in `lib/config/schema.zsh` — `_CKIPPER_SCHEMA_TYPE`, `_DEFAULT`, `_SCOPE`, `_DESCRIPTION`.
+2. The key is now usable via `ck config get/set/unset/list` and appears in the wizard automatically.
+3. If the key affects worktree-creation behavior, update `lib/worktree/worktree.zsh` to read it via `_core_config_get`.
+4. Add a test in `lib/config/schema_test.bats` to cover the new declaration.
+
+## Module structure
+
+- `lib/core/`        — shared primitives (`style.zsh`, `help.zsh`, `prompt.zsh`, `config.zsh`, registry, keychain, utils, fuzzy)
+- `lib/account/`     — account namespace (`_ckipper_account_*`)
+- `lib/worktree/`    — worktree namespace (`_ckipper_worktree_*`)
+- `lib/config/`      — config namespace (`_ckipper_config_*`)
+- `lib/setup/`       — wizard (`_ckipper_setup_*`)
+- `lib/run/`         — top-level `run` shortcut (`_ckipper_run_*`)
+- `lib/launcher/`    — bare `ck` interactive menu (`_ckipper_launcher_*`)
+
+CI guards in `make lint-merge-guards` enforce that each prefix only appears in its owning directory.
+
+## Test-mode prompt fallback
+
+`lib/core/prompt.zsh` honors `CKIPPER_NO_GUM=1` to fall back to pure-zsh `read` / numeric-pick. Tests set this env var so they don't depend on the gum binary or a TTY.
+
 ## Testing
 
 - **Shell:** bats-core. Hand-written stubs under `tests/lib/stubs/`. No mocking libraries.
