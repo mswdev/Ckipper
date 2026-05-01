@@ -96,3 +96,48 @@ _run_config() {
     [ "$status" -eq 0 ]
     [ "$output" = "false" ]
 }
+
+@test "_core_config_validate accepts integer-array values like \"3000\" and \"3000,3030,6006\"" {
+    _run_config "_core_config_validate ports 3000"
+    [ "$status" -eq 0 ]
+
+    _run_config "_core_config_validate ports 3000,3030,6006"
+    [ "$status" -eq 0 ]
+}
+
+@test "_core_config_validate rejects malformed int_array" {
+    _run_config "_core_config_validate ports abc"
+    [ "$status" -ne 0 ]
+
+    _run_config "_core_config_validate ports 3000,abc"
+    [ "$status" -ne 0 ]
+
+    _run_config '_core_config_validate ports ""'
+    [ "$status" -ne 0 ]
+}
+
+@test "_core_config_validate accepts string and path values trivially" {
+    _run_config '_core_config_validate default_branch "main"'
+    [ "$status" -eq 0 ]
+
+    _run_config '_core_config_validate default_branch ""'
+    [ "$status" -eq 0 ]
+
+    _run_config '_core_config_validate projects_dir "/some/path"'
+    [ "$status" -eq 0 ]
+}
+
+@test "_core_config_set rejects account-scoped key with no account argument" {
+    _run_config "_core_config_set always_docker true"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"requires --account"* ]]
+}
+
+@test "_core_config_unset for account scope removes the override and returns default" {
+    _run_config "_core_config_set ssh_forward false work && _core_config_get ssh_forward work && _core_config_unset ssh_forward work && _core_config_get ssh_forward work"
+
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "false" ]
+    [ "${lines[1]}" = "true" ]
+}
