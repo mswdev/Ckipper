@@ -52,6 +52,12 @@ source "$CKIPPER_REPO_DIR/lib/config/list.zsh"
 source "$CKIPPER_REPO_DIR/lib/config/edit.zsh"
 source "$CKIPPER_REPO_DIR/lib/config/dispatcher.zsh"
 
+# Setup-namespace modules
+source "$CKIPPER_REPO_DIR/lib/setup/prereqs.zsh"
+source "$CKIPPER_REPO_DIR/lib/setup/prompts.zsh"
+source "$CKIPPER_REPO_DIR/lib/setup/apply.zsh"
+source "$CKIPPER_REPO_DIR/lib/setup/dispatcher.zsh"
+
 # User config (projects/worktrees dirs, ports, extra volumes, extra env vars).
 # Renamed from w-config.zsh in the merge; install.sh handles the migration.
 _ckipper_user_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper-config.zsh"
@@ -67,7 +73,7 @@ CKIPPER_WORKTREES_DIR="${CKIPPER_WORKTREES_DIR:-$CKIPPER_PROJECTS_DIR/.worktrees
 (( ${#CKIPPER_EXTRA_ENV[@]} == 0 )) && CKIPPER_EXTRA_ENV=()
 
 # Top-level commands. Used both for routing and for fuzzy-suggest.
-_CKIPPER_COMMANDS=(account worktree config doctor help)
+_CKIPPER_COMMANDS=(account worktree config setup doctor help)
 
 # Pre-merge top-level commands → their post-merge namespaced replacement.
 # Used by _ckipper_unknown so a user typing the old form (e.g. `ckipper add`)
@@ -89,8 +95,8 @@ typeset -gA _CKIPPER_LEGACY_COMMANDS=(
 # Dispatch a top-level ckipper command.
 #
 # Args:
-#   $1     — top-level command (account, worktree, config, doctor, help,
-#             -h, --help, empty, or short alias acct/wt)
+#   $1     — top-level command (account, worktree, config, setup, doctor,
+#             help, -h, --help, empty, or short alias acct/wt)
 #   $2..$N — arguments forwarded to the namespace dispatcher
 #
 # Returns: 0 on success; 1 on unknown command.
@@ -108,6 +114,7 @@ ckipper() {
         account)  _ckipper_account_dispatch "$@" ;;
         worktree) _ckipper_worktree_dispatch "$@" ;;
         config)   _ckipper_config_dispatch "$@" ;;
+        setup)    _ckipper_setup "$@" ;;
         doctor)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
                 _ckipper_help_text_doctor
@@ -153,6 +160,7 @@ Usage:
   ckipper account <subcommand>   Manage Claude accounts (alias: acct)
   ckipper worktree <subcommand>  Manage git worktrees (alias: wt)
   ckipper config <subcommand>    View and modify Ckipper settings
+  ckipper setup                  Run / re-run the interactive setup wizard
   ckipper doctor                 Diagnostic check of accounts and tooling
   ckipper help                   Show this overview
 
@@ -198,7 +206,7 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs
 # regenerate the cached completion file. The version is embedded as a literal
 # comment in the generated file and matched here.
-CKIPPER_COMPLETION_VERSION=2
+CKIPPER_COMPLETION_VERSION=3
 if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
     # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
@@ -208,7 +216,7 @@ if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     # a completion file, not maintained shell logic).
     cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
 #compdef ckipper ck
-# ckipper-completion-version=2
+# ckipper-completion-version=3
 
 _ckipper() {
     local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
@@ -221,6 +229,7 @@ _ckipper() {
         'worktree:Manage git worktrees'
         'wt:Short alias for worktree'
         'config:View and modify Ckipper settings'
+        'setup:Run / re-run the setup wizard'
         'doctor:Diagnostic check of accounts and tooling'
         'help:Show top-level help'
     )
