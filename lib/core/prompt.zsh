@@ -30,7 +30,9 @@ _core_prompt_use_gum() {
 _core_prompt_input() {
     local label="$1" default="$2"
     if _core_prompt_use_gum; then
-        gum input --placeholder "$default" --prompt "$label > "
+        local out
+        out=$(gum input --placeholder "$default" --prompt "$label > ")
+        echo "${out:-$default}"
         return 0
     fi
     local val=""

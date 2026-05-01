@@ -21,6 +21,9 @@ source "$CKIPPER_REPO_DIR/lib/core/keychain.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/fuzzy.zsh"
 source "$CKIPPER_REPO_DIR/lib/config/schema.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/config.zsh"
+source "$CKIPPER_REPO_DIR/lib/core/style.zsh"
+source "$CKIPPER_REPO_DIR/lib/core/help.zsh"
+source "$CKIPPER_REPO_DIR/lib/core/prompt.zsh"
 
 # Account-namespace modules
 source "$CKIPPER_REPO_DIR/lib/account/account-management.zsh"
