@@ -78,6 +78,23 @@ run_helper() {
     [[ "$output" =~ "already registered" ]]
 }
 
+# ── _ckipper_account_finalize_registration ───────────────────────────────────
+
+@test "account add stores preferences with safe defaults" {
+    echo '{"version":2,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_CKIPPER_FINALIZE_CTX[name]="work"; _CKIPPER_FINALIZE_CTX[dir]="/tmp/.claude-work"; _CKIPPER_FINALIZE_CTX[service]=""; _ckipper_account_finalize_registration "adopt"'
+
+    [ "$status" -eq 0 ]
+    local always_docker always_firewall ssh_forward
+    always_docker=$(jq -r '.accounts.work.preferences.always_docker' "$CKIPPER_REGISTRY")
+    always_firewall=$(jq -r '.accounts.work.preferences.always_firewall' "$CKIPPER_REGISTRY")
+    ssh_forward=$(jq -r '.accounts.work.preferences.ssh_forward' "$CKIPPER_REGISTRY")
+    [ "$always_docker" = "false" ]
+    [ "$always_firewall" = "false" ]
+    [ "$ssh_forward" = "true" ]
+}
+
 # ── _ckipper_account_bare_alias_safe ─────────────────────────────────────────
 
 @test "bare_alias_safe returns 1 for shell builtin 'cd'" {

@@ -230,7 +230,12 @@ _ckipper_account_finalize_registration() {
         elif ([.accounts[].config_dir] | any(. == $d)) then
             error("CONFIG_DIR_IN_USE")
         else
-            .accounts[$n] = {config_dir: $d, keychain_service: (if $s == "" then null else $s end), registered_at: $t}
+            .accounts[$n] = {
+                config_dir: $d,
+                keychain_service: (if $s == "" then null else $s end),
+                registered_at: $t,
+                preferences: {always_docker: false, always_firewall: false, ssh_forward: true}
+            }
             | (if .default == null then .default = $n else . end)
         end
     ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"; then
