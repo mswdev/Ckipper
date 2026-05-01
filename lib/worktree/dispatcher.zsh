@@ -117,7 +117,7 @@ you in a shell or run a command. Without --docker, runs on the host.
 
 Args:
   <project>           Path relative to CKIPPER_PROJECTS_DIR (e.g. myorg/app)
-  <branch>            Worktree/branch name (creates from origin/develop if new)
+  <branch>            Worktree/branch name (creates from origin/HEAD if new)
   [cmd...]            Optional command to run in the worktree (e.g. `claude`)
 
 Flags:

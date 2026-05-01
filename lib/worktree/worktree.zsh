@@ -187,21 +187,59 @@ _ckipper_worktree_fetch_and_create() {
     _ckipper_worktree_add_worktree "$project" "$worktree"
 }
 
-# Fetch origin/develop and optionally origin/<branch> for the project.
+# Resolve the base branch for new worktree creation.
+#
+# Resolution order:
+#   1. `git symbolic-ref refs/remotes/origin/HEAD` — what `git remote set-head`
+#      records; this is the cheap, definitive answer when origin/HEAD is set.
+#   2. `git remote show origin` parse — slower, network-dependent fallback when
+#      the symbolic ref isn't present locally.
+#   3. $CKIPPER_DEFAULT_BRANCH — global config override (lib/config/schema.zsh
+#      key `default_branch`), exported by ckipper-config.zsh on shell init.
+#   4. Hardcoded "develop" — preserves pre-overhaul behaviour.
+#
+# Args: none — must be invoked from inside a git repo.
+# Returns: 0; prints the branch name (no "origin/" prefix) to stdout.
+_ckipper_worktree_resolve_base_branch() {
+    local head
+    head=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
+    if [[ -n "$head" ]]; then
+        echo "${head#origin/}"
+        return 0
+    fi
+    head=$(git remote show origin 2>/dev/null | awk '/HEAD branch:/ { print $3; exit }')
+    if [[ -n "$head" && "$head" != "(unknown)" ]]; then
+        echo "$head"
+        return 0
+    fi
+    if [[ -n "${CKIPPER_DEFAULT_BRANCH:-}" ]]; then
+        echo "$CKIPPER_DEFAULT_BRANCH"
+        return 0
+    fi
+    echo "develop"
+}
+
+# Fetch origin/<base-branch> and optionally origin/<branch> for the project.
+#
+# The base branch is resolved via `_ckipper_worktree_resolve_base_branch` from
+# inside the project directory, so each invocation reflects the project's
+# current origin/HEAD without shared state between helpers.
 #
 # Args:
 #   $1 — project path (relative to CKIPPER_PROJECTS_DIR)
 #   $2 — branch name to attempt fetching
 #
-# Returns: 0 on success; 1 if origin/develop fetch fails.
+# Returns: 0 on success; 1 if base-branch fetch fails.
 # Errors (stderr):
 #   "Failed to fetch from origin. Check your network connection..." — on fetch failure
 _ckipper_worktree_fetch_origin() {
     local project="$1"
     local worktree="$2"
+    local base
+    base=$(cd "$CKIPPER_PROJECTS_DIR/$project" && _ckipper_worktree_resolve_base_branch)
 
-    (cd "$CKIPPER_PROJECTS_DIR/$project" && git fetch origin -- develop) || {
-        echo "Failed to fetch from origin. Check your network connection and that 'develop' exists on the remote." >&2
+    (cd "$CKIPPER_PROJECTS_DIR/$project" && git fetch origin -- "$base") || {
+        echo "Failed to fetch from origin. Check your network connection and that '$base' exists on the remote." >&2
         return 1
     }
     (cd "$CKIPPER_PROJECTS_DIR/$project" && git fetch origin -- "$worktree" 2>/dev/null) || true
@@ -220,6 +258,8 @@ _ckipper_worktree_fetch_origin() {
 _ckipper_worktree_add_worktree() {
     local project="$1"
     local worktree="$2"
+    local base
+    base=$(cd "$CKIPPER_PROJECTS_DIR/$project" && _ckipper_worktree_resolve_base_branch)
 
     (cd "$CKIPPER_PROJECTS_DIR/$project" && \
         if git show-ref --verify --quiet "refs/heads/$worktree"; then
@@ -229,8 +269,8 @@ _ckipper_worktree_add_worktree() {
             echo "Tracking remote branch: origin/$worktree"
             git worktree add "$CKIPPER_WT_PATH" -b "$worktree" -- "origin/$worktree"
         else
-            echo "Creating new branch from origin/develop"
-            git worktree add "$CKIPPER_WT_PATH" -b "$worktree" -- origin/develop
+            echo "Creating new branch from origin/$base"
+            git worktree add "$CKIPPER_WT_PATH" -b "$worktree" -- "origin/$base"
         fi
     ) || _ckipper_worktree_handle_worktree_add_failure "$project" "$worktree"
 }
@@ -248,12 +288,13 @@ _ckipper_worktree_add_worktree() {
 _ckipper_worktree_handle_worktree_add_failure() {
     local project="$1"
     local worktree="$2"
-    local current_branch
+    local current_branch base
     current_branch=$(cd "$CKIPPER_PROJECTS_DIR/$project" && git branch --show-current 2>/dev/null)
+    base=$(cd "$CKIPPER_PROJECTS_DIR/$project" && _ckipper_worktree_resolve_base_branch)
     if [[ "$current_branch" == "$worktree" ]]; then
         echo "Failed: branch '$worktree' is currently checked out in the main repo." >&2
         echo "Switch the main repo to a different branch first:" >&2
-        echo "  cd $CKIPPER_PROJECTS_DIR/$project && git checkout develop" >&2
+        echo "  cd $CKIPPER_PROJECTS_DIR/$project && git checkout $base" >&2
     else
         echo "Failed to create worktree" >&2
     fi
@@ -262,17 +303,29 @@ _ckipper_worktree_handle_worktree_add_failure() {
 
 # Post-worktree-creation: install deps, copy .env files, sync Claude settings.
 #
+# The dependency-install step honours $CKIPPER_DEP_INSTALL_CMD (lib/config
+# schema key `dep_install_cmd`): unset → `npm install`, non-empty → run that
+# command via `eval`, empty string → skip dependency installation entirely.
+#
 # Args:
 #   $1 — project path (relative to CKIPPER_PROJECTS_DIR)
 #   $2 — branch/worktree name (unused but kept for symmetry with other helpers)
 #
-# Reads CKIPPER_WT_PATH, CKIPPER_WT_ACTIVE_ACCOUNT globals.
+# Reads CKIPPER_WT_PATH, CKIPPER_WT_ACTIVE_ACCOUNT, CKIPPER_DEP_INSTALL_CMD
+# globals.
 # Returns: 0 always (individual steps may warn on failure but don't abort).
 _ckipper_worktree_post_create_setup() {
     local project="$1"
 
-    echo "Installing dependencies..."
-    (cd "$CKIPPER_WT_PATH" && npm install) || echo "Warning: npm install failed. You may need to run it manually."
+    # Use `-` (not `:-`) so an explicitly empty CKIPPER_DEP_INSTALL_CMD opts
+    # OUT of dependency installation, while an unset variable falls through to
+    # the npm-install default (preserves pre-overhaul behaviour).
+    local install_cmd="${CKIPPER_DEP_INSTALL_CMD-npm install}"
+    if [[ -n "$install_cmd" ]]; then
+        echo "Installing dependencies: $install_cmd"
+        (cd "$CKIPPER_WT_PATH" && eval "$install_cmd") \
+            || echo "Warning: '$install_cmd' failed. You may need to run it manually."
+    fi
 
     for env_file in $(find "$CKIPPER_PROJECTS_DIR/$project" -maxdepth "$CKIPPER_WT_FIND_MAX_DEPTH" -name ".env*" -not -name "*.example" -not -path "*/node_modules/*" -not -path "*/.git/*"); do
         local rel_path="${env_file#$CKIPPER_PROJECTS_DIR/$project/}"
