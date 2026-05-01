@@ -1,5 +1,7 @@
 # Ckipper (pronounced "skipper")
 
+> _Vibe-engineered. Read the code before you trust it._
+
 Docker-based isolation for running Claude Code with `--dangerously-skip-permissions` safely, plus multi-account support: run a personal account in one terminal and a work account in another, fully isolated.
 
 Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, an egress firewall, safety hooks, macOS Keychain auth, and per-account isolation across credentials, settings, MCP, plugins, and projects.
