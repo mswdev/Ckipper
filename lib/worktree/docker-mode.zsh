@@ -140,7 +140,7 @@ _ckipper_worktree_docker_extract_gh_token() {
 # Build the base docker run argument array into CKIPPER_WT_DOCKER_ARGS.
 #
 # Reads: CKIPPER_WT_PATH, CKIPPER_PROJECTS_DIR, CKIPPER_WT_PROJECT, CKIPPER_WT_ACTIVE_CONFIG_DIR,
-#   CKIPPER_EXTRA_VOLUMES globals.
+#   CKIPPER_EXTRA_VOLUMES, CKIPPER_WT_FLAG_SSH_FORWARD globals.
 # Sets: CKIPPER_WT_DOCKER_ARGS (initialised from scratch).
 # Returns: 0 always.
 #
@@ -156,6 +156,9 @@ _ckipper_worktree_docker_extract_gh_token() {
 #   sudo's setuid bit at exec time, breaking `sudo init-firewall.sh` and the
 #   unconditional `sudo fix-volume-perms.sh` in entrypoint.sh. Refactoring the
 #   sudo path is out of scope for this script.
+# - SSH agent forwarding (the macOS Docker Desktop magic socket plus the host
+#   ~/.ssh mount) is gated by CKIPPER_WT_FLAG_SSH_FORWARD so users with
+#   ssh_forward=false in their account preferences get a tighter container.
 _ckipper_worktree_docker_build_base_args() {
     CKIPPER_WT_DOCKER_ARGS=(
         docker run --rm -it
@@ -165,9 +168,6 @@ _ckipper_worktree_docker_build_base_args() {
         -v "$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:rw"
         -v "$CKIPPER_WT_ACTIVE_CONFIG_DIR:$CKIPPER_WT_ACTIVE_CONFIG_DIR:rw"
         -e "CLAUDE_CONFIG_DIR=$CKIPPER_WT_ACTIVE_CONFIG_DIR"
-        -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
-        -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
-        -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
         --group-add "$DOCKER_GROUP_ADD_HOST_ROOT"
         --tmpfs "/tmp/claude-creds:mode=$CREDS_TMPFS_MODE,uid=$CLAUDE_CONTAINER_UID,gid=$CLAUDE_CONTAINER_GID,size=$CREDS_TMPFS_SIZE"
         -v "claude-uv-cache:/home/claude/.cache/uv"
@@ -176,6 +176,13 @@ _ckipper_worktree_docker_build_base_args() {
         -e "UV_TOOL_BIN_DIR=/home/claude/.uv-tools/bin"
         -e "UV_PYTHON_INSTALL_DIR=/home/claude/.uv-tools/python"
     )
+    if [[ "$CKIPPER_WT_FLAG_SSH_FORWARD" == "true" ]]; then
+        CKIPPER_WT_DOCKER_ARGS+=(
+            -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
+            -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+            -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+        )
+    fi
     for vol in "${CKIPPER_EXTRA_VOLUMES[@]}"; do
         CKIPPER_WT_DOCKER_ARGS+=( -v "$vol" )
     done
