@@ -89,3 +89,10 @@ _run_config() {
     [ "$status" -eq 0 ]
     [ "$output" = "true" ]
 }
+
+@test "_core_config_get returns false when set false on per-account key with default true" {
+    _run_config "_core_config_set ssh_forward false work && _core_config_get ssh_forward work"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "false" ]
+}

@@ -51,7 +51,12 @@ _core_config_read_account() {
         echo ""
         return 0
     }
-    jq -r --arg n "$account" --arg k "$key" '.accounts[$n].preferences[$k] // ""' "$CKIPPER_REGISTRY"
+    jq -r --arg n "$account" --arg k "$key" '
+        if (.accounts[$n].preferences | has($k))
+        then .accounts[$n].preferences[$k] | tostring
+        else ""
+        end
+    ' "$CKIPPER_REGISTRY"
 }
 
 # Resolve effective value: account override → global → schema default.
