@@ -25,7 +25,7 @@ typeset -gA _CKIPPER_SYNC_FILES_FLAT_PATH=(
 #
 # Args: $1 — file path.
 # Returns: 0; prints hex hash or empty string.
-_core_sync_file_hash() {
+_ckipper_account_sync_file_hash() {
     local f="$1"
     [[ ! -f "$f" ]] && { echo ""; return 0; }
     shasum -a 256 "$f" | cut -d' ' -f1
@@ -37,7 +37,7 @@ _core_sync_file_hash() {
 #
 # Args: $1 — type id; $2 — source account dir.
 # Returns: 0; prints items one per line.
-_core_sync_files_flat_enumerate() {
+_ckipper_account_sync_files_flat_enumerate() {
     local type="$1" src="$2"
     local sub="${_CKIPPER_SYNC_FILES_FLAT_PATH[$type]}"
     local target="$src/$sub"
@@ -57,12 +57,12 @@ _core_sync_files_flat_enumerate() {
 #
 # Args: $1 — type id; $2 — src; $3 — dst; $4 — relpath (the item id).
 # Returns: 0; prints "new" | "overwrite" | "unchanged".
-_core_sync_files_flat_compare() {
+_ckipper_account_sync_files_flat_compare() {
     local type="$1" src="$2" dst="$3" rel="$4"
     [[ ! -f "$dst/$rel" ]] && { echo "new"; return 0; }
     local sh dh
-    sh=$(_core_sync_file_hash "$src/$rel")
-    dh=$(_core_sync_file_hash "$dst/$rel")
+    sh=$(_ckipper_account_sync_file_hash "$src/$rel")
+    dh=$(_ckipper_account_sync_file_hash "$dst/$rel")
     [[ "$sh" == "$dh" ]] && { echo "unchanged"; return 0; }
     echo "overwrite"
 }
@@ -71,9 +71,9 @@ _core_sync_files_flat_compare() {
 #
 # Args: $1 — type id; $2 — src; $3 — dst; $4 — relpath.
 # Returns: 0; prints "new" | "overwrite — +A/-D lines" | "unchanged".
-_core_sync_files_flat_summary() {
+_ckipper_account_sync_files_flat_summary() {
     local type="$1" src="$2" dst="$3" rel="$4"
-    local cmp_status; cmp_status=$(_core_sync_files_flat_compare "$type" "$src" "$dst" "$rel")
+    local cmp_status; cmp_status=$(_ckipper_account_sync_files_flat_compare "$type" "$src" "$dst" "$rel")
     [[ "$cmp_status" != "overwrite" ]] && { echo "$cmp_status"; return 0; }
     local stats; stats=$(diff "$dst/$rel" "$src/$rel" 2>/dev/null \
         | awk 'BEGIN{a=0;d=0} /^>/{a++} /^</{d++} END{printf "+%d/-%d", a, d}')
@@ -84,7 +84,7 @@ _core_sync_files_flat_summary() {
 #
 # Args: $1 — type id; $2 — src; $3 — dst; $4 — relpath.
 # Returns: 0 always (diff exit code 1 means "files differ", which is expected).
-_core_sync_files_flat_diff() {
+_ckipper_account_sync_files_flat_diff() {
     local type="$1" src="$2" dst="$3" rel="$4"
     diff -u "$dst/$rel" "$src/$rel" 2>/dev/null
     return 0
@@ -94,9 +94,9 @@ _core_sync_files_flat_diff() {
 #
 # Args: $1 — type id; $2 — src; $3 — dst; $4 — relpath; $5 — backup_dir.
 # Returns: 0 on success; 1 on cp failure.
-_core_sync_files_flat_apply() {
+_ckipper_account_sync_files_flat_apply() {
     local type="$1" src="$2" dst="$3" rel="$4" backup_dir="$5"
-    _core_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
+    _ckipper_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
     mkdir -p "$dst/${rel:h}"
     cp -a "$src/$rel" "$dst/$rel"
 }
@@ -105,29 +105,29 @@ _core_sync_files_flat_apply() {
 # so each type satisfies the strategy naming convention.
 
 # claude-md wrappers
-_ckipper_account_sync_claude-md_enumerate() { _core_sync_files_flat_enumerate claude-md "$@"; }
-_ckipper_account_sync_claude-md_compare()   { _core_sync_files_flat_compare   claude-md "$@"; }
-_ckipper_account_sync_claude-md_summary()   { _core_sync_files_flat_summary   claude-md "$@"; }
-_ckipper_account_sync_claude-md_diff()      { _core_sync_files_flat_diff      claude-md "$@"; }
-_ckipper_account_sync_claude-md_apply()     { _core_sync_files_flat_apply     claude-md "$@"; }
+_ckipper_account_sync_claude-md_enumerate() { _ckipper_account_sync_files_flat_enumerate claude-md "$@"; }
+_ckipper_account_sync_claude-md_compare()   { _ckipper_account_sync_files_flat_compare   claude-md "$@"; }
+_ckipper_account_sync_claude-md_summary()   { _ckipper_account_sync_files_flat_summary   claude-md "$@"; }
+_ckipper_account_sync_claude-md_diff()      { _ckipper_account_sync_files_flat_diff      claude-md "$@"; }
+_ckipper_account_sync_claude-md_apply()     { _ckipper_account_sync_files_flat_apply     claude-md "$@"; }
 
 # agents wrappers
-_ckipper_account_sync_agents_enumerate() { _core_sync_files_flat_enumerate agents "$@"; }
-_ckipper_account_sync_agents_compare()   { _core_sync_files_flat_compare   agents "$@"; }
-_ckipper_account_sync_agents_summary()   { _core_sync_files_flat_summary   agents "$@"; }
-_ckipper_account_sync_agents_diff()      { _core_sync_files_flat_diff      agents "$@"; }
-_ckipper_account_sync_agents_apply()     { _core_sync_files_flat_apply     agents "$@"; }
+_ckipper_account_sync_agents_enumerate() { _ckipper_account_sync_files_flat_enumerate agents "$@"; }
+_ckipper_account_sync_agents_compare()   { _ckipper_account_sync_files_flat_compare   agents "$@"; }
+_ckipper_account_sync_agents_summary()   { _ckipper_account_sync_files_flat_summary   agents "$@"; }
+_ckipper_account_sync_agents_diff()      { _ckipper_account_sync_files_flat_diff      agents "$@"; }
+_ckipper_account_sync_agents_apply()     { _ckipper_account_sync_files_flat_apply     agents "$@"; }
 
 # commands wrappers
-_ckipper_account_sync_commands_enumerate() { _core_sync_files_flat_enumerate commands "$@"; }
-_ckipper_account_sync_commands_compare()   { _core_sync_files_flat_compare   commands "$@"; }
-_ckipper_account_sync_commands_summary()   { _core_sync_files_flat_summary   commands "$@"; }
-_ckipper_account_sync_commands_diff()      { _core_sync_files_flat_diff      commands "$@"; }
-_ckipper_account_sync_commands_apply()     { _core_sync_files_flat_apply     commands "$@"; }
+_ckipper_account_sync_commands_enumerate() { _ckipper_account_sync_files_flat_enumerate commands "$@"; }
+_ckipper_account_sync_commands_compare()   { _ckipper_account_sync_files_flat_compare   commands "$@"; }
+_ckipper_account_sync_commands_summary()   { _ckipper_account_sync_files_flat_summary   commands "$@"; }
+_ckipper_account_sync_commands_diff()      { _ckipper_account_sync_files_flat_diff      commands "$@"; }
+_ckipper_account_sync_commands_apply()     { _ckipper_account_sync_files_flat_apply     commands "$@"; }
 
 # output-styles wrappers
-_ckipper_account_sync_output-styles_enumerate() { _core_sync_files_flat_enumerate output-styles "$@"; }
-_ckipper_account_sync_output-styles_compare()   { _core_sync_files_flat_compare   output-styles "$@"; }
-_ckipper_account_sync_output-styles_summary()   { _core_sync_files_flat_summary   output-styles "$@"; }
-_ckipper_account_sync_output-styles_diff()      { _core_sync_files_flat_diff      output-styles "$@"; }
-_ckipper_account_sync_output-styles_apply()     { _core_sync_files_flat_apply     output-styles "$@"; }
+_ckipper_account_sync_output-styles_enumerate() { _ckipper_account_sync_files_flat_enumerate output-styles "$@"; }
+_ckipper_account_sync_output-styles_compare()   { _ckipper_account_sync_files_flat_compare   output-styles "$@"; }
+_ckipper_account_sync_output-styles_summary()   { _ckipper_account_sync_files_flat_summary   output-styles "$@"; }
+_ckipper_account_sync_output-styles_diff()      { _ckipper_account_sync_files_flat_diff      output-styles "$@"; }
+_ckipper_account_sync_output-styles_apply()     { _ckipper_account_sync_files_flat_apply     output-styles "$@"; }

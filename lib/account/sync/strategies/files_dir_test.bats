@@ -48,8 +48,8 @@ run_in_zsh() {
     echo "skill content" > "$TMP_HOME/shared/sk1/SKILL.md"
     ln -s "$TMP_HOME/shared/sk1" "$src/skills/sk1"
     run_in_zsh "
-        backup_dir=\$(_core_account_sync_backup_create '$dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_skills_apply '$src' '$dst' skills/sk1 \"\$backup_dir\"
         [[ -L '$dst/skills/sk1' ]] && echo IS_SYMLINK || echo NOT_SYMLINK
         readlink '$dst/skills/sk1'"
@@ -63,8 +63,8 @@ run_in_zsh() {
     echo "x" > "$src/skills/foo/SKILL.md"
     echo "y" > "$src/skills/foo/extra.md"
     run_in_zsh "
-        backup_dir=\$(_core_account_sync_backup_create '$dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_skills_apply '$src' '$dst' skills/foo \"\$backup_dir\"
         cat '$dst/skills/foo/SKILL.md'
         cat '$dst/skills/foo/extra.md'"

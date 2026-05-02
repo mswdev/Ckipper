@@ -87,8 +87,8 @@ run_in_zsh() {
     echo "new content" > "$src/commands/deploy.md"
     echo "old content" > "$dst/commands/deploy.md"
     run_in_zsh "
-        backup_dir=\$(_core_account_sync_backup_create '$dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_commands_apply '$src' '$dst' commands/deploy.md \"\$backup_dir\"
         cat '$dst/commands/deploy.md'
         cat \"\$backup_dir/commands/deploy.md\""

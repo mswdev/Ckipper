@@ -24,13 +24,13 @@ run_in_zsh() {
                 source \"$REPO_ROOT/lib/account/sync/interactive.zsh\"; $*"
 }
 
-@test "_core_account_sync_list_accounts returns all account names" {
-    run_in_zsh "_core_account_sync_list_accounts | sort | tr '\n' ','"
+@test "_ckipper_account_sync_list_accounts returns all account names" {
+    run_in_zsh "_ckipper_account_sync_list_accounts | sort | tr '\n' ','"
     [[ "$output" == *"client1,personal,work,"* ]]
 }
 
-@test "_core_account_sync_list_accounts_except filters source" {
-    run_in_zsh "_core_account_sync_list_accounts_except personal | sort | tr '\n' ','"
+@test "_ckipper_account_sync_list_accounts_except filters source" {
+    run_in_zsh "_ckipper_account_sync_list_accounts_except personal | sort | tr '\n' ','"
     [[ "$output" == *"client1,work,"* ]]
     [[ "$output" != *"personal"* ]]
 }

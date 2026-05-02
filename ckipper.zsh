@@ -103,7 +103,7 @@ typeset -gA _CKIPPER_LEGACY_COMMANDS=(
     [remove]='account remove'
     [rename]='account rename'
     [sync]='account sync'
-    [sync-hooks]='account sync-hooks'
+    [sync-hooks]='account redeploy-hooks'
     [repair-plugins]='doctor --fix'
     [migrate]=''
 )

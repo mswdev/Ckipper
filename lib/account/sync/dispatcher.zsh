@@ -78,10 +78,10 @@ _ckipper_account_sync_dispatch() {
 # Returns: 0 on success across all targets; 1 if any target failed.
 _ckipper_account_sync_run() {
     if [[ -z "$_SYNC_FROM" ]]; then
-        _SYNC_FROM=$(_core_account_sync_pick_source) || return 1
+        _SYNC_FROM=$(_ckipper_account_sync_pick_source) || return 1
     fi
     if (( ${#_SYNC_TARGETS} == 0 )); then
-        _SYNC_TARGETS=( ${(f)"$(_core_account_sync_pick_targets "$_SYNC_FROM")"} )
+        _SYNC_TARGETS=( ${(f)"$(_ckipper_account_sync_pick_targets "$_SYNC_FROM")"} )
         (( ${#_SYNC_TARGETS} == 0 )) && return 1
     fi
     _ckipper_account_sync_validate_accounts || return 1
@@ -100,7 +100,7 @@ _ckipper_account_sync_run_targets() {
     local -a types_local; types_local=( "${(@P)types_var}" )
     local rc=0 target
     for target in "${_SYNC_TARGETS[@]}"; do
-        _core_account_sync_validate_pair "$_SYNC_FROM" "$target" || { rc=1; continue; }
+        _ckipper_account_sync_validate_pair "$_SYNC_FROM" "$target" || { rc=1; continue; }
         _ckipper_account_sync_run_one_target "$target" "${types_local[@]}" || rc=1
     done
     return $rc
@@ -123,11 +123,11 @@ _ckipper_account_sync_validate_accounts() {
 # Returns: 0; prints type ids one per line.
 _ckipper_account_sync_resolve_types() {
     if [[ -z "$_SYNC_INCLUDE" && "$_SYNC_YES" != "true" && "$_SYNC_DRY_RUN" != "true" ]]; then
-        _core_account_sync_pick_types
+        _ckipper_account_sync_pick_types
         return 0
     fi
     [[ -z "$_SYNC_INCLUDE" ]] && _SYNC_INCLUDE="all"
-    _core_account_sync_resolve_includes "$_SYNC_INCLUDE" "$_SYNC_EXCLUDE"
+    _ckipper_account_sync_resolve_includes "$_SYNC_INCLUDE" "$_SYNC_EXCLUDE"
 }
 
 # One-target slice: build change set, render preview, prompt, apply.
@@ -139,25 +139,75 @@ _ckipper_account_sync_run_one_target() {
     local src_dir dst_dir
     src_dir=$(_core_account_dir "$_SYNC_FROM")
     dst_dir=$(_core_account_dir "$target")
-    _core_account_sync_assert_dst_idle "$dst_dir" "$_SYNC_FORCE" || return 1
-    local changeset summaries
-    changeset=$(mktemp)
-    summaries=$(mktemp)
-    _core_account_sync_build_change_set "$src_dir" "$dst_dir" \
+    _ckipper_account_sync_assert_dst_idle "$dst_dir" "$_SYNC_FORCE" || return 1
+    local changeset summaries items
+    changeset=$(mktemp); summaries=$(mktemp); items=$(mktemp)
+    _ckipper_account_sync_build_change_set "$src_dir" "$dst_dir" \
         "$_SYNC_FROM" "$target" "$@" > "$changeset"
-    _core_account_sync_render_summary "$_SYNC_FROM" "$target" \
-        "$(_core_account_sync_backup_dir_path "$dst_dir" "$_SYNC_FROM")" \
-        "$summaries" < "$changeset"
-    if [[ "$_SYNC_DRY_RUN" == "true" ]]; then
-        rm -f "$changeset" "$summaries"
-        return 0
+    _ckipper_account_sync_build_summaries "$src_dir" "$dst_dir" \
+        "$_SYNC_FROM" "$target" < "$changeset" > "$summaries"
+    _ckipper_account_sync_drill_down_items < "$changeset" > "$items"
+    _ckipper_account_sync_show_preview "$target" "$dst_dir" "$changeset" "$summaries"
+    local action="apply"
+    if [[ "$_SYNC_DRY_RUN" != "true" && "$_SYNC_YES" != "true" ]]; then
+        action=$(_ckipper_account_sync_preview_prompt "$src_dir" "$dst_dir" "$target" "$items")
     fi
-    if [[ "$_SYNC_YES" != "true" ]]; then
-        _core_prompt_confirm "Apply changes to $target?" || { rm -f "$changeset" "$summaries"; return 0; }
+    [[ "$_SYNC_DRY_RUN" == "true" ]] && action="dry-run"
+    _ckipper_account_sync_finalize "$action" "$src_dir" "$dst_dir" \
+        "$target" "$changeset" "$summaries" "$items"
+}
+
+# Render the §6.1 preview block — header, summary table, change count.
+#
+# Args: $1 — target; $2 — dst_dir; $3 — changeset file; $4 — summaries file.
+# Returns: 0 always.
+_ckipper_account_sync_show_preview() {
+    local target="$1" dst_dir="$2" changeset="$3" summaries="$4"
+    local backup_path
+    backup_path=$(_ckipper_account_sync_backup_dir_path "$dst_dir" "$_SYNC_FROM")
+    _ckipper_account_sync_render_summary "$_SYNC_FROM" "$target" \
+        "$backup_path" "$summaries" < "$changeset"
+    local counts; counts=$(_ckipper_account_sync_count_changes < "$changeset")
+    local total new ow; read -r total new ow <<< "$counts"
+    echo "$total changes ($new new, $ow overwrite)."
+}
+
+# Apply / View changes / Abort prompt, with View looping back through
+# the drill-down picker until Apply or Abort.
+#
+# Args: $1 — src_dir; $2 — dst_dir; $3 — target; $4 — items file.
+# Returns: 0; prints "apply" | "abort".
+_ckipper_account_sync_preview_prompt() {
+    local src_dir="$1" dst_dir="$2" target="$3" items="$4"
+    while true; do
+        local choice
+        choice=$(_core_prompt_choose "Apply changes to $target?" "Apply" "View changes" "Abort")
+        case "$choice" in
+            Apply) echo "apply"; return 0 ;;
+            Abort|"") echo "abort"; return 0 ;;
+            "View changes")
+                _ckipper_account_sync_drill_down_loop "$src_dir" "$dst_dir" \
+                    "$_SYNC_FROM" "$target" "$items"
+                ;;
+        esac
+    done
+}
+
+# Run the chosen action, clean up tmpfiles, return the apply rc.
+#
+# Args: $1 — action; $2 — src_dir; $3 — dst_dir; $4 — target;
+#       $5 — changeset; $6 — summaries; $7 — items.
+# Returns: 0 unless action=apply and the apply failed.
+_ckipper_account_sync_finalize() {
+    local action="$1" src_dir="$2" dst_dir="$3" target="$4"
+    local changeset="$5" summaries="$6" items="$7"
+    local rc=0
+    if [[ "$action" == "apply" ]]; then
+        _ckipper_account_sync_apply_target "$src_dir" "$dst_dir" \
+            "$_SYNC_FROM" "$target" < "$changeset"
+        rc=$?
     fi
-    _core_account_sync_apply_target "$src_dir" "$dst_dir" "$_SYNC_FROM" "$target" < "$changeset"
-    local rc=$?
-    rm -f "$changeset" "$summaries"
+    rm -f "$changeset" "$summaries" "$items"
     return $rc
 }
 
@@ -208,7 +258,7 @@ _ckipper_account_sync_undo_dispatch() {
             *) echo "Unknown flag: $1" >&2; return 1 ;;
         esac
     done
-    _core_account_sync_assert_dst_idle "$dst_dir" "${_SYNC_FORCE:-false}" || return 1
+    _ckipper_account_sync_assert_dst_idle "$dst_dir" "${_SYNC_FORCE:-false}" || return 1
     _ckipper_account_sync_undo_run "$account" "$dst_dir" "$mode"
 }
 
@@ -219,7 +269,7 @@ _ckipper_account_sync_undo_dispatch() {
 _ckipper_account_sync_undo_run() {
     local account="$1" dst_dir="$2" mode="$3"
     local -a backups
-    backups=( ${(f)"$(_core_account_sync_manifest_list_backups "$dst_dir")"} )
+    backups=( ${(f)"$(_ckipper_account_sync_manifest_list_backups "$dst_dir")"} )
     if (( ${#backups} == 0 )); then
         echo "No backups for $account."
         return 1
@@ -233,5 +283,5 @@ _ckipper_account_sync_undo_run() {
         target_backup=$(_core_prompt_choose "Pick a backup to restore" "${backups[@]}")
         [[ -z "$target_backup" ]] && return 1
     fi
-    _core_account_sync_undo_from_backup "$target_backup" "$dst_dir"
+    _ckipper_account_sync_undo_from_backup "$target_backup" "$dst_dir"
 }

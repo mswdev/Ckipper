@@ -25,7 +25,7 @@ typeset -gA _CKIPPER_SYNC_FILES_DIR_PATH=(
 #
 # Args: $1 — path to directory or symlink.
 # Returns: 0; prints hex hash or empty if path is missing.
-_core_sync_dir_hash() {
+_ckipper_account_sync_dir_hash() {
     local target="$1"
     [[ ! -e "$target" ]] && { echo ""; return 0; }
     if [[ -L "$target" ]]; then
@@ -45,7 +45,7 @@ _core_sync_dir_hash() {
 #
 # Args: $1 — type id; $2 — source account dir.
 # Returns: 0; prints "<relpath>\t<basename>" per item.
-_core_sync_files_dir_enumerate() {
+_ckipper_account_sync_files_dir_enumerate() {
     local type="$1" src="$2"
     local sub="${_CKIPPER_SYNC_FILES_DIR_PATH[$type]}"
     local root="$src/$sub"
@@ -61,12 +61,12 @@ _core_sync_files_dir_enumerate() {
 #
 # Args: $1 — type id; $2 — src; $3 — dst; $4 — relpath.
 # Returns: 0; prints "new" | "overwrite" | "unchanged".
-_core_sync_files_dir_compare() {
+_ckipper_account_sync_files_dir_compare() {
     local type="$1" src="$2" dst="$3" rel="$4"
     [[ ! -e "$dst/$rel" ]] && { echo "new"; return 0; }
     local sh dh
-    sh=$(_core_sync_dir_hash "$src/$rel")
-    dh=$(_core_sync_dir_hash "$dst/$rel")
+    sh=$(_ckipper_account_sync_dir_hash "$src/$rel")
+    dh=$(_ckipper_account_sync_dir_hash "$dst/$rel")
     [[ "$sh" == "$dh" ]] && { echo "unchanged"; return 0; }
     echo "overwrite"
 }
@@ -75,9 +75,9 @@ _core_sync_files_dir_compare() {
 #
 # Args: $1 — type id; $2 — src; $3 — dst; $4 — relpath.
 # Returns: 0; prints summary.
-_core_sync_files_dir_summary() {
+_ckipper_account_sync_files_dir_summary() {
     local type="$1" src="$2" dst="$3" rel="$4"
-    local cmp_status; cmp_status=$(_core_sync_files_dir_compare "$type" "$src" "$dst" "$rel")
+    local cmp_status; cmp_status=$(_ckipper_account_sync_files_dir_compare "$type" "$src" "$dst" "$rel")
     case "$cmp_status" in
         new) echo "new directory" ;;
         overwrite)
@@ -95,7 +95,7 @@ _core_sync_files_dir_summary() {
 #
 # Args: $1 — type id; $2 — src; $3 — dst; $4 — relpath.
 # Returns: 0 always.
-_core_sync_files_dir_diff() {
+_ckipper_account_sync_files_dir_diff() {
     local type="$1" src="$2" dst="$3" rel="$4"
     if [[ -L "$src/$rel" || -L "$dst/$rel" ]]; then
         echo "── source symlink ──"
@@ -114,17 +114,17 @@ _core_sync_files_dir_diff() {
 #
 # Args: $1 — type id; $2 — src; $3 — dst; $4 — relpath; $5 — backup_dir.
 # Returns: 0 on success; 1 on cp failure.
-_core_sync_files_dir_apply() {
+_ckipper_account_sync_files_dir_apply() {
     local type="$1" src="$2" dst="$3" rel="$4" backup_dir="$5"
-    _core_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
+    _ckipper_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
     rm -rf "$dst/$rel"
     mkdir -p "$dst/${rel:h}"
     cp -a "$src/$rel" "$dst/$rel"
 }
 
 # Per-type wrappers for the strategy contract.
-_ckipper_account_sync_skills_enumerate() { _core_sync_files_dir_enumerate skills "$@"; }
-_ckipper_account_sync_skills_compare()   { _core_sync_files_dir_compare   skills "$@"; }
-_ckipper_account_sync_skills_summary()   { _core_sync_files_dir_summary   skills "$@"; }
-_ckipper_account_sync_skills_diff()      { _core_sync_files_dir_diff      skills "$@"; }
-_ckipper_account_sync_skills_apply()     { _core_sync_files_dir_apply     skills "$@"; }
+_ckipper_account_sync_skills_enumerate() { _ckipper_account_sync_files_dir_enumerate skills "$@"; }
+_ckipper_account_sync_skills_compare()   { _ckipper_account_sync_files_dir_compare   skills "$@"; }
+_ckipper_account_sync_skills_summary()   { _ckipper_account_sync_files_dir_summary   skills "$@"; }
+_ckipper_account_sync_skills_diff()      { _ckipper_account_sync_files_dir_diff      skills "$@"; }
+_ckipper_account_sync_skills_apply()     { _ckipper_account_sync_files_dir_apply     skills "$@"; }

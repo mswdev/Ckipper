@@ -57,50 +57,50 @@ run_in_zsh() {
     [[ "$output" == *"OK"* ]]
 }
 
-@test "_core_account_sync_resolve_bundle expands all to all 10 types" {
-    run_in_zsh '_core_account_sync_resolve_bundle all | sort | tr "\n" ","'
+@test "_ckipper_account_sync_resolve_bundle expands all to all 10 types" {
+    run_in_zsh '_ckipper_account_sync_resolve_bundle all | sort | tr "\n" ","'
     [ "$status" -eq 0 ]
     [[ "$output" == "agents,claude-md,commands,hooks,mcp,output-styles,prefs,settings,skills,statusline," ]]
 }
 
-@test "_core_account_sync_resolve_bundle expands customizations" {
-    run_in_zsh '_core_account_sync_resolve_bundle customizations | sort | tr "\n" ","'
+@test "_ckipper_account_sync_resolve_bundle expands customizations" {
+    run_in_zsh '_ckipper_account_sync_resolve_bundle customizations | sort | tr "\n" ","'
     [ "$status" -eq 0 ]
     [[ "$output" == "agents,claude-md,commands,hooks,mcp,output-styles,settings,skills,statusline," ]]
 }
 
-@test "_core_account_sync_resolve_bundle preferences = prefs" {
-    run_in_zsh '_core_account_sync_resolve_bundle preferences | tr "\n" ","'
+@test "_ckipper_account_sync_resolve_bundle preferences = prefs" {
+    run_in_zsh '_ckipper_account_sync_resolve_bundle preferences | tr "\n" ","'
     [[ "$output" == "prefs," ]]
 }
 
-@test "_core_account_sync_resolve_bundle claude-config = mcp,settings,hooks" {
-    run_in_zsh '_core_account_sync_resolve_bundle claude-config | sort | tr "\n" ","'
+@test "_ckipper_account_sync_resolve_bundle claude-config = mcp,settings,hooks" {
+    run_in_zsh '_ckipper_account_sync_resolve_bundle claude-config | sort | tr "\n" ","'
     [[ "$output" == "hooks,mcp,settings," ]]
 }
 
-@test "_core_account_sync_resolve_bundle returns input unchanged for non-bundle token" {
-    run_in_zsh '_core_account_sync_resolve_bundle mcp | tr "\n" ","'
+@test "_ckipper_account_sync_resolve_bundle returns input unchanged for non-bundle token" {
+    run_in_zsh '_ckipper_account_sync_resolve_bundle mcp | tr "\n" ","'
     [[ "$output" == "mcp," ]]
 }
 
-@test "_core_account_sync_resolve_includes mixes types and bundles, dedups" {
-    run_in_zsh '_core_account_sync_resolve_includes "preferences,mcp" "" | sort | tr "\n" ","'
+@test "_ckipper_account_sync_resolve_includes mixes types and bundles, dedups" {
+    run_in_zsh '_ckipper_account_sync_resolve_includes "preferences,mcp" "" | sort | tr "\n" ","'
     [[ "$output" == "mcp,prefs," ]]
 }
 
-@test "_core_account_sync_resolve_includes subtracts excludes" {
-    run_in_zsh '_core_account_sync_resolve_includes "all" "prefs,hooks" | sort | tr "\n" ","'
+@test "_ckipper_account_sync_resolve_includes subtracts excludes" {
+    run_in_zsh '_ckipper_account_sync_resolve_includes "all" "prefs,hooks" | sort | tr "\n" ","'
     [[ "$output" == "agents,claude-md,commands,mcp,output-styles,settings,skills,statusline," ]]
 }
 
-@test "_core_account_sync_is_known_type returns 0 for known type" {
-    run_in_zsh '_core_account_sync_is_known_type mcp && echo ok'
+@test "_ckipper_account_sync_is_known_type returns 0 for known type" {
+    run_in_zsh '_ckipper_account_sync_is_known_type mcp && echo ok'
     [[ "$output" == "ok" ]]
 }
 
-@test "_core_account_sync_is_known_type returns 1 for unknown" {
-    run_in_zsh '_core_account_sync_is_known_type bogus && echo wrongly_ok || true'
+@test "_ckipper_account_sync_is_known_type returns 1 for unknown" {
+    run_in_zsh '_ckipper_account_sync_is_known_type bogus && echo wrongly_ok || true'
     [ "$status" -eq 0 ]
     [[ "$output" != *"wrongly_ok"* ]]
 }

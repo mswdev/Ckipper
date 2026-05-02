@@ -17,7 +17,7 @@
 #
 # Returns: 0; prints one filename per line. Empty if install hooks dir
 #   doesn't exist.
-_core_sync_hooks_install_allowlist() {
+_ckipper_account_sync_hooks_install_allowlist() {
     local install_dir="$CKIPPER_DIR/hooks"
     [[ ! -d "$install_dir" ]] && return 0
     local f
@@ -36,7 +36,7 @@ _ckipper_account_sync_hooks_enumerate() {
     local src="$1"
     local hooks_dir="$src/hooks"
     [[ ! -d "$hooks_dir" ]] && return 0
-    local allowlist; allowlist=$(_core_sync_hooks_install_allowlist)
+    local allowlist; allowlist=$(_ckipper_account_sync_hooks_install_allowlist)
     local f base
     for f in "$hooks_dir"/*(N); do
         [[ -f "$f" ]] || continue
@@ -58,8 +58,8 @@ _ckipper_account_sync_hooks_compare() {
     local src="$1" dst="$2" rel="$3"
     [[ ! -f "$dst/$rel" ]] && { echo "new"; return 0; }
     local sh dh
-    sh=$(_core_sync_file_hash "$src/$rel" 2>/dev/null)
-    dh=$(_core_sync_file_hash "$dst/$rel" 2>/dev/null)
+    sh=$(_ckipper_account_sync_file_hash "$src/$rel" 2>/dev/null)
+    dh=$(_ckipper_account_sync_file_hash "$dst/$rel" 2>/dev/null)
     [[ "$sh" == "$dh" ]] && { echo "unchanged"; return 0; }
     echo "overwrite"
 }
@@ -96,12 +96,12 @@ _ckipper_account_sync_hooks_diff() {
 # Returns: 0 on success; non-zero on cp/jq/write failure.
 _ckipper_account_sync_hooks_apply() {
     local src="$1" dst="$2" rel="$3" backup_dir="$4"
-    _core_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
-    _core_account_sync_backup_file "$backup_dir" "$dst/settings.json" "settings.json" || return 1
+    _ckipper_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
+    _ckipper_account_sync_backup_file "$backup_dir" "$dst/settings.json" "settings.json" || return 1
     mkdir -p "$dst/${rel:h}"
     cp -a "$src/$rel" "$dst/$rel" || return 1
     chmod +x "$dst/$rel" 2>/dev/null
-    _core_sync_hooks_merge_settings "$src" "$dst" "$rel"
+    _ckipper_account_sync_hooks_merge_settings "$src" "$dst" "$rel"
 }
 
 # Merge a single user-hook's paired settings.json entries from src into dst,
@@ -114,7 +114,7 @@ _ckipper_account_sync_hooks_apply() {
 #
 # Args: $1 — src; $2 — dst; $3 — script relpath (hooks/<basename>).
 # Returns: 0 on success; non-zero on jq/write failure.
-_core_sync_hooks_merge_settings() {
+_ckipper_account_sync_hooks_merge_settings() {
     local src="$1" dst="$2" rel="$3"
     local src_settings="$src/settings.json"
     local dst_settings="$dst/settings.json"
@@ -122,7 +122,7 @@ _core_sync_hooks_merge_settings() {
     [[ ! -f "$dst_settings" ]] && echo '{}' > "$dst_settings"
     local script_basename="${rel:t}"
     local filtered_src_hooks
-    filtered_src_hooks=$(_core_sync_hooks_filter_src "$src_settings" "$script_basename" "$src" "$dst")
+    filtered_src_hooks=$(_ckipper_account_sync_hooks_filter_src "$src_settings" "$script_basename" "$src" "$dst")
     local merged
     merged=$(jq --argjson src_hooks "$filtered_src_hooks" '
         .hooks //= {} |
@@ -132,7 +132,7 @@ _core_sync_hooks_merge_settings() {
             .hooks[$event.key] += $event.value
         )
     ' "$dst_settings")
-    _core_sync_json_atomic_write "$dst_settings" "$merged"
+    _ckipper_account_sync_json_atomic_write "$dst_settings" "$merged"
 }
 
 # Helper: filter src settings.hooks to only those entries that reference
@@ -141,7 +141,7 @@ _core_sync_hooks_merge_settings() {
 # Args: $1 — src settings.json path; $2 — script basename;
 #       $3 — src dir; $4 — dst dir.
 # Returns: 0; prints filtered hooks JSON object (may be empty {}).
-_core_sync_hooks_filter_src() {
+_ckipper_account_sync_hooks_filter_src() {
     local src_settings="$1" script_basename="$2" src="$3" dst="$4"
     jq --arg sb "$script_basename" --arg src "$src" --arg dst "$dst" '
         (.hooks // {})

@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # Backup primitives for the sync engine.
-# Every destructive write goes through _core_account_sync_backup_file
+# Every destructive write goes through _ckipper_account_sync_backup_file
 # (called by strategy apply functions BEFORE the merge) so any failure can
 # be rolled back from the backup dir.
 #
@@ -22,7 +22,7 @@ readonly _CKIPPER_SYNC_MANIFEST_VERSION=1
 #
 # Args: $1 — destination account dir; $2 — source account name.
 # Returns: 0; prints absolute path of the to-be-created backup dir.
-_core_account_sync_backup_dir_path() {
+_ckipper_account_sync_backup_dir_path() {
     local dst_dir="$1" source_name="$2"
     local ts; ts=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
     echo "$dst_dir/$_CKIPPER_SYNC_BACKUP_SUBDIR/$ts-from-$source_name"
@@ -33,10 +33,10 @@ _core_account_sync_backup_dir_path() {
 #
 # Args: $1 — destination account dir; $2 — source account name.
 # Returns: 0; prints the created path on stdout.
-_core_account_sync_backup_create() {
+_ckipper_account_sync_backup_create() {
     local dst_dir="$1" source_name="$2"
     local backup_dir
-    backup_dir=$(_core_account_sync_backup_dir_path "$dst_dir" "$source_name")
+    backup_dir=$(_ckipper_account_sync_backup_dir_path "$dst_dir" "$source_name")
     mkdir -p "$backup_dir"
     chmod "$_CKIPPER_SYNC_BACKUP_DIR_PERMS" "$backup_dir"
     echo "$backup_dir"
@@ -48,7 +48,7 @@ _core_account_sync_backup_create() {
 #
 # Args: $1 — backup_dir; $2 — absolute source path; $3 — relative destination path.
 # Returns: 0 on success or no-op; 1 if cp fails.
-_core_account_sync_backup_file() {
+_ckipper_account_sync_backup_file() {
     local backup_dir="$1" src="$2" rel="$3"
     [[ ! -e "$src" ]] && return 0
     local dst="$backup_dir/$rel"
@@ -62,7 +62,7 @@ _core_account_sync_backup_file() {
 #
 # Args: $1 — backup_dir; $2 — source name; $3 — target name.
 # Returns: 0; writes manifest JSON to <backup_dir>/<manifest_file>.
-_core_account_sync_manifest_init() {
+_ckipper_account_sync_manifest_init() {
     local backup_dir="$1" source_name="$2" target_name="$3"
     local manifest="$backup_dir/$_CKIPPER_SYNC_MANIFEST_FILE"
     local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -79,7 +79,7 @@ _core_account_sync_manifest_init() {
 # Args: $1 — backup_dir; $2 — relative path; $3 — operation (create|overwrite);
 #       $4 — type id; $5 — items (comma-separated, optional).
 # Returns: 0 on success; 1 on jq failure.
-_core_account_sync_manifest_append() {
+_ckipper_account_sync_manifest_append() {
     local backup_dir="$1" rel="$2" op="$3" type="$4" items="${5:-}"
     local manifest="$backup_dir/$_CKIPPER_SYNC_MANIFEST_FILE"
     local tmp; tmp=$(mktemp "$manifest.XXXXXX")
@@ -95,7 +95,7 @@ _core_account_sync_manifest_append() {
 #
 # Args: $1 — destination account dir.
 # Returns: 0 always; prints absolute backup-dir paths, one per line.
-_core_account_sync_manifest_list_backups() {
+_ckipper_account_sync_manifest_list_backups() {
     local dst_dir="$1"
     local root="$dst_dir/$_CKIPPER_SYNC_BACKUP_SUBDIR"
     [[ ! -d "$root" ]] && return 0
@@ -115,13 +115,13 @@ _core_account_sync_manifest_list_backups() {
 # Args: $1 — backup_dir for this target; $2 — destination account dir.
 # Returns: 0 on full success; 1 if any per-entry rollback failed.
 # Errors (stderr): "rollback failed: <relpath> — <reason>" — per-entry failures.
-_core_account_sync_rollback_target() {
+_ckipper_account_sync_rollback_target() {
     local backup_dir="$1" dst_dir="$2"
     local manifest="$backup_dir/$_CKIPPER_SYNC_MANIFEST_FILE"
     [[ ! -f "$manifest" ]] && return 0
     local rc=0
     while IFS=$'\t' read -r op rel; do
-        _core_account_sync_rollback_one "$backup_dir" "$dst_dir" "$op" "$rel" || rc=1
+        _ckipper_account_sync_rollback_one "$backup_dir" "$dst_dir" "$op" "$rel" || rc=1
     done < <(jq -r '.files[] | "\(.operation)\t\(.path)"' "$manifest")
     return $rc
 }
@@ -132,7 +132,7 @@ _core_account_sync_rollback_target() {
 # Args: $1 — backup_dir; $2 — dst_dir; $3 — operation; $4 — relative path.
 # Returns: 0 on success; 1 on rm/mv failure.
 # Errors (stderr): "rollback failed: <rel> — <reason>"
-_core_account_sync_rollback_one() {
+_ckipper_account_sync_rollback_one() {
     local backup_dir="$1" dst_dir="$2" op="$3" rel="$4"
     local live="$dst_dir/$rel"
     if [[ "$op" == "create" ]]; then
@@ -159,9 +159,9 @@ _core_account_sync_rollback_one() {
 # Args: $1 — backup_dir; $2 — destination account dir.
 # Returns: 0 on full restore + cleanup; 1 if restore had failures
 #   (backup dir is preserved on partial failure for inspection).
-_core_account_sync_undo_from_backup() {
+_ckipper_account_sync_undo_from_backup() {
     local backup_dir="$1" dst_dir="$2"
-    if ! _core_account_sync_rollback_target "$backup_dir" "$dst_dir"; then
+    if ! _ckipper_account_sync_rollback_target "$backup_dir" "$dst_dir"; then
         return 1
     fi
     rm -rf "$backup_dir"

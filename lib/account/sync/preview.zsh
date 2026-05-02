@@ -13,7 +13,7 @@ readonly _CKIPPER_SYNC_DIVIDER_WIDTH=45
 # Print the divider line for the summary table.
 #
 # Returns: 0 always.
-_core_account_sync_print_divider() {
+_ckipper_account_sync_print_divider() {
     printf '%*s\n' "$_CKIPPER_SYNC_DIVIDER_WIDTH" '' | tr ' ' '─'
 }
 
@@ -21,7 +21,7 @@ _core_account_sync_print_divider() {
 #
 # Args: $1 — change status; $2 — display; $3 — summary.
 # Returns: 0; suppresses unchanged rows.
-_core_account_sync_render_row() {
+_ckipper_account_sync_render_row() {
     local cmp_status="$1" display="$2" summary="$3"
     case "$cmp_status" in
         new)       printf '    %s %-26s (%s)\n' "$_CKIPPER_SYNC_BADGE_NEW" "$display" "${summary:-new}" ;;
@@ -38,11 +38,11 @@ _core_account_sync_render_row() {
 #
 # Args: $1 — src name; $2 — dst name; $3 — backup_dir path; $4 — summaries file.
 # Returns: 0 always.
-_core_account_sync_render_summary() {
+_ckipper_account_sync_render_summary() {
     local src_name="$1" dst_name="$2" backup_dir="$3" summaries="$4"
     echo ""
     echo "Sync $src_name → $dst_name"
-    _core_account_sync_print_divider
+    _ckipper_account_sync_print_divider
     local current_type=""
     local type id display change_status
     while IFS=$'\t' read -r type id display change_status; do
@@ -55,16 +55,16 @@ _core_account_sync_render_summary() {
         if [[ -f "$summaries" ]]; then
             summary=$(awk -F'\t' -v t="$type" -v i="$id" '$1==t && $2==i {print $3; exit}' "$summaries")
         fi
-        _core_account_sync_render_row "$change_status" "$display" "$summary"
+        _ckipper_account_sync_render_row "$change_status" "$display" "$summary"
     done
-    _core_account_sync_print_divider
+    _ckipper_account_sync_print_divider
     echo "Backup → $backup_dir"
 }
 
 # Count totals from the change-set on stdin.
 #
 # Returns: 0; prints "<total> <new> <overwrite>" on a single line.
-_core_account_sync_count_changes() {
+_ckipper_account_sync_count_changes() {
     awk -F'\t' '
         $4 == "new" { n++; total++ }
         $4 == "overwrite" { o++; total++ }
@@ -77,7 +77,7 @@ _core_account_sync_count_changes() {
 # destination value to diff against).
 #
 # Returns: 0; prints "<type>\t<id>\t<display>" per line for overwrites.
-_core_account_sync_drill_down_items() {
+_ckipper_account_sync_drill_down_items() {
     awk -F'\t' '$4 == "overwrite" { print $1 "\t" $2 "\t" $3 }'
 }
 
@@ -87,14 +87,15 @@ _core_account_sync_drill_down_items() {
 #
 # Args: $1 — src dir; $2 — dst dir; $3 — src name; $4 — dst name; $5 — items file.
 # Returns: 0 always.
-_core_account_sync_drill_down_loop() {
+_ckipper_account_sync_drill_down_loop() {
     local src_dir="$1" dst_dir="$2" src_name="$3" dst_name="$4" items_file="$5"
-    [[ ! -s "$items_file" ]] && { echo "No items to drill into."; return 0; }
+    [[ ! -s "$items_file" ]] && { echo "No overwrites to drill into."; return 0; }
     while true; do
         local choice
-        choice=$(_core_account_sync_drill_down_pick "$items_file") || return 0
+        choice=$(_ckipper_account_sync_drill_down_pick "$items_file") || return 0
         [[ "$choice" == "Back" || -z "$choice" ]] && return 0
-        _core_account_sync_drill_down_show "$choice" "$src_dir" "$dst_dir" "$src_name" "$dst_name"
+        _ckipper_account_sync_drill_down_show "$choice" "$items_file" \
+            "$src_dir" "$dst_dir" "$src_name" "$dst_name"
         echo ""
         echo "(Press enter to return to picker)"
         local _ack; read -r _ack
@@ -102,11 +103,12 @@ _core_account_sync_drill_down_loop() {
 }
 
 # Pick one drill-down item. Uses gum if available; otherwise prints
-# numbered list.
+# numbered list. The label encodes the type so the show function can
+# look up the id from the items file.
 #
-# Args: $1 — items file (TSV).
-# Returns: gum exit; prints "<display>" or "Back".
-_core_account_sync_drill_down_pick() {
+# Args: $1 — items file (TSV: type\tid\tdisplay).
+# Returns: gum exit; prints chosen label or "Back".
+_ckipper_account_sync_drill_down_pick() {
     local items_file="$1"
     local -a labels=("Back")
     local type id display
@@ -116,18 +118,35 @@ _core_account_sync_drill_down_pick() {
     _core_prompt_choose "View diff for which item?" "${labels[@]}"
 }
 
-# Render the diff for one selected item. Strips the leading "[type] " marker
-# from the picker label and looks the row back up.
+# Render the diff for one selected item. Looks the row up by (type, display)
+# in the items file to recover the original id (which may differ from
+# display, e.g. files-flat: id=agents/foo.md, display=foo.md).
 #
-# Args: $1 — picker choice (e.g. "[mcp] github"); $2..$5 — src/dst dir/name.
+# Args: $1 — picker choice (e.g. "[mcp] github"); $2 — items file;
+#       $3 — src dir; $4 — dst dir; $5 — src name; $6 — dst name.
 # Returns: 0; prints the strategy's diff output.
-_core_account_sync_drill_down_show() {
-    local choice="$1" src_dir="$2" dst_dir="$3" src_name="$4" dst_name="$5"
+_ckipper_account_sync_drill_down_show() {
+    local choice="$1" items_file="$2"
+    local src_dir="$3" dst_dir="$4" src_name="$5" dst_name="$6"
     local type="${choice#\[}"; type="${type%%]*}"
     local display="${choice#*] }"
-    local id="$display"
-    local diff_fn; diff_fn=$(_core_account_sync_strategy_fn "$type" diff)
+    local id; id=$(_ckipper_account_sync_drill_down_resolve_id "$items_file" "$type" "$display")
+    local diff_fn; diff_fn=$(_ckipper_account_sync_strategy_fn "$type" diff)
     local arg_a="$src_dir" arg_b="$dst_dir"
     [[ "$type" == "prefs" ]] && { arg_a="$src_name"; arg_b="$dst_name"; }
     "$diff_fn" "$arg_a" "$arg_b" "$id"
+}
+
+# Recover the original id for a (type, display) pair by looking it up
+# in the items file. Falls back to display when no row matches (defensive
+# default — keeps drill-down working even if the items file is stale).
+#
+# Args: $1 — items file; $2 — type; $3 — display.
+# Returns: 0; prints the id (or display on miss).
+_ckipper_account_sync_drill_down_resolve_id() {
+    local items_file="$1" type="$2" display="$3"
+    local resolved
+    resolved=$(awk -F'\t' -v t="$type" -v d="$display" \
+        '$1 == t && $3 == d { print $2; exit }' "$items_file")
+    echo "${resolved:-$display}"
 }

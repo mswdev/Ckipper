@@ -34,7 +34,7 @@ typeset -gA _CKIPPER_SYNC_TYPE_KIND=(
 )
 
 # Space-separated list of bundles the type belongs to. Bundles are aliases
-# users may pass to --include / --exclude (see _core_account_sync_resolve_*).
+# users may pass to --include / --exclude (see _ckipper_account_sync_resolve_*).
 typeset -gA _CKIPPER_SYNC_TYPE_BUNDLES=(
     [mcp]="all customizations claude-config"
     [settings]="all customizations claude-config"
@@ -55,7 +55,7 @@ typeset -gra _CKIPPER_SYNC_BUNDLE_ALIASES=(all customizations claude-config pref
 #
 # Args: $1 — candidate type id.
 # Returns: 0 if known; 1 otherwise.
-_core_account_sync_is_known_type() {
+_ckipper_account_sync_is_known_type() {
     (( ${+_CKIPPER_SYNC_TYPE_LABEL[$1]} ))
 }
 
@@ -63,7 +63,7 @@ _core_account_sync_is_known_type() {
 #
 # Args: $1 — candidate bundle alias.
 # Returns: 0 if known; 1 otherwise.
-_core_account_sync_is_known_bundle() {
+_ckipper_account_sync_is_known_bundle() {
     local b="$1" alias
     for alias in "${_CKIPPER_SYNC_BUNDLE_ALIASES[@]}"; do
         [[ "$alias" == "$b" ]] && return 0
@@ -77,9 +77,9 @@ _core_account_sync_is_known_bundle() {
 #
 # Args: $1 — bundle alias OR raw type id.
 # Returns: 0 always; prints expanded list to stdout, one type id per line.
-_core_account_sync_resolve_bundle() {
+_ckipper_account_sync_resolve_bundle() {
     local token="$1" t
-    if ! _core_account_sync_is_known_bundle "$token"; then
+    if ! _ckipper_account_sync_is_known_bundle "$token"; then
         echo "$token"
         return 0
     fi
@@ -94,19 +94,19 @@ _core_account_sync_resolve_bundle() {
 #
 # Args: $1 — comma-separated include list; $2 — comma-separated exclude list.
 # Returns: 0 always; prints the final type ids one per line, lexically sorted.
-_core_account_sync_resolve_includes() {
+_ckipper_account_sync_resolve_includes() {
     local include="$1" exclude="$2"
     local -A keep
     local token expanded
     for token in ${(s:,:)include}; do
         [[ -z "$token" ]] && continue
-        for expanded in $(_core_account_sync_resolve_bundle "$token"); do
+        for expanded in $(_ckipper_account_sync_resolve_bundle "$token"); do
             keep[$expanded]=1
         done
     done
     for token in ${(s:,:)exclude}; do
         [[ -z "$token" ]] && continue
-        for expanded in $(_core_account_sync_resolve_bundle "$token"); do
+        for expanded in $(_ckipper_account_sync_resolve_bundle "$token"); do
             unset 'keep['"$expanded"']'
         done
     done

@@ -61,8 +61,8 @@ run_in_zsh() {
 JSON
     echo '{}' > "$dst/settings.json"
     run_in_zsh "
-        backup_dir=\$(_core_account_sync_backup_create '$dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_hooks_apply '$src' '$dst' hooks/lint.sh \"\$backup_dir\"
         cat '$dst/hooks/lint.sh'
         jq -r '.hooks.PostToolUse[0].hooks[0].command' '$dst/settings.json'"

@@ -13,29 +13,29 @@ run_in_zsh() {
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; $*"
 }
 
-@test "_core_sync_json_validate accepts valid JSON" {
+@test "_ckipper_account_sync_json_validate accepts valid JSON" {
     local f="$TMP_HOME/ok.json"
     echo '{"a": 1}' > "$f"
-    run_in_zsh "_core_sync_json_validate '$f' && echo OK"
+    run_in_zsh "_ckipper_account_sync_json_validate '$f' && echo OK"
     [[ "$output" == *"OK"* ]]
 }
 
-@test "_core_sync_json_validate rejects invalid JSON" {
+@test "_ckipper_account_sync_json_validate rejects invalid JSON" {
     local f="$TMP_HOME/bad.json"
     echo '{"a": 1' > "$f"
-    run_in_zsh "_core_sync_json_validate '$f'"
+    run_in_zsh "_ckipper_account_sync_json_validate '$f'"
     [ "$status" -ne 0 ]
 }
 
-@test "_core_sync_json_atomic_write writes via tmp + mv" {
+@test "_ckipper_account_sync_json_atomic_write writes via tmp + mv" {
     local f="$TMP_HOME/out.json"
-    run_in_zsh "_core_sync_json_atomic_write '$f' '{\"x\":42}'; cat '$f'"
+    run_in_zsh "_ckipper_account_sync_json_atomic_write '$f' '{\"x\":42}'; cat '$f'"
     [[ "$output" == *'"x": 42'* ]]
 }
 
-@test "_core_sync_json_atomic_write refuses to commit invalid JSON" {
+@test "_ckipper_account_sync_json_atomic_write refuses to commit invalid JSON" {
     local f="$TMP_HOME/out2.json"
-    run_in_zsh "_core_sync_json_atomic_write '$f' 'not-json'"
+    run_in_zsh "_ckipper_account_sync_json_atomic_write '$f' 'not-json'"
     [ "$status" -ne 0 ]
     [[ ! -f "$f" ]]
 }
@@ -92,8 +92,8 @@ run_in_zsh() {
     echo '{"mcpServers":{"github":{"command":"x"}}}' > "$src/.claude.json"
     echo '{"mcpServers":{"other":{"command":"y"}},"foo":"bar"}' > "$dst/.claude.json"
     run_in_zsh "
-        backup_dir=\$(_core_account_sync_backup_create '$dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_mcp_apply '$src' '$dst' github \"\$backup_dir\"
         jq '.mcpServers | keys | sort | join(\",\")' '$dst/.claude.json'
         jq -r '.foo' '$dst/.claude.json'"
@@ -154,8 +154,8 @@ run_in_zsh() {
     echo '{"permissions":{"allow":["Bash(ls:*)"]}}' > "$src/settings.json"
     echo '{"permissions":{"deny":["Bash(rm:*)"]},"unrelated":"keep"}' > "$dst/settings.json"
     run_in_zsh "
-        backup_dir=\$(_core_account_sync_backup_create '$dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_settings_apply '$src' '$dst' 'permissions.allow' \"\$backup_dir\"
         jq -c '.permissions.allow' '$dst/settings.json'
         jq -c '.permissions.deny' '$dst/settings.json'
@@ -209,8 +209,8 @@ JSON
         source \"$REPO_ROOT/lib/config/schema.zsh\"
         source \"$REPO_ROOT/lib/core/registry.zsh\"
         source \"$REPO_ROOT/lib/core/config.zsh\"
-        backup_dir=\$(_core_account_sync_backup_create '$TMP_HOME/dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$TMP_HOME/dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_prefs_apply 'src' 'dst' always_docker \"\$backup_dir\"
         jq '.accounts.dst.preferences.always_docker' '$CKIPPER_REGISTRY'"
     [[ "$output" == *"true"* ]]

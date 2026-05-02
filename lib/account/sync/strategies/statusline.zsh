@@ -10,8 +10,8 @@
 #     verbatim without touching any file on the destination.
 #
 # Implementation depends on lib/account/sync/strategies/structured.zsh
-# for _core_sync_json_atomic_write and on lib/account/sync/backup.zsh
-# for _core_account_sync_backup_file.
+# for _ckipper_account_sync_json_atomic_write and on lib/account/sync/backup.zsh
+# for _ckipper_account_sync_backup_file.
 
 # Single item id constant — statusline is not enumerable per-element.
 readonly _CKIPPER_SYNC_STATUSLINE_ID="statusLine"
@@ -48,19 +48,25 @@ _ckipper_account_sync_statusline_compare() {
 # Empty stdout = external (or no command); non-empty = absolute path
 # inside src.
 #
+# Walks every whitespace-delimited token because real-world commands often
+# use an interpreter prefix (e.g. "bash /path/to/script.sh", "node x.js",
+# "python3 statusline.py"). Returns the first token that resolves to a path
+# under the source dir.
+#
 # Args: $1 — src dir.
 # Returns: 0; prints internal-script path or empty.
-_core_sync_statusline_internal_path() {
+_ckipper_account_sync_statusline_internal_path() {
     local src="$1"
     local file="$src/settings.json"
     [[ ! -f "$file" ]] && return 0
     local cmd; cmd=$(jq -r '.statusLine.command // empty' "$file" 2>/dev/null)
     [[ -z "$cmd" ]] && return 0
-    # Take the first whitespace-delimited token as the executable.
-    local exe="${cmd%% *}"
-    case "$exe" in
-        "$src"/*) echo "$exe" ;;
-    esac
+    local token
+    for token in ${(z)cmd}; do
+        case "$token" in
+            "$src"/*) echo "$token"; return 0 ;;
+        esac
+    done
 }
 
 # Summary: combines internal/external indicator with overwrite-or-new.
@@ -70,7 +76,7 @@ _core_sync_statusline_internal_path() {
 _ckipper_account_sync_statusline_summary() {
     local src="$1" dst="$2"
     local cmp_status; cmp_status=$(_ckipper_account_sync_statusline_compare "$src" "$dst" "$_CKIPPER_SYNC_STATUSLINE_ID")
-    local internal; internal=$(_core_sync_statusline_internal_path "$src")
+    local internal; internal=$(_ckipper_account_sync_statusline_internal_path "$src")
     local kind="external"
     [[ -n "$internal" ]] && kind="internal (will copy script)"
     case "$cmp_status" in
@@ -98,17 +104,17 @@ _ckipper_account_sync_statusline_diff() {
 # Returns: 0 on success; non-zero on jq/cp/write failure.
 _ckipper_account_sync_statusline_apply() {
     local src="$1" dst="$2" id="$3" backup_dir="$4"
-    _core_account_sync_backup_file "$backup_dir" "$dst/settings.json" "settings.json" || return 1
+    _ckipper_account_sync_backup_file "$backup_dir" "$dst/settings.json" "settings.json" || return 1
     [[ -f "$dst/settings.json" ]] || echo '{}' > "$dst/settings.json"
-    local internal; internal=$(_core_sync_statusline_internal_path "$src")
+    local internal; internal=$(_ckipper_account_sync_statusline_internal_path "$src")
     local statusline_obj; statusline_obj=$(jq -c '.statusLine' "$src/settings.json")
     if [[ -n "$internal" ]]; then
-        statusline_obj=$(_core_sync_statusline_copy_and_rewrite \
+        statusline_obj=$(_ckipper_account_sync_statusline_copy_and_rewrite \
             "$src" "$dst" "$internal" "$backup_dir" "$statusline_obj") || return 1
     fi
     local merged
     merged=$(jq --argjson v "$statusline_obj" '.statusLine = $v' "$dst/settings.json")
-    _core_sync_json_atomic_write "$dst/settings.json" "$merged"
+    _ckipper_account_sync_json_atomic_write "$dst/settings.json" "$merged"
 }
 
 # Internal-script branch: copies the script then rewrites .command in the
@@ -117,12 +123,15 @@ _ckipper_account_sync_statusline_apply() {
 # Args: $1 — src dir; $2 — dst dir; $3 — internal script abs path;
 #       $4 — backup_dir; $5 — statusline JSON object.
 # Returns: 0 on success (prints rewritten JSON); 1 on cp failure.
-_core_sync_statusline_copy_and_rewrite() {
+_ckipper_account_sync_statusline_copy_and_rewrite() {
     local src="$1" dst="$2" internal="$3" backup_dir="$4" obj="$5"
     local rel="${internal#$src/}"
-    _core_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
+    _ckipper_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
     mkdir -p "$dst/${rel:h}"
     cp -a "$internal" "$dst/$rel" || return 1
+    # Literal split+join (NOT sub/gsub) — paths often contain regex
+    # metacharacters (`.`, `-`) and the interpreter-prefix form means
+    # the `$src` substring is not necessarily at position 0.
     echo "$obj" | jq --arg src "$src" --arg dst "$dst" \
-        '.command = (.command | sub("^" + $src; $dst))'
+        '.command = (.command | split($src) | join($dst))'
 }

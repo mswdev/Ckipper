@@ -30,19 +30,19 @@
 #       new items (drill-down skips status==new in the preview UI).
 #
 #   <type>_apply <src_dir> <dst_dir> <id> <backup_dir>
-#       Perform the merge. MUST call _core_account_sync_backup_file
+#       Perform the merge. MUST call _ckipper_account_sync_backup_file
 #       before any destructive write. Returns 0 on success; non-zero on
 #       failure (engine then triggers per-target rollback).
 #
 # All five functions take their arguments in the same order so the engine
-# can call them through _core_account_sync_strategy_fn uniformly.
+# can call them through _ckipper_account_sync_strategy_fn uniformly.
 
 # Compute the strategy function name for a (type, verb) pair.
 #
 # Args: $1 — type id (e.g. "mcp", "claude-md"); $2 — verb (enumerate, compare,
 #   summary, diff, apply).
 # Returns: 0; prints the function name (e.g. "_ckipper_account_sync_mcp_enumerate").
-_core_account_sync_strategy_fn() {
+_ckipper_account_sync_strategy_fn() {
     local type="$1" verb="$2"
     echo "_ckipper_account_sync_${type}_${verb}"
 }
@@ -55,7 +55,7 @@ _core_account_sync_strategy_fn() {
 # Returns: 0 if safe to proceed; 1 if Claude is running on dst (unless force).
 # Errors (stderr): a multiline message identifying the running process(es)
 #   and the suggested launcher command.
-_core_account_sync_assert_dst_idle() {
+_ckipper_account_sync_assert_dst_idle() {
     local dst_dir="$1" force="$2"
     [[ "$force" == "true" ]] && return 0
     local procs; procs=$(_core_running_claude_processes 2>/dev/null)
@@ -78,7 +78,7 @@ _core_account_sync_assert_dst_idle() {
 # Args: $1 — source name; $2 — target name.
 # Returns: 0 if valid; 1 if names match.
 # Errors (stderr): "Source and target must differ: <name>"
-_core_account_sync_validate_pair() {
+_ckipper_account_sync_validate_pair() {
     local src="$1" tgt="$2"
     if [[ "$src" == "$tgt" ]]; then
         echo "Source and target must differ: $src" >&2
@@ -94,12 +94,12 @@ _core_account_sync_validate_pair() {
 # Args: $1 — src dir; $2 — dst dir; $3 — src account name; $4 — dst account name;
 #       $5..$N — type ids to walk (already resolved from --include/--exclude).
 # Returns: 0 always; prints "<type>\t<id>\t<display>\t<status>" per line.
-_core_account_sync_build_change_set() {
+_ckipper_account_sync_build_change_set() {
     local src_dir="$1" dst_dir="$2" src_name="$3" dst_name="$4"
     shift 4
     local type
     for type in "$@"; do
-        _core_account_sync_walk_type "$type" "$src_dir" "$dst_dir" "$src_name" "$dst_name"
+        _ckipper_account_sync_walk_type "$type" "$src_dir" "$dst_dir" "$src_name" "$dst_name"
     done
 }
 
@@ -107,11 +107,11 @@ _core_account_sync_build_change_set() {
 #
 # Args: $1 — type; $2 — src_dir; $3 — dst_dir; $4 — src_name; $5 — dst_name.
 # Returns: 0 always; prints rows.
-_core_account_sync_walk_type() {
+_ckipper_account_sync_walk_type() {
     local type="$1" src_dir="$2" dst_dir="$3" src_name="$4" dst_name="$5"
     local enumerate_fn compare_fn
-    enumerate_fn=$(_core_account_sync_strategy_fn "$type" enumerate)
-    compare_fn=$(_core_account_sync_strategy_fn "$type" compare)
+    enumerate_fn=$(_ckipper_account_sync_strategy_fn "$type" enumerate)
+    compare_fn=$(_ckipper_account_sync_strategy_fn "$type" compare)
     local arg_a="$src_dir" arg_b="$dst_dir"
     [[ "$type" == "prefs" ]] && { arg_a="$src_name"; arg_b="$dst_name"; }
     local id display change_status
@@ -125,8 +125,8 @@ _core_account_sync_walk_type() {
 # Apply a change set to a single target. Steps:
 #   1. Create backup dir + manifest.
 #   2. For each change, call the strategy's apply (which itself calls
-#      _core_account_sync_backup_file before writing).
-#   3. On any failure: roll back via _core_account_sync_rollback_target,
+#      _ckipper_account_sync_backup_file before writing).
+#   3. On any failure: roll back via _ckipper_account_sync_rollback_target,
 #      print the partial manifest's path, and return non-zero.
 #
 # Reads the change set on stdin: TSV rows of "<type>\t<id>\t<display>\t<status>"
@@ -134,15 +134,15 @@ _core_account_sync_walk_type() {
 #
 # Args: $1 — src dir; $2 — dst dir; $3 — src name; $4 — dst name.
 # Returns: 0 on success; 1 if any apply failed (after rollback completed).
-_core_account_sync_apply_target() {
+_ckipper_account_sync_apply_target() {
     local src_dir="$1" dst_dir="$2" src_name="$3" dst_name="$4"
     local backup_dir
-    backup_dir=$(_core_account_sync_backup_create "$dst_dir" "$src_name")
-    _core_account_sync_manifest_init "$backup_dir" "$src_name" "$dst_name"
+    backup_dir=$(_ckipper_account_sync_backup_create "$dst_dir" "$src_name")
+    _ckipper_account_sync_manifest_init "$backup_dir" "$src_name" "$dst_name"
     local rc=0 type id display change_status
     while IFS=$'\t' read -r type id display change_status; do
         [[ -z "$type" || "$change_status" == "unchanged" ]] && continue
-        if ! _core_account_sync_apply_one "$type" "$src_dir" "$dst_dir" \
+        if ! _ckipper_account_sync_apply_one "$type" "$src_dir" "$dst_dir" \
                                           "$src_name" "$dst_name" "$id" \
                                           "$change_status" "$backup_dir"; then
             rc=1
@@ -150,7 +150,7 @@ _core_account_sync_apply_target() {
         fi
     done
     if (( rc != 0 )); then
-        _core_account_sync_rollback_target "$backup_dir" "$dst_dir" >&2
+        _ckipper_account_sync_rollback_target "$backup_dir" "$dst_dir" >&2
         echo "Rolled back. Backup preserved at: $backup_dir" >&2
     fi
     return $rc
@@ -159,27 +159,33 @@ _core_account_sync_apply_target() {
 # Apply one change set entry. Bridges between the strategy contract and
 # the manifest schema. prefs uses names; everything else uses dirs.
 #
+# Manifest is appended BEFORE the apply call, not after. If the apply
+# crashes mid-write (backed-up the file, started writing, errored), the
+# manifest still contains the entry so rollback can restore from the
+# backup dir. Without this, mid-write failures leave the destination
+# half-written with no manifest record (rollback would skip the file).
+#
 # Args: $1 — type; $2 — src_dir; $3 — dst_dir; $4 — src_name; $5 — dst_name;
 #       $6 — id; $7 — change status; $8 — backup_dir.
 # Returns: 0 on success; non-zero on apply failure.
-_core_account_sync_apply_one() {
+_ckipper_account_sync_apply_one() {
     local type="$1" src_dir="$2" dst_dir="$3" src_name="$4" dst_name="$5"
     local id="$6" change_status="$7" backup_dir="$8"
-    local apply_fn; apply_fn=$(_core_account_sync_strategy_fn "$type" apply)
+    local apply_fn; apply_fn=$(_ckipper_account_sync_strategy_fn "$type" apply)
     local arg_a="$src_dir" arg_b="$dst_dir"
     [[ "$type" == "prefs" ]] && { arg_a="$src_name"; arg_b="$dst_name"; }
     local op="overwrite"; [[ "$change_status" == "new" ]] && op="create"
-    local rel; rel=$(_core_account_sync_manifest_rel "$type" "$id")
-    "$apply_fn" "$arg_a" "$arg_b" "$id" "$backup_dir" || return 1
-    _core_account_sync_manifest_append "$backup_dir" "$rel" "$op" "$type" "$id"
+    local rel; rel=$(_ckipper_account_sync_manifest_rel "$type" "$id")
+    _ckipper_account_sync_manifest_append "$backup_dir" "$rel" "$op" "$type" "$id"
+    "$apply_fn" "$arg_a" "$arg_b" "$id" "$backup_dir"
 }
 
 # Compute the manifest's path field for a given (type, id). The relpath
-# is what _core_account_sync_rollback_one operates on.
+# is what _ckipper_account_sync_rollback_one operates on.
 #
 # Args: $1 — type; $2 — id.
 # Returns: 0; prints relpath.
-_core_account_sync_manifest_rel() {
+_ckipper_account_sync_manifest_rel() {
     local type="$1" id="$2"
     case "$type" in
         mcp) echo ".claude.json" ;;
@@ -187,4 +193,23 @@ _core_account_sync_manifest_rel() {
         prefs) echo "accounts.json" ;;
         *) echo "$id" ;;
     esac
+}
+
+# Build a TSV of (type, id, summary) by calling each strategy's _summary
+# function for every changeset row. Reads the changeset on stdin; writes
+# to stdout. Skips unchanged rows so the picker only sees actionable items.
+#
+# Args: $1 — src_dir; $2 — dst_dir; $3 — src_name; $4 — dst_name.
+# Returns: 0 always.
+_ckipper_account_sync_build_summaries() {
+    local src_dir="$1" dst_dir="$2" src_name="$3" dst_name="$4"
+    local type id display change_status summary_fn arg_a arg_b summary
+    while IFS=$'\t' read -r type id display change_status; do
+        [[ -z "$type" || "$change_status" == "unchanged" ]] && continue
+        summary_fn=$(_ckipper_account_sync_strategy_fn "$type" summary)
+        arg_a="$src_dir"; arg_b="$dst_dir"
+        [[ "$type" == "prefs" ]] && { arg_a="$src_name"; arg_b="$dst_name"; }
+        summary=$("$summary_fn" "$arg_a" "$arg_b" "$id")
+        echo "$type"$'\t'"$id"$'\t'"$summary"
+    done
 }

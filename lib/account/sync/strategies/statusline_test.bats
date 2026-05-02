@@ -34,7 +34,7 @@ run_in_zsh() {
     mkdir -p "$src"
     echo "{\"statusLine\":{\"command\":\"$src/my-statusline.sh\"}}" > "$src/settings.json"
     echo "#!/bin/bash" > "$src/my-statusline.sh"
-    run_in_zsh "_core_sync_statusline_internal_path '$src'"
+    run_in_zsh "_ckipper_account_sync_statusline_internal_path '$src'"
     [[ "$output" == *"$src/my-statusline.sh"* ]]
 }
 
@@ -42,8 +42,36 @@ run_in_zsh() {
     local src="$TMP_HOME/src"
     mkdir -p "$src"
     echo '{"statusLine":{"command":"/usr/bin/echo hi"}}' > "$src/settings.json"
-    run_in_zsh "out=\$(_core_sync_statusline_internal_path '$src'); echo \"[\$out]\""
+    run_in_zsh "out=\$(_ckipper_account_sync_statusline_internal_path '$src'); echo \"[\$out]\""
     [[ "$output" == *"[]"* ]]
+}
+
+@test "statusline_internal_script_path detects interpreter-prefix command" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src"
+    echo "#!/bin/bash" > "$src/my-statusline.sh"
+    # The common real-world form: "bash <path>" with an interpreter prefix.
+    echo "{\"statusLine\":{\"command\":\"bash $src/my-statusline.sh\"}}" > "$src/settings.json"
+    run_in_zsh "_ckipper_account_sync_statusline_internal_path '$src'"
+    [[ "$output" == *"$src/my-statusline.sh"* ]]
+}
+
+@test "statusline_apply: interpreter-prefix internal — copy + rewrite path" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo "#!/bin/bash" > "$src/my-statusline.sh"
+    chmod +x "$src/my-statusline.sh"
+    echo "{\"statusLine\":{\"command\":\"bash $src/my-statusline.sh\"}}" > "$src/settings.json"
+    echo '{}' > "$dst/settings.json"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
+        _ckipper_account_sync_statusline_apply '$src' '$dst' statusLine \"\$backup_dir\"
+        jq -r '.statusLine.command' '$dst/settings.json'
+        ls '$dst/my-statusline.sh' && echo COPIED"
+    [[ "$output" == *"bash $dst/my-statusline.sh"* ]]
+    [[ "$output" == *"COPIED"* ]]
+    [[ "$output" != *"$src/my-statusline.sh"* ]]
 }
 
 @test "statusline_apply: external script — settings only, no file copy" {
@@ -52,8 +80,8 @@ run_in_zsh() {
     echo '{"statusLine":{"command":"/usr/bin/echo hi"}}' > "$src/settings.json"
     echo '{}' > "$dst/settings.json"
     run_in_zsh "
-        backup_dir=\$(_core_account_sync_backup_create '$dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_statusline_apply '$src' '$dst' statusLine \"\$backup_dir\"
         jq -r '.statusLine.command' '$dst/settings.json'
         ls '$dst' | grep -c statusline.sh || true"
@@ -69,8 +97,8 @@ run_in_zsh() {
     echo "{\"statusLine\":{\"command\":\"$src/my-statusline.sh\"}}" > "$src/settings.json"
     echo '{}' > "$dst/settings.json"
     run_in_zsh "
-        backup_dir=\$(_core_account_sync_backup_create '$dst' src)
-        _core_account_sync_manifest_init \"\$backup_dir\" src dst
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
         _ckipper_account_sync_statusline_apply '$src' '$dst' statusLine \"\$backup_dir\"
         jq -r '.statusLine.command' '$dst/settings.json'
         ls '$dst/my-statusline.sh' && echo COPIED"

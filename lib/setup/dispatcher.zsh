@@ -132,7 +132,7 @@ _ckipper_setup_offer_initial_sync() {
         return 0
     fi
     local -a others
-    others=( ${(f)"$(_core_account_sync_list_accounts_except "$new_account")"} )
+    others=( ${(f)"$(_ckipper_account_sync_list_accounts_except "$new_account")"} )
     (( ${#others} == 0 )) && return 0
     local source_name
     source_name=$(_core_prompt_choose "Sync from which account?" "${others[@]}")
