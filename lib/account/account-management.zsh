@@ -404,7 +404,9 @@ _ckipper_account_default() {
     echo "Default account is now '$name'."
 }
 
-# Unregister an account from the registry without deleting its files.
+# Unregister an account, then prompt to delete its config dir and Keychain
+# entry via _ckipper_account_cleanup_*. Declining a prompt keeps the
+# file/entry and prints the manual cleanup command.
 #
 # Args:
 #   $1 — account name to remove
@@ -463,16 +465,6 @@ _ckipper_account_rename_validate() {
     fi
 }
 
-# Perform the directory move and registry update for `ckipper account rename`.
-# Rolls back the directory rename if the registry write fails.
-# Reads old_dir and new_dir from _CKIPPER_RENAME_CTX module global.
-#
-# Args:
-#   $1 — old account name
-#   $2 — new account name
-#
-# Returns:
-#   0 on success; 1 on directory move or registry write failure.
 # Verify the rename is safe before performing destructive actions.
 #
 # Args:
@@ -493,6 +485,16 @@ _ckipper_account_rename_check_preconditions() {
     _core_assert_no_running_claude || return 1
 }
 
+# Perform the directory move and registry update for `ckipper account rename`.
+# Rolls back the directory rename if the registry write fails.
+# Reads old_dir and new_dir from _CKIPPER_RENAME_CTX module global.
+#
+# Args:
+#   $1 — old account name
+#   $2 — new account name
+#
+# Returns:
+#   0 on success; 1 on directory move or registry write failure.
 _ckipper_account_rename_perform() {
     local old="$1" new="$2"
     local old_dir="${_CKIPPER_RENAME_CTX[old_dir]}"

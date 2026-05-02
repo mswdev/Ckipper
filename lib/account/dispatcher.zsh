@@ -63,7 +63,7 @@ _ckipper_account_help() {
         "  ckipper account add <name> --adopt Register an existing populated config dir" \
         "  ckipper account list               Show registered accounts" \
         "  ckipper account default <name>     Set the default account" \
-        "  ckipper account remove <name>      Unregister (does not delete the dir)" \
+        "  ckipper account remove <name>      Unregister; prompts to delete dir + Keychain" \
         "  ckipper account rename <old> <new> Rename an account in place" \
         "  ckipper account sync <from> <to>   Copy MCP/settings between accounts" \
         "" \
@@ -117,8 +117,9 @@ _ckipper_account_help_text_default() {
 _ckipper_account_help_text_remove() {
     _core_help_render "ckipper account remove <name>" \
         "" \
-        "Unregister an account from the registry and aliases. Does NOT delete the" \
-        "config dir or the macOS Keychain entry — those stay for safety."
+        "Unregister an account from the registry and aliases, then interactively" \
+        "prompt to delete the config dir and the macOS Keychain entry. Decline" \
+        "either prompt to keep the file/entry; the manual cleanup command is shown."
 }
 
 _ckipper_account_help_text_rename() {
