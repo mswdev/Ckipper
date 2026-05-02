@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dev tools
-        run: brew install bats-core shellcheck shfmt
+        run: brew install bats-core shellcheck shfmt gum
 
       - name: Install Python tools
         run: |

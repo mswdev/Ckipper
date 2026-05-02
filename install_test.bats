@@ -164,3 +164,34 @@ EOF
     grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc"
     ! grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc"
 }
+
+@test "install.sh skips wizard and prints manual hint in non-interactive shell" {
+    # bats's `run` invokes install.sh with stdin/stdout disconnected from a tty,
+    # which trips the `[[ -t 0 && -t 1 ]]` guard. The non-interactive branch must
+    # complete the install AND print the manual `ckipper setup` hint.
+    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
+        run "$REPO_ROOT/install.sh"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Non-interactive"* ]]
+    [[ "$output" == *"ckipper setup"* ]]
+}
+
+@test "install.sh fails fast when gum is missing" {
+    # Build a PATH where docker/jq/git/security exist as no-op stubs but gum
+    # does NOT — coreutils (/usr/bin, /bin) stay reachable so install.sh's
+    # pre-check shell plumbing (dirname, pwd, uname) still works.
+    # install.sh must exit non-zero with "gum" mentioned in the output.
+    local fake_path="$BATS_TEST_TMPDIR/fake_bin"
+    mkdir -p "$fake_path"
+    for cmd in docker jq git security; do
+        printf '#!/bin/sh\nexit 0\n' > "$fake_path/$cmd"
+        chmod +x "$fake_path/$cmd"
+    done
+
+    run env HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
+        PATH="$fake_path:/usr/bin:/bin" "$REPO_ROOT/install.sh"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"gum"* ]]
+}

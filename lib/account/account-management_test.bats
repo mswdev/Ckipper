@@ -78,6 +78,23 @@ run_helper() {
     [[ "$output" =~ "already registered" ]]
 }
 
+# ── _ckipper_account_finalize_registration ───────────────────────────────────
+
+@test "account add stores preferences with safe defaults" {
+    echo '{"version":2,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_CKIPPER_FINALIZE_CTX[name]="work"; _CKIPPER_FINALIZE_CTX[dir]="/tmp/.claude-work"; _CKIPPER_FINALIZE_CTX[service]=""; _ckipper_account_finalize_registration "adopt"'
+
+    [ "$status" -eq 0 ]
+    local always_docker always_firewall ssh_forward
+    always_docker=$(jq -r '.accounts.work.preferences.always_docker' "$CKIPPER_REGISTRY")
+    always_firewall=$(jq -r '.accounts.work.preferences.always_firewall' "$CKIPPER_REGISTRY")
+    ssh_forward=$(jq -r '.accounts.work.preferences.ssh_forward' "$CKIPPER_REGISTRY")
+    [ "$always_docker" = "false" ]
+    [ "$always_firewall" = "false" ]
+    [ "$ssh_forward" = "true" ]
+}
+
 # ── _ckipper_account_bare_alias_safe ─────────────────────────────────────────
 
 @test "bare_alias_safe returns 1 for shell builtin 'cd'" {
@@ -120,7 +137,13 @@ run_helper() {
     run_helper '_ckipper_account_list'
 
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "* work" ]]
+    # Default marker is rendered in the trailing DEFAULT column (post-restyle).
+    # Require `work` then non-newline padding then `*` on the SAME line.
+    # [[:blank:]] is space/tab only (no \n) and [^[:cntrl:]] excludes \n, so
+    # the legend line `* = default ...` cannot satisfy this regex via
+    # cross-line matching.
+    [[ "$output" =~ work[[:blank:]]+[^[:cntrl:]]*\* ]]
+    [[ "$output" =~ "* = default" ]]
 }
 
 # ── _ckipper_account_default ──────────────────────────────────────────────────
@@ -148,7 +171,10 @@ run_helper() {
 # ── _ckipper_account_remove ───────────────────────────────────────────────────
 
 @test "remove unregisters a known account and exits 0" {
-    echo '{"version":1,"default":null,"accounts":{"tmp":{"config_dir":"/tmp/.claude-tmp","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+    # Use $TMP_HOME-relative dir so the cleanup helpers find no directory and
+    # don't prompt — this test only asserts the unregistration outcome.
+    printf '{"version":1,"default":null,"accounts":{"tmp":{"config_dir":"%s/.claude-tmp","keychain_service":null}}}\n' \
+        "$TMP_HOME" > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_remove "tmp"'
 

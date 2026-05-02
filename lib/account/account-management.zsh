@@ -223,6 +223,7 @@ _ckipper_account_finalize_registration() {
     local dir="${_CKIPPER_FINALIZE_CTX[dir]}"
     local service="${_CKIPPER_FINALIZE_CTX[service]}"
     local now; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local defaults; defaults=$(_core_registry_account_defaults_json)
     _core_registry_init
     if ! _core_registry_update '
         if (.accounts | has($n)) then
@@ -230,10 +231,15 @@ _ckipper_account_finalize_registration() {
         elif ([.accounts[].config_dir] | any(. == $d)) then
             error("CONFIG_DIR_IN_USE")
         else
-            .accounts[$n] = {config_dir: $d, keychain_service: (if $s == "" then null else $s end), registered_at: $t}
+            .accounts[$n] = {
+                config_dir: $d,
+                keychain_service: (if $s == "" then null else $s end),
+                registered_at: $t,
+                preferences: $p
+            }
             | (if .default == null then .default = $n else . end)
         end
-    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"; then
+    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now" --argjson p "$defaults"; then
         _ckipper_account_finalize_diagnose_error "$name" "$dir"
         return 1
     fi
@@ -295,6 +301,25 @@ _ckipper_account_bare_alias_safe() {
     return 0
 }
 
+# Column widths (chars) used when rendering `ckipper account list` rows.
+# Matched against the header printed by _ckipper_account_list_header.
+readonly _CKIPPER_ACCOUNT_LIST_COL_NAME=14
+readonly _CKIPPER_ACCOUNT_LIST_COL_DIR=32
+readonly _CKIPPER_ACCOUNT_LIST_COL_EMAIL=28
+readonly _CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN=10
+
+# Print the column-header row for `ckipper account list`.
+#
+# Returns: 0 always.
+_ckipper_account_list_header() {
+    printf '%-*s%-*s%-*s%-*s%s\n' \
+        "$_CKIPPER_ACCOUNT_LIST_COL_NAME" "NAME" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_DIR" "DIR" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_EMAIL" "EMAIL" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN" "KEYCHAIN" \
+        "DEFAULT"
+}
+
 # Print all registered accounts with their directories and email addresses.
 #
 # Returns:
@@ -304,12 +329,15 @@ _ckipper_account_list() {
         echo "No accounts registered. Run: ckipper account add <name>"
         return 0
     fi
+    _core_registry_check_version || return 1
     local default
     default=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
-    echo "Registered accounts:"
-    jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)"' "$CKIPPER_REGISTRY" | \
-        while IFS=$'\t' read -r name dir; do
-            _ckipper_account_list_account_line "$name" "$dir" "$default"
+    _core_style_header "Registered accounts"
+    _ckipper_account_list_header
+    _core_style_divider
+    jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)\t\(.value.keychain_service // "null")"' "$CKIPPER_REGISTRY" | \
+        while IFS=$'\t' read -r name dir keychain; do
+            _ckipper_account_list_row "$name" "$dir" "$keychain" "$default"
         done
     echo ""
     echo "* = default. Run: ckipper account default <name>"
@@ -318,26 +346,43 @@ _ckipper_account_list() {
     echo "is single-use, so the second session gets logged out. Use a different account instead."
 }
 
-# Print a single account line for `ckipper account list`.
+# Shorten an absolute path under $HOME to a `~/`-prefixed form for display.
+#
+# Args: $1 — absolute path.
+# Returns: 0 always; prints the (possibly shortened) path.
+_ckipper_account_list_short_dir() {
+    local dir="$1"
+    [[ "$dir" == "$HOME"* ]] && printf '~%s' "${dir#$HOME}" || printf '%s' "$dir"
+}
+
+# Print a single account row for `ckipper account list`.
 #
 # Args:
 #   $1 — account name
 #   $2 — config directory
-#   $3 — default account name
+#   $3 — keychain service ("null" string when unset)
+#   $4 — default account name
 #
 # Returns:
 #   0 always.
-_ckipper_account_list_account_line() {
-    local name="$1" dir="$2" default="$3"
-    local marker="  "
-    [[ "$name" == "$default" ]] && marker="* "
-    local email=""
+_ckipper_account_list_row() {
+    local name="$1" dir="$2" keychain="$3" default="$4"
+    local short_dir; short_dir=$(_ckipper_account_list_short_dir "$dir")
+    local email="-"
     if [[ -f "$dir/.claude.json" ]]; then
-        email=$(jq -r '.oauthAccount.emailAddress // ""' "$dir/.claude.json" 2>/dev/null)
+        email=$(jq -r '.oauthAccount.emailAddress // "-"' "$dir/.claude.json" 2>/dev/null)
     fi
-    local exists="(missing)"
-    [[ -d "$dir" ]] && exists=""
-    echo "$marker$name  $dir  ${email:+($email)} $exists"
+    local keychain_status="no"
+    [[ "$keychain" == "null" ]] && keychain_status="null"
+    [[ "$keychain" != "null" && -n "$keychain" ]] && keychain_status="yes"
+    local marker=" "
+    [[ "$name" == "$default" ]] && marker=$(_core_style_color green "*")
+    printf '%-*s%-*s%-*s%-*s%s\n' \
+        "$_CKIPPER_ACCOUNT_LIST_COL_NAME" "$name" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_DIR" "$short_dir" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_EMAIL" "$email" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN" "$keychain_status" \
+        "$marker"
 }
 
 # Set the default account in the registry.
@@ -359,7 +404,9 @@ _ckipper_account_default() {
     echo "Default account is now '$name'."
 }
 
-# Unregister an account from the registry without deleting its files.
+# Unregister an account, then prompt to delete its config dir and Keychain
+# entry via _ckipper_account_cleanup_*. Declining a prompt keeps the
+# file/entry and prints the manual cleanup command.
 #
 # Args:
 #   $1 — account name to remove
@@ -382,12 +429,8 @@ _ckipper_account_remove() {
     unset -f "$name" 2>/dev/null
     _ckipper_account_regenerate_aliases
     echo "Unregistered '$name'."
-    echo ""
-    echo "The directory and Keychain entry were not deleted. To remove them manually:"
-    printf "  rm -rf %q\n" "$dir"
-    if [[ -n "$service" ]]; then
-        printf "  security delete-generic-password -s %q\n" "$service"
-    fi
+    _ckipper_account_cleanup_dir "$name" "$dir"
+    _ckipper_account_cleanup_keychain "$name" "$service"
 }
 
 # Validate arguments for `ckipper account rename` before performing the rename.
@@ -422,16 +465,6 @@ _ckipper_account_rename_validate() {
     fi
 }
 
-# Perform the directory move and registry update for `ckipper account rename`.
-# Rolls back the directory rename if the registry write fails.
-# Reads old_dir and new_dir from _CKIPPER_RENAME_CTX module global.
-#
-# Args:
-#   $1 — old account name
-#   $2 — new account name
-#
-# Returns:
-#   0 on success; 1 on directory move or registry write failure.
 # Verify the rename is safe before performing destructive actions.
 #
 # Args:
@@ -452,6 +485,16 @@ _ckipper_account_rename_check_preconditions() {
     _core_assert_no_running_claude || return 1
 }
 
+# Perform the directory move and registry update for `ckipper account rename`.
+# Rolls back the directory rename if the registry write fails.
+# Reads old_dir and new_dir from _CKIPPER_RENAME_CTX module global.
+#
+# Args:
+#   $1 — old account name
+#   $2 — new account name
+#
+# Returns:
+#   0 on success; 1 on directory move or registry write failure.
 _ckipper_account_rename_perform() {
     local old="$1" new="$2"
     local old_dir="${_CKIPPER_RENAME_CTX[old_dir]}"

@@ -173,29 +173,107 @@ _core_registry_init() {
     [[ -f "$CKIPPER_REGISTRY" ]] && chmod "$REGISTRY_FILE_PERMS" "$CKIPPER_REGISTRY"
 }
 
-# Refuse to operate on a registry whose version we don't understand OR whose schema
-# is corrupt (e.g. user manually edited and turned .accounts into an array).
+# Build a JSON object of every account-scope schema key with its default
+# value, suitable for embedding in a jq filter via `--argjson p "$(...)"`.
+# Used by both the v1→v2 migration and the account-add finalize step so the
+# two callers cannot drift from the schema.
+#
+# Reads: _CKIPPER_SCHEMA_TYPE, _CKIPPER_SCHEMA_DEFAULT, _CKIPPER_SCHEMA_SCOPE
+#   (lib/config/schema.zsh — must be sourced before this is called).
+#
+# Limitations: only handles bool, int, string, and path types. The current
+# schema has no account-scope `int_array` keys; if one is added, extend the
+# case below to render the comma-separated default as a JSON array.
+#
+# Returns: 0; emits a valid JSON object string to stdout (e.g.
+#   `{"always_docker":false,"always_firewall":false,"ssh_forward":true}`).
+_core_registry_account_defaults_json() {
+    local key entries=""
+    for key in "${(@ko)_CKIPPER_SCHEMA_TYPE}"; do
+        [[ "${_CKIPPER_SCHEMA_SCOPE[$key]}" == "account" ]] || continue
+        local val="${_CKIPPER_SCHEMA_DEFAULT[$key]}"
+        local type="${_CKIPPER_SCHEMA_TYPE[$key]}"
+        case "$type" in
+            bool | int) entries+="\"$key\":$val," ;;
+            *) entries+="\"$key\":\"$val\"," ;;
+        esac
+    done
+    echo "{${entries%,}}"
+}
+
+# Auto-migrate a v1 registry to v2 in place.
+# Backs up the v1 file (refuses to migrate without a backup), then rewrites
+# accounts.json with .version=2 and a per-account .preferences block. Existing
+# preferences win over defaults so partial-v2 fixtures keep their values.
 #
 # Returns:
-#   0 if registry is absent or valid; 1 on version mismatch or corrupt schema.
+#   0 on successful migration; 1 if backup write or jq update failed.
 #
 # Errors (stderr):
+#   "Error: failed to write migration backup..." — when cp to the .v1.bak path fails.
+_core_registry_migrate_v1_to_v2() {
+    local backup="${CKIPPER_REGISTRY}.v1.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    if ! cp "$CKIPPER_REGISTRY" "$backup" 2>/dev/null; then
+        echo "Error: failed to write migration backup $backup" >&2
+        return 1
+    fi
+    local defaults
+    defaults=$(_core_registry_account_defaults_json)
+    _core_registry_update '
+        .version = 2
+        | .accounts = (
+            .accounts | with_entries(
+                .value.preferences = ($defaults + (.value.preferences // {}))
+            )
+        )
+    ' --argjson defaults "$defaults"
+}
+
+# Refuse to operate on a registry whose version we don't understand OR whose schema
+# is corrupt (e.g. user manually edited and turned .accounts into an array).
+# Auto-migrates a v1 registry to v2 (with backup) before checking the version.
+#
+# Returns:
+#   0 if registry is absent or valid; 1 on version mismatch, migration failure,
+#   or corrupt schema.
+#
+# Errors (stderr):
+#   "Migrating accounts.json v1 → v2..." — informational notice during auto-migration.
 #   "Error: registry version..." — on version mismatch.
 #   "Error: ... is corrupt..." — on bad schema.
 _core_registry_check_version() {
     [[ ! -f "$CKIPPER_REGISTRY" ]] && return 0
+    local cur
+    cur=$(jq -r '.version // 0' "$CKIPPER_REGISTRY" 2>/dev/null)
+    if [[ "$cur" == "1" ]] && (( CKIPPER_REGISTRY_VERSION >= 2 )); then
+        echo "Migrating accounts.json v1 → v2..." >&2
+        _core_registry_migrate_v1_to_v2 || return 1
+    fi
     local v
     v=$(jq -r '.version // 0' "$CKIPPER_REGISTRY" 2>/dev/null)
     if (( v != CKIPPER_REGISTRY_VERSION )); then
         echo "Error: registry version $v not supported (this ckipper expects $CKIPPER_REGISTRY_VERSION). Update ckipper or restore from backup." >&2
         return 1
     fi
-    if ! jq -e '.accounts | type == "object"' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
-        echo "Error: $CKIPPER_REGISTRY is corrupt (.accounts is not an object)." >&2
-        echo "Backup and re-init manually:" >&2
-        echo "  mv $CKIPPER_REGISTRY $CKIPPER_REGISTRY.corrupt-\$(date +%s)" >&2
-        return 1
+    _core_registry_assert_accounts_object || return 1
+}
+
+# Verify that .accounts is a JSON object (not an array or other type).
+# Surface a clear error with manual-recovery instructions when it isn't.
+#
+# Returns:
+#   0 if the schema looks valid; 1 if .accounts is corrupt.
+#
+# Errors (stderr):
+#   "Error: ... is corrupt..." — when .accounts is not an object.
+_core_registry_assert_accounts_object() {
+    if jq -e '.accounts | type == "object"' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
+        return 0
     fi
+    echo "Error: $CKIPPER_REGISTRY is corrupt (.accounts is not an object)." >&2
+    echo "Backup and re-init manually:" >&2
+    echo "  mv $CKIPPER_REGISTRY $CKIPPER_REGISTRY.corrupt-\$(date +%s)" >&2
+    return 1
 }
 
 # Validate that an account exists in the registry. Echoes its config_dir on success.

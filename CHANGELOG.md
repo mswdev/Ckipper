@@ -5,7 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] — CLI + onboarding overhaul
+
+### Added
+- `ckipper setup` — interactive wizard for configuring Ckipper. Re-runnable.
+- `ckipper config get / set / unset / list / edit` — view and modify settings.
+- `ckipper run <project> <branch>` — top-level shortcut for `ckipper worktree run`.
+- Bare `ck` (no args) — interactive launcher menu.
+- `ckipper doctor --fix` — gum-driven repairs, including the former `repair-plugins` flow.
+- Per-account preferences: `always_docker`, `always_firewall`, `ssh_forward`, populating flag defaults for `ck run`/`ck wt run`.
+- New global config keys: `CKIPPER_DEFAULT_BRANCH`, `CKIPPER_DEP_INSTALL_CMD`, `CKIPPER_NOTIFY_BELL`, `CKIPPER_ALIASES_AUTO_SOURCE`.
+- New flags: `--no-docker`, `--no-firewall`, `--ssh-forward`, `--no-ssh-forward` (override per-account preferences inline).
+- Auto-detection of `origin/HEAD` for the worktree base branch.
+- Restyled output across `ck account list`, `ck worktree list`, `ck doctor`, and all `--help` text via shared `lib/core/style.zsh`.
+- `ck doctor` validates `accounts.json` v2 preferences shape and `ckipper-config.zsh` keys against the schema.
+
+### Changed
+- `accounts.json` schema bumped v1 → v2; auto-migrates on first command after upgrade. Backup written to `accounts.json.v1.bak.<timestamp>`.
+- `install.sh` now ends by auto-invoking `ckipper setup` in interactive shells.
+- `gum` is a hard prereq (added to `install.sh` prereq check and `make bootstrap`).
+
+### Removed
+- `ckipper account repair-plugins` (folded into `ckipper doctor --fix`).
+- `ckipper account sync-hooks` from public help (still callable; auto-runs after install/setup).
+
+### Notes
+- `lib/account/sync.zsh` is intentionally untouched — full sync overhaul ships in a separate future PR.
 
 ## [0.2.0] — 2026-04-30 — Breaking changes: merge `w` into `ckipper`
 

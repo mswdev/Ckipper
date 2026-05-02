@@ -27,6 +27,10 @@ Used to encode the dependency direction at a glance and let CI verify it:
 - `_core_*` — `lib/core/` (shared primitives)
 - `_ckipper_account_*` — `lib/account/` (account subcommands)
 - `_ckipper_worktree_*` — `lib/worktree/` (worktree subcommands)
+- `_ckipper_config_*` — `lib/config/` (config get/set/unset/list/edit)
+- `_ckipper_setup_*` — `lib/setup/` (first-run wizard)
+- `_ckipper_run_*` — `lib/run/` (top-level `ckipper run` shortcut)
+- `_ckipper_launcher_*` — `lib/launcher/` (bare-`ck` interactive menu)
 - `_ckipper_*` — top-level dispatcher in `ckipper.zsh` (and `_ckipper_doctor`, kept un-namespaced because it's exposed as a top-level command, even though its source lives in `lib/account/`)
 - No prefix — public, callable from `.zshrc`: `ckipper`, `ck`
 
@@ -36,11 +40,25 @@ zsh has no native bool. Use string values `"true"`/`"false"` and test with `[[ "
 
 ## Module sourcing
 
-Modules under `lib/` are sourced once by `ckipper.zsh` (the single entry script sourced from `~/.zshrc`). Modules MUST NOT source siblings. Cross-feature imports between `lib/account/` and `lib/worktree/` are forbidden — extract shared code to `lib/core/` (per `file-organization.md`'s shared-parent rule).
+Modules under `lib/` are sourced once by `ckipper.zsh` (the single entry script sourced from `~/.zshrc`). Modules MUST NOT source siblings.
 
-CI enforces the namespace separation with the four guards from `make lint-merge-guards`:
+The `lib/` tree has two layers:
 
-- `grep -rE '\b_w_[a-z]' lib/`   — must be empty (no leftover renames from the merge)
-- `grep -rE '\bW_[A-Z]' lib/`    — must be empty (no leftover globals from the merge)
-- `grep -rE '\b_ckipper_account_' lib/worktree/`   — must be empty (worktree mustn't reach into account)
-- `grep -rE '\b_ckipper_worktree_' lib/account/`   — must be empty (account mustn't reach into worktree)
+1. **Feature dirs** — `lib/account/`, `lib/worktree/`, `lib/config/`. Each owns a coherent slice of subcommand functionality. Feature dirs MUST NOT call into each other (account cannot call worktree, worktree cannot call config, etc.). Shared code goes in `lib/core/` per `file-organization.md`.
+
+2. **Orchestration dirs** — `lib/launcher/`, `lib/setup/`, `lib/run/`. Their entire purpose is to delegate to feature dirs (the bare-`ck` menu, the first-run wizard, the `ckipper run` top-level shortcut). Orchestration dirs MAY call public, namespaced entry points from feature dirs (e.g. `_ckipper_worktree_dispatch`, `_ckipper_account_add`, `_ckipper_worktree_run`). They MUST NOT reach into another orchestration dir's internals.
+
+`lib/core/` is callable from any layer.
+
+CI enforces the namespace separation via `make lint-merge-guards`. The grep-based guards catch any *reference* (definition or call) — feature siblings cannot reach into each other, and orchestration-only namespaces (`_ckipper_setup_*`, `_ckipper_run_*`, `_ckipper_launcher_*`) are pinned to their dirs:
+
+- `grep -rE '\b_w_[a-z]' lib/`        — empty (no leftover renames from the merge)
+- `grep -rE '\bW_[A-Z]' lib/`         — empty (no leftover globals from the merge)
+- `grep -rE '\b_ckipper_account_' lib/worktree/ lib/config/`   — empty (sibling features can't call account)
+- `grep -rE '\b_ckipper_worktree_' lib/account/ lib/config/`   — empty (sibling features can't call worktree)
+- `grep -rE '\b_ckipper_config_' lib/account/ lib/worktree/ lib/setup/ lib/run/ lib/core/`   — empty (config namespace is pinned to lib/config/)
+- `grep -rE '\b_ckipper_setup_' lib/account/ lib/worktree/ lib/config/ lib/run/ lib/core/`   — empty (setup namespace is pinned to lib/setup/)
+- `grep -rE '\b_ckipper_run_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/core/`   — empty (run namespace is pinned to lib/run/)
+- `grep -rE '\b_ckipper_launcher_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/run/ lib/core/`   — empty (launcher namespace is pinned to lib/launcher/)
+
+Orchestration dirs (`lib/launcher/`, `lib/setup/`, `lib/run/`) are *omitted* from the account/worktree/config guards by design — that's the dispatcher exception. Adding them would block the only legal pattern of cross-imports.

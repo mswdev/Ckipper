@@ -78,21 +78,19 @@ _ckipper_worktree_unknown() {
 #
 # Returns: 0 always.
 _ckipper_worktree_help() {
-    cat <<'EOF'
-ckipper worktree — manage git worktrees and run Claude in them
-
-Usage:
-  ckipper worktree run <project> <branch> [--docker [--firewall]] [--account <name>] [cmd...]
-                                       Create-or-cd worktree, optionally launch in Docker
-  ckipper worktree list                List all worktrees under CKIPPER_WORKTREES_DIR
-  ckipper worktree rm [--force] <project> <branch>
-                                       Remove worktree directory + delete branch
-  ckipper worktree rebuild-image       Rebuild the ckipper-dev Docker image
-
-Short form: `ckipper wt ...` is equivalent.
-
-Run `ckipper worktree <subcommand> --help` for per-subcommand details.
-EOF
+    _core_help_render "ckipper worktree — manage git worktrees and run Claude in them" \
+        "" \
+        "Usage:" \
+        "  ckipper worktree run <project> <branch> [--docker [--firewall]] [--account <name>] [cmd...]" \
+        "                                       Create-or-cd worktree, optionally launch in Docker" \
+        "  ckipper worktree list                List all worktrees under CKIPPER_WORKTREES_DIR" \
+        "  ckipper worktree rm [--force] <project> <branch>" \
+        "                                       Remove worktree directory + delete branch" \
+        "  ckipper worktree rebuild-image       Rebuild the ckipper-dev Docker image" \
+        "" \
+        "Short form: \`ckipper wt ...\` is equivalent." \
+        "" \
+        "Run \`ckipper worktree <subcommand> --help\` for per-subcommand details."
 }
 
 # Per-subcommand help text router.
@@ -108,64 +106,91 @@ _ckipper_worktree_help_for() {
     esac
 }
 
+# Print the intro and Args section for `worktree run --help`. Split from the
+# parent renderer so the parent stays under the 25-line cap.
+#
+# Returns: 0 always.
+_ckipper_worktree_help_text_run_intro() {
+    print -- ""
+    print -- "Create-or-cd to a git worktree under CKIPPER_WORKTREES_DIR, then either drop"
+    print -- "you in a shell or run a command. Without --docker, runs on the host."
+    print -- ""
+    print -- "Args:"
+    print -- "  <project>           Path relative to CKIPPER_PROJECTS_DIR (e.g. myorg/app)"
+    print -- "  <branch>            Worktree/branch name (creates from origin/HEAD if new)"
+    print -- "  [cmd...]            Optional command to run in the worktree (e.g. \`claude\`)"
+    print -- ""
+    print -- "Per-account preferences (always_docker, always_firewall, ssh_forward) populate"
+    print -- "flag defaults; --no-* overrides per invocation."
+}
+
+# Print the Flags section for `worktree run --help`. Split from the parent
+# so the parent stays under the 25-line cap.
+#
+# Returns: 0 always.
+_ckipper_worktree_help_text_run_flags() {
+    print -- ""
+    print -- "Flags:"
+    print -- "  --docker            Run inside the ckipper-dev container (shell by default)"
+    print -- "  --no-docker         Force host-only run, even if the account's always_docker"
+    print -- "                      preference is true"
+    print -- "  --firewall          Add the egress firewall (requires --docker)"
+    print -- "  --no-firewall       Disable the firewall, even if the account's always_firewall"
+    print -- "                      preference is true"
+    print -- "  --ssh-forward       Mount ~/.ssh into the container (default for new accounts)"
+    print -- "  --no-ssh-forward    Do not mount ~/.ssh, even if the account's ssh_forward"
+    print -- "                      preference is true"
+    print -- "  --account <name>    Use a specific Ckipper account (default: registered"
+    print -- "                      default, or value of \$CLAUDE_CONFIG_DIR if set)"
+}
+
+# Print the Examples section for `worktree run --help`. Split from the parent
+# so the parent stays under the 25-line cap.
+#
+# Returns: 0 always.
+_ckipper_worktree_help_text_run_examples() {
+    print -- ""
+    print -- "Examples:"
+    print -- "  ckipper wt run myorg/app feature                       # cd to worktree"
+    print -- "  ckipper wt run myorg/app feature claude                # claude on host"
+    print -- "  ckipper wt run myorg/app feature --docker              # shell in container"
+    print -- "  ckipper wt run myorg/app feature --docker claude       # claude in container"
+    print -- "  ckipper wt run myorg/app feature --docker --firewall   # + egress firewall"
+}
+
 _ckipper_worktree_help_text_run() {
-    cat <<'EOF'
-ckipper worktree run <project> <branch> [flags] [cmd...]
-
-Create-or-cd to a git worktree under CKIPPER_WORKTREES_DIR, then either drop
-you in a shell or run a command. Without --docker, runs on the host.
-
-Args:
-  <project>           Path relative to CKIPPER_PROJECTS_DIR (e.g. myorg/app)
-  <branch>            Worktree/branch name (creates from origin/develop if new)
-  [cmd...]            Optional command to run in the worktree (e.g. `claude`)
-
-Flags:
-  --docker            Run inside the ckipper-dev container (shell by default)
-  --firewall          Add the egress firewall (requires --docker)
-  --account <name>    Use a specific Ckipper account (default: registered
-                      default, or value of $CLAUDE_CONFIG_DIR if set)
-
-Examples:
-  ckipper wt run myorg/app feature                       # cd to worktree
-  ckipper wt run myorg/app feature claude                # claude on host
-  ckipper wt run myorg/app feature --docker              # shell in container
-  ckipper wt run myorg/app feature --docker claude       # claude in container
-  ckipper wt run myorg/app feature --docker --firewall   # + egress firewall
-EOF
+    _core_help_render "ckipper worktree run <project> <branch> [flags] [cmd...]"
+    _ckipper_worktree_help_text_run_intro
+    _ckipper_worktree_help_text_run_flags
+    _ckipper_worktree_help_text_run_examples
+    echo ""
 }
 
 _ckipper_worktree_help_text_list() {
-    cat <<'EOF'
-ckipper worktree list
-
-Print every worktree under CKIPPER_WORKTREES_DIR, grouped by project. Useful
-for finding stale worktrees you forgot to remove.
-EOF
+    _core_help_render "ckipper worktree list" \
+        "" \
+        "Print every worktree under CKIPPER_WORKTREES_DIR, grouped by project. Useful" \
+        "for finding stale worktrees you forgot to remove."
 }
 
 _ckipper_worktree_help_text_rm() {
-    cat <<'EOF'
-ckipper worktree rm [--force] <project> <branch>
-
-Remove a worktree directory and delete the matching branch. Refuses if the
-worktree has uncommitted changes; pass --force (or -f) to override.
-
-Args:
-  <project>   Path relative to CKIPPER_PROJECTS_DIR
-  <branch>    Worktree name to remove
-
-Flags:
-  --force, -f Remove even if the worktree has uncommitted changes
-EOF
+    _core_help_render "ckipper worktree rm [--force] <project> <branch>" \
+        "" \
+        "Remove a worktree directory and delete the matching branch. Refuses if the" \
+        "worktree has uncommitted changes; pass --force (or -f) to override." \
+        "" \
+        "Args:" \
+        "  <project>   Path relative to CKIPPER_PROJECTS_DIR" \
+        "  <branch>    Worktree name to remove" \
+        "" \
+        "Flags:" \
+        "  --force, -f Remove even if the worktree has uncommitted changes"
 }
 
 _ckipper_worktree_help_text_rebuild_image() {
-    cat <<'EOF'
-ckipper worktree rebuild-image
-
-Rebuild the ckipper-dev Docker image (the one used by `worktree run --docker`).
-Run this after editing the Dockerfile or pulling Ckipper updates that change
-the entrypoint.
-EOF
+    _core_help_render "ckipper worktree rebuild-image" \
+        "" \
+        "Rebuild the ckipper-dev Docker image (the one used by \`worktree run --docker\`)." \
+        "Run this after editing the Dockerfile or pulling Ckipper updates that change" \
+        "the entrypoint."
 }

@@ -14,26 +14,46 @@
 # Config globals (CKIPPER_PROJECTS_DIR, CKIPPER_WORKTREES_DIR, CKIPPER_PORTS,
 # etc.) are owned by ckipper.zsh and intentionally not touched here.
 #
+# The *_EXPLICIT trackers record whether the user actually passed --flag /
+# --no-flag on the CLI (vs. the default being used). Downstream code consults
+# them to decide whether the per-account preference (always_docker,
+# always_firewall, ssh_forward) should override the default.
+#
 # Returns: 0 always.
 _ckipper_worktree_reset_globals() {
     CKIPPER_WT_FLAG_FORCE=false
     CKIPPER_WT_FLAG_DOCKER=false
+    CKIPPER_WT_FLAG_DOCKER_EXPLICIT=false
     CKIPPER_WT_FLAG_FIREWALL=false
+    CKIPPER_WT_FLAG_FIREWALL_EXPLICIT=false
+    CKIPPER_WT_FLAG_SSH_FORWARD=true
+    CKIPPER_WT_FLAG_SSH_FORWARD_EXPLICIT=false
     CKIPPER_WT_PROJECT=""
     CKIPPER_WT_BRANCH=""
     CKIPPER_WT_CLI_ACCOUNT=""
     CKIPPER_WT_COMMAND=()
 }
 
-# Parse `worktree run <project> <branch> [--docker] [--firewall] [--account <name>] [cmd...]`.
+# Parse `worktree run <project> <branch> [flags...] [cmd...]`.
+#
+# Supported flags (each --foo has a paired --no-foo override):
+#   --docker / --no-docker
+#   --firewall / --no-firewall
+#   --ssh-forward / --no-ssh-forward
+#   --account <name>
 #
 # Globals set:
-#   CKIPPER_WT_PROJECT       — first positional arg (project path)
-#   CKIPPER_WT_BRANCH        — second positional arg (worktree/branch name)
-#   CKIPPER_WT_FLAG_DOCKER   — true if --docker
-#   CKIPPER_WT_FLAG_FIREWALL — true if --firewall
-#   CKIPPER_WT_CLI_ACCOUNT   — value of --account <name>, or empty
-#   CKIPPER_WT_COMMAND       — array of remaining positional args (the command to run)
+#   CKIPPER_WT_PROJECT                    — first positional arg (project path)
+#   CKIPPER_WT_BRANCH                     — second positional arg (worktree/branch name)
+#   CKIPPER_WT_FLAG_DOCKER                — true if --docker, false if --no-docker
+#   CKIPPER_WT_FLAG_DOCKER_EXPLICIT       — true iff --docker or --no-docker was passed
+#   CKIPPER_WT_FLAG_FIREWALL              — true if --firewall, false if --no-firewall
+#   CKIPPER_WT_FLAG_FIREWALL_EXPLICIT     — true iff --firewall or --no-firewall was passed
+#   CKIPPER_WT_FLAG_SSH_FORWARD           — true if --ssh-forward, false if --no-ssh-forward
+#                                           (defaults to true to preserve pre-flag behavior)
+#   CKIPPER_WT_FLAG_SSH_FORWARD_EXPLICIT  — true iff --ssh-forward or --no-ssh-forward was passed
+#   CKIPPER_WT_CLI_ACCOUNT                — value of --account <name>, or empty
+#   CKIPPER_WT_COMMAND                    — array of remaining positional args
 #
 # Returns: 0 always (validation is the caller's responsibility).
 _ckipper_worktree_parse_run_args() {
@@ -44,10 +64,14 @@ _ckipper_worktree_parse_run_args() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --docker)   CKIPPER_WT_FLAG_DOCKER=true; shift ;;
-            --firewall) CKIPPER_WT_FLAG_FIREWALL=true; shift ;;
-            --account)  CKIPPER_WT_CLI_ACCOUNT="$2"; shift 2 ;;
-            *)          CKIPPER_WT_COMMAND+=("$1"); shift ;;
+            --docker)         CKIPPER_WT_FLAG_DOCKER=true;       CKIPPER_WT_FLAG_DOCKER_EXPLICIT=true; shift ;;
+            --no-docker)      CKIPPER_WT_FLAG_DOCKER=false;      CKIPPER_WT_FLAG_DOCKER_EXPLICIT=true; shift ;;
+            --firewall)       CKIPPER_WT_FLAG_FIREWALL=true;     CKIPPER_WT_FLAG_FIREWALL_EXPLICIT=true; shift ;;
+            --no-firewall)    CKIPPER_WT_FLAG_FIREWALL=false;    CKIPPER_WT_FLAG_FIREWALL_EXPLICIT=true; shift ;;
+            --ssh-forward)    CKIPPER_WT_FLAG_SSH_FORWARD=true;  CKIPPER_WT_FLAG_SSH_FORWARD_EXPLICIT=true; shift ;;
+            --no-ssh-forward) CKIPPER_WT_FLAG_SSH_FORWARD=false; CKIPPER_WT_FLAG_SSH_FORWARD_EXPLICIT=true; shift ;;
+            --account)        CKIPPER_WT_CLI_ACCOUNT="$2"; shift 2 ;;
+            *)                CKIPPER_WT_COMMAND+=("$1"); shift ;;
         esac
     done
 }

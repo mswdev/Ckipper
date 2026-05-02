@@ -18,6 +18,8 @@ _run_dispatch() {
     run env HOME="$TMP_HOME" PATH="$PATH" \
         zsh -c "
             source \"$REPO_ROOT/lib/core/fuzzy.zsh\"
+            source \"$REPO_ROOT/lib/core/style.zsh\"
+            source \"$REPO_ROOT/lib/core/help.zsh\"
             source \"$REPO_ROOT/lib/worktree/args.zsh\"
             source \"$REPO_ROOT/lib/worktree/dispatcher.zsh\"
             _ckipper_worktree_run() { echo 'STUB-RUN' \"\$@\"; }

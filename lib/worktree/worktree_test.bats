@@ -32,6 +32,7 @@ _run_worktree() {
         zsh -c "
             source \"$REPO_ROOT/lib/core/utils.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
+            source \"$REPO_ROOT/lib/core/style.zsh\"
             source \"$REPO_ROOT/lib/worktree/args.zsh\"
             source \"$REPO_ROOT/lib/worktree/worktree.zsh\"
             $zsh_cmd
@@ -85,4 +86,59 @@ _run_worktree() {
 
     [ "$status" -ne 0 ]
     [[ "$output" =~ "Invalid project path" ]]
+}
+
+@test "_ckipper_worktree_resolve_base_branch resolves origin/HEAD when set to main" {
+    cd "$BATS_TEST_TMPDIR"
+    git init -q origin && (
+        cd origin && git checkout -qb main
+        echo "x" > a && git add a
+        git -c user.email=t@t -c user.name=t commit -qm i
+    )
+    git clone -q origin work
+    cd work
+    git remote set-head origin --auto >/dev/null 2>&1 || true
+    run zsh -c "source \"$REPO_ROOT/lib/worktree/worktree.zsh\"; _ckipper_worktree_resolve_base_branch"
+    [ "$status" -eq 0 ]
+    [ "$output" = "main" ]
+}
+
+@test "_ckipper_worktree_resolve_base_branch falls back to CKIPPER_DEFAULT_BRANCH" {
+    cd "$BATS_TEST_TMPDIR"
+    git init -q work_no_origin
+    cd work_no_origin
+    run env CKIPPER_DEFAULT_BRANCH=stage zsh -c "source \"$REPO_ROOT/lib/worktree/worktree.zsh\"; _ckipper_worktree_resolve_base_branch"
+    [ "$status" -eq 0 ]
+    [ "$output" = "stage" ]
+}
+
+@test "_ckipper_worktree_resolve_base_branch falls back to develop when nothing else is set" {
+    cd "$BATS_TEST_TMPDIR"
+    git init -q work_naked
+    cd work_naked
+    run env -u CKIPPER_DEFAULT_BRANCH zsh -c "source \"$REPO_ROOT/lib/worktree/worktree.zsh\"; _ckipper_worktree_resolve_base_branch"
+    [ "$status" -eq 0 ]
+    [ "$output" = "develop" ]
+}
+
+@test "_ckipper_worktree_post_create_setup runs the configured dep install command" {
+    cd "$BATS_TEST_TMPDIR"
+    mkdir wt && cd wt && git init -q
+    run env HOME="$BATS_TEST_TMPDIR" \
+            CKIPPER_DEP_INSTALL_CMD="echo INSTALLED" \
+            CKIPPER_WT_PATH="$PWD" \
+            CKIPPER_PROJECTS_DIR="$BATS_TEST_TMPDIR" \
+        zsh -c "source \"$REPO_ROOT/lib/worktree/worktree.zsh\"; _ckipper_worktree_post_create_setup wt"
+    [[ "$output" =~ "INSTALLED" ]]
+}
+
+@test "_ckipper_worktree_post_create_setup skips deps when CKIPPER_DEP_INSTALL_CMD is empty" {
+    cd "$BATS_TEST_TMPDIR"
+    mkdir wt2 && cd wt2 && git init -q
+    run env HOME="$BATS_TEST_TMPDIR" \
+            CKIPPER_DEP_INSTALL_CMD="" \
+            CKIPPER_WT_PATH="$PWD" \
+            CKIPPER_PROJECTS_DIR="$BATS_TEST_TMPDIR" \
+        zsh -c "source \"$REPO_ROOT/lib/worktree/worktree.zsh\"; _ckipper_worktree_post_create_setup wt2"
+    [[ ! "$output" =~ "Installing dependencies" ]]
 }

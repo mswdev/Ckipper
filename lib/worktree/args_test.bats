@@ -65,6 +65,89 @@ _parse_and_print() {
     [ "$output" = "false" ]
 }
 
+# ── --no-* flags + EXPLICIT trackers ─────────────────────────────────
+
+@test "parse_run_args --docker sets DOCKER_EXPLICIT=true (regression)" {
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_DOCKER_EXPLICIT myapp feature-x --docker
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
+@test "parse_run_args --no-docker sets DOCKER=false and DOCKER_EXPLICIT=true" {
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_DOCKER myapp feature-x --no-docker
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "false" ]
+
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_DOCKER_EXPLICIT myapp feature-x --no-docker
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
+@test "parse_run_args --firewall sets FIREWALL_EXPLICIT=true (regression)" {
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_FIREWALL_EXPLICIT myapp feature-x --docker --firewall
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
+@test "parse_run_args --no-firewall sets FIREWALL=false and FIREWALL_EXPLICIT=true" {
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_FIREWALL myapp feature-x --no-firewall
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "false" ]
+
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_FIREWALL_EXPLICIT myapp feature-x --no-firewall
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
+@test "parse_run_args --ssh-forward sets SSH_FORWARD=true and SSH_FORWARD_EXPLICIT=true" {
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_SSH_FORWARD myapp feature-x --ssh-forward
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_SSH_FORWARD_EXPLICIT myapp feature-x --ssh-forward
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
+@test "parse_run_args --no-ssh-forward sets SSH_FORWARD=false and SSH_FORWARD_EXPLICIT=true" {
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_SSH_FORWARD myapp feature-x --no-ssh-forward
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "false" ]
+
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_SSH_FORWARD_EXPLICIT myapp feature-x --no-ssh-forward
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
+@test "parse_run_args without docker flag leaves DOCKER_EXPLICIT=false" {
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_DOCKER_EXPLICIT myapp feature-x
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "false" ]
+}
+
+@test "parse_run_args without ssh flag leaves SSH_FORWARD=true and SSH_FORWARD_EXPLICIT=false" {
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_SSH_FORWARD myapp feature-x
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+
+    _parse_and_print _ckipper_worktree_parse_run_args CKIPPER_WT_FLAG_SSH_FORWARD_EXPLICIT myapp feature-x
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "false" ]
+}
+
 # ── _ckipper_worktree_parse_rm_args ──────────────────────────────────
 
 @test "parse_rm_args sets CKIPPER_WT_PROJECT and CKIPPER_WT_BRANCH" {

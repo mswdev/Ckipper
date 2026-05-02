@@ -13,6 +13,7 @@ missing_dependencies=()
 command -v docker &>/dev/null || missing_dependencies+=("docker (install Docker Desktop)")
 command -v jq &>/dev/null || missing_dependencies+=("jq (brew install jq)")
 command -v git &>/dev/null || missing_dependencies+=("git")
+command -v gum &>/dev/null || missing_dependencies+=("gum (brew install gum)")
 if [[ "$(uname)" == "Darwin" ]]; then
     command -v security &>/dev/null || missing_dependencies+=("security (macOS Keychain CLI)")
 fi
@@ -186,11 +187,23 @@ fi
 echo ""
 echo "=== Setup Complete ==="
 echo ""
-echo "Next steps:"
-echo "  1. Edit $CKIPPER_DIR/docker/ckipper-config.zsh with your MCP mounts, ports, etc."
-echo "  2. source ~/.zshrc"
-echo "  3. ckipper worktree rebuild-image   # (or: ck wt rebuild-image)"
-echo "  4. ckipper account add <name>       # register an account"
-echo "  5. ckipper worktree run <project> test-branch --docker claude"
-echo ""
+
+# 11. Auto-invoke `ckipper setup` if interactive shell.
+# Non-interactive callers (CI, piped installers) get a printed hint instead so
+# the wizard never blocks on a controlling-terminal it does not have.
+if [[ -t 0 && -t 1 ]]; then
+    echo "Launching ckipper setup wizard..."
+    echo ""
+    # Spawn a fresh zsh subshell so the wizard runs against the freshly-installed
+    # ckipper.zsh (sourced from the canonical install path, not the repo).
+    zsh -c "source \"$CKIPPER_DIR/docker/ckipper.zsh\" && ckipper setup"
+else
+    echo "Non-interactive shell detected — skipping wizard."
+    echo ""
+    echo "Next steps:"
+    echo "  1. source ~/.zshrc"
+    echo "  2. ckipper setup    # interactive configuration wizard"
+    echo ""
+fi
+
 echo "To update later: git pull && ./install.sh"

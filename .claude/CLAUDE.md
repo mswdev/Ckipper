@@ -39,15 +39,21 @@ Ckipper is a zsh-based wrapper for the [Claude Code CLI](https://claude.ai/cli) 
 
 ```
 ckipper.zsh                  # ckipper CLI entry (sourced from .zshrc)
-lib/core/                    # shared primitives (registry, keychain, utils, fuzzy)
-lib/account/                 # ckipper account subcommands
-lib/worktree/                # ckipper worktree subcommands
+lib/core/                    # shared primitives (registry, keychain, config, prompt, style)
+lib/account/                 # ckipper account subcommands (feature dir)
+lib/worktree/                # ckipper worktree subcommands (feature dir)
+lib/config/                  # ckipper config get/set/unset/list/edit (feature dir)
+lib/setup/                   # ckipper setup wizard (orchestration: delegates to features)
+lib/run/                     # ckipper run shortcut for `worktree run` (orchestration)
+lib/launcher/                # bare `ck` interactive menu (orchestration)
 hooks/                       # Claude Code safety hooks
 docker/                      # Dockerfile + entrypoint + firewall + cleanup
 tests/                       # bats + pytest tests
 install.sh                   # one-shot installer (copies to ~/.ckipper/)
 .claude/                     # rules + project Claude config
 ```
+
+`lib/` has two layers (per `.claude/rules/shell-conventions.md`): feature dirs own subcommand functionality and MUST NOT call into each other; orchestration dirs delegate to feature dirs' public entry points.
 
 ## 2. Core Engineering Philosophy
 

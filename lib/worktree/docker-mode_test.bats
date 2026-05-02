@@ -140,6 +140,41 @@ _run_docker_mode() {
     fi
 }
 
+@test "_ckipper_worktree_docker_build_base_args adds SSH agent mounts when SSH_FORWARD=true" {
+    export CKIPPER_WT_FLAG_SSH_FORWARD=true
+
+    _run_docker_mode "
+        CKIPPER_WT_FLAG_SSH_FORWARD=true
+        _ckipper_worktree_docker_build_base_args
+        print -r -- \"\${CKIPPER_WT_DOCKER_ARGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "/.ssh:/home/claude/.ssh-host:ro" ]]
+    [[ "$output" =~ "ssh-auth.sock" ]]
+    [[ "$output" =~ "SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock" ]]
+}
+
+@test "_ckipper_worktree_docker_build_base_args omits SSH agent mounts when SSH_FORWARD=false" {
+    export CKIPPER_WT_FLAG_SSH_FORWARD=false
+
+    _run_docker_mode "
+        CKIPPER_WT_FLAG_SSH_FORWARD=false
+        _ckipper_worktree_docker_build_base_args
+        print -r -- \"\${CKIPPER_WT_DOCKER_ARGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    if [[ "$output" == *".ssh-host"* ]]; then
+        echo "FAIL: SSH host mount leaked into argv with SSH_FORWARD=false: $output" >&2
+        return 1
+    fi
+    if [[ "$output" == *"ssh-auth.sock"* ]]; then
+        echo "FAIL: SSH agent socket leaked into argv with SSH_FORWARD=false: $output" >&2
+        return 1
+    fi
+}
+
 @test "firewall flag still adds --cap-add=NET_ADMIN after --cap-drop=ALL" {
     # Re-grant of NET_ADMIN must apply on top of cap-drop=ALL so init-firewall.sh
     # can run iptables-legacy. cap-add applies after cap-drop in Docker.

@@ -36,6 +36,10 @@ teardown_isolated_env() {
 # ckipper invocation. This helper packages the required env-var forwarding and
 # source incantation so individual @test blocks stay readable.
 #
+# CKIPPER_NO_GUM=1 is forwarded so prompt fallbacks read from stdin instead of
+# trying to launch gum (which would block tests on hosts where gum is
+# installed). Override per-test by setting CKIPPER_NO_GUM= before the call.
+#
 # After calling, $status / $output / $lines are set exactly as with bats `run`.
 run_ckipper() {
     local zsh_cmd="source \"$REPO_ROOT/ckipper.zsh\"; ckipper $*"
@@ -46,6 +50,7 @@ run_ckipper() {
         PATH="$PATH" \
         _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-linux}" \
         CKIPPER_FORCE="${CKIPPER_FORCE:-1}" \
+        CKIPPER_NO_GUM="${CKIPPER_NO_GUM:-1}" \
         zsh -c "$zsh_cmd"
 }
 
