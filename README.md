@@ -140,6 +140,77 @@ Two terminals running the **same** account simultaneously will hit a known OAuth
 
 If you want concurrent runs of the *same* account, register it twice under two names (`personal-a`, `personal-b`) — though this means re-`/login` for each.
 
+## Sync state between accounts
+
+`ckipper account sync` copies state between registered accounts — MCP servers, settings, agents, commands, skills, user hooks, etc. — interactively by default, with one source and one or more destinations.
+
+### Syncable types
+
+| Type | What it covers |
+|---|---|
+| `mcp` | `.claude.json` `.mcpServers` (per server) |
+| `settings` | `settings.json` top-level + nested keys (excludes `.hooks`) |
+| `claude-md` | `CLAUDE.md` (user memory) |
+| `agents` | `agents/*.md` |
+| `commands` | `commands/*.md` |
+| `output-styles` | `output_styles/*.md` |
+| `skills` | `skills/<name>/` (per-directory; symlinks preserved) |
+| `statusline` | `settings.json` `.statusLine` + referenced script (if internal to the account dir) |
+| `hooks` | User-written hooks under `<account>/hooks/` (filtered against the install allowlist) + paired `settings.json` `.hooks` entries |
+| `prefs` | Account preferences in `accounts.json` (`always_docker`, `always_firewall`, `ssh_forward`) |
+
+Plugins are not a separate type — sync `enabledPlugins` + `extraKnownMarketplaces` (both in the `settings` type) and Claude Code re-fetches the plugins on the destination's next launch.
+
+### Common commands
+
+```sh
+# Full interactive wizard — picks source, targets, and types
+ckipper account sync
+
+# One-shot single type
+ckipper account sync personal work --include mcp
+
+# Bundle: every user-customization (no prefs)
+ckipper account sync personal work --include customizations
+
+# Multi-destination
+ckipper account sync personal work client1 client2 --include all
+
+# Dry run (summary only, no writes)
+ckipper account sync personal work --include all --dry-run
+
+# Apply without confirm prompt (for scripting)
+ckipper account sync personal work --include all --yes
+```
+
+### Named bundles
+
+| Bundle | Resolves to |
+|---|---|
+| `all` | every type |
+| `customizations` | mcp, settings, claude-md, agents, commands, output-styles, skills, statusline, hooks |
+| `claude-config` | mcp, settings, hooks |
+| `preferences` | prefs |
+
+### Safeguards & undo
+
+Every destructive write is preceded by a copy to `<dst>/.ckipper-sync-backups/<UTC-ISO-ts>-from-<source>/`. The summary table prints the backup directory path before applying. To restore:
+
+```sh
+ckipper account sync undo work          # restore most recent backup
+ckipper account sync undo work --pick   # gum-pick from backup ledger
+ckipper account sync undo work --list   # print backup directory paths
+```
+
+Sync refuses to write when Claude is running with the destination's config dir (override with `--force` if you understand the risk).
+
+### Sync vs. redeploy-hooks
+
+These two commands sound similar but do different things:
+
+- **`ckipper account sync ... --include hooks`** — peer-to-peer copy of *user-written* hooks (any hook file in `<account>/hooks/` whose filename does NOT match a ckipper-managed install hook). Includes the paired `settings.json` `.hooks` entry.
+- **`ckipper account redeploy-hooks`** — pushes the ckipper safety hooks (`bash-guardrails`, `protect-claude-config`, `docker-context`, `notify-bell`) from `~/.ckipper/hooks/` to every registered account. Run after editing a script in the install dir.
+
 ## Security
 
 ### Docker isolation
@@ -301,7 +372,7 @@ This is usually a feature — your `personal` and `work` accounts working in the
 
 ### MCP servers are per-account (user-scoped only)
 
-`mcpServers` lives in each account's `.claude.json`. When you `ckipper account add <new>`, the new account starts with **zero** user-scoped MCP servers. Use `ckipper account sync` to copy MCP/settings/plugins between accounts.
+`mcpServers` lives in each account's `.claude.json`. When you `ckipper account add <new>`, the new account starts with **zero** user-scoped MCP servers. Use `ckipper account sync <from> <new> --include mcp` (or run the wizard with no args) to copy them — see [Sync state between accounts](#sync-state-between-accounts).
 
 ### Plugins and marketplaces are per-account
 
