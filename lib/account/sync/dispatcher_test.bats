@@ -73,3 +73,53 @@ run_in_zsh() {
     [[ "$output" == *"from=EMPTY"* ]]
     [[ "$output" == *"n_targets=0"* ]]
 }
+
+# ── Integration: end-to-end dispatch with seeded accounts ────────────────
+
+setup_two_accounts() {
+    cat > "$CKIPPER_REGISTRY" <<JSON
+{"version":2,"default":"src","accounts":{
+    "src":{"config_dir":"$TMP_HOME/src","keychain_service":null,"registered_at":"t","preferences":{"always_docker":true,"always_firewall":false,"ssh_forward":true}},
+    "dst":{"config_dir":"$TMP_HOME/dst","keychain_service":null,"registered_at":"t","preferences":{"always_docker":false,"always_firewall":false,"ssh_forward":false}}
+}}
+JSON
+    chmod 600 "$CKIPPER_REGISTRY"
+    mkdir -p "$TMP_HOME/src" "$TMP_HOME/dst"
+    echo '{"mcpServers":{"github":{"command":"x"}}}' > "$TMP_HOME/src/.claude.json"
+    echo '{"mcpServers":{}}' > "$TMP_HOME/dst/.claude.json"
+}
+
+run_full() {
+    run env HOME="$HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        CKIPPER_NO_GUM=1 CKIPPER_FORCE=1 TMP_HOME="$TMP_HOME" PATH="$PATH" \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; $*"
+}
+
+@test "ckipper account sync src dst --include mcp --yes applies the merge" {
+    setup_two_accounts
+    run_full 'ckipper account sync src dst --include mcp --yes'
+    [ "$status" -eq 0 ]
+    local merged
+    merged=$(jq -r '.mcpServers.github.command' "$TMP_HOME/dst/.claude.json")
+    [[ "$merged" == "x" ]]
+}
+
+@test "ckipper account sync src dst --include mcp --dry-run does not apply" {
+    setup_two_accounts
+    run_full 'ckipper account sync src dst --include mcp --dry-run'
+    [ "$status" -eq 0 ]
+    local n; n=$(jq '.mcpServers | length' "$TMP_HOME/dst/.claude.json")
+    [[ "$n" == "0" ]]
+}
+
+@test "ckipper account sync rejects unregistered source" {
+    setup_two_accounts
+    run_full 'ckipper account sync ghost dst --include mcp --yes'
+    [ "$status" -ne 0 ]
+}
+
+@test "ckipper account sync src src is rejected (identity)" {
+    setup_two_accounts
+    run_full 'ckipper account sync src src --include mcp --yes'
+    [ "$status" -ne 0 ]
+}

@@ -29,12 +29,15 @@ _ckipper_account_dispatch() {
     local cmd="$1"
     shift 2>/dev/null
     case "$cmd" in
-        add|list|default|remove|rename|sync|sync-hooks)
+        add|list|default|remove|rename|sync-hooks)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
                 _ckipper_account_help_for "$cmd"
                 return 0
             fi
             "_ckipper_account_${cmd//-/_}" "$@"
+            ;;
+        sync)
+            _ckipper_account_sync_dispatch "$@"
             ;;
         ""|help|-h|--help) _ckipper_account_help ;;
         *) _ckipper_account_unknown "$cmd"; return 1 ;;
