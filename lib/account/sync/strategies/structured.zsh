@@ -76,8 +76,8 @@ _ckipper_account_sync_mcp_compare() {
 # Returns: 0; prints summary text.
 _ckipper_account_sync_mcp_summary() {
     local src="$1" dst="$2" name="$3"
-    local status; status=$(_ckipper_account_sync_mcp_compare "$src" "$dst" "$name")
-    case "$status" in
+    local cmp_status; cmp_status=$(_ckipper_account_sync_mcp_compare "$src" "$dst" "$name")
+    case "$cmp_status" in
         new) echo "new" ;;
         overwrite) echo "overwrite — server config changed" ;;
         unchanged) echo "unchanged" ;;
@@ -178,8 +178,8 @@ _core_sync_settings_jq_path() {
 # Returns: 0; prints summary.
 _ckipper_account_sync_settings_summary() {
     local src="$1" dst="$2" id="$3"
-    local status; status=$(_ckipper_account_sync_settings_compare "$src" "$dst" "$id")
-    case "$status" in
+    local cmp_status; cmp_status=$(_ckipper_account_sync_settings_compare "$src" "$dst" "$id")
+    case "$cmp_status" in
         new) echo "new key" ;;
         overwrite) echo "overwrite — value changed" ;;
         unchanged) echo "unchanged" ;;
