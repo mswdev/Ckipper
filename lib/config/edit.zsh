@@ -44,26 +44,55 @@ _ckipper_config_edit_validate_json() {
     jq empty "$file" >/dev/null 2>&1
 }
 
-# Slurp the edited preferences JSON back into the registry under
-# accounts.<name>.preferences.
+# Walk every key in the edited JSON file and verify each is an account-scoped
+# schema key whose value passes the schema type check. Guards writeback from
+# persisting unknown keys, wrong-typed values, or global-scope keys sneaked
+# into an account's preferences (which would otherwise silently corrupt the
+# resolution chain in _core_config_get).
 #
-# Args: $1 — account name, $2 — path to edited JSON file.
-# Returns: 0 on success; 1 on jq/write failure.
-_ckipper_config_edit_writeback() {
-    local account="$1" edited="$2"
-    local out
-    out=$(mktemp "${CKIPPER_REGISTRY}.XXXXXX") || return 1
-    if ! jq --arg n "$account" --slurpfile p "$edited" \
-        '.accounts[$n].preferences = $p[0]' "$CKIPPER_REGISTRY" >"$out"; then
-        rm -f "$out"
-        return 1
-    fi
-    mv "$out" "$CKIPPER_REGISTRY"
+# Args: $1 — path to edited JSON file.
+# Returns: 0 when every key/value passes; 1 on the first violation.
+# Errors (stderr):
+#   "Unknown config key in account preferences: '<key>'" — when key not in schema.
+#   "Key '<key>' is global-scope; cannot live in account preferences." — when scope=global.
+#   "Invalid value for '<key>': ..." — propagated from _core_config_validate.
+_ckipper_config_edit_validate_schema() {
+    local edited="$1" key value type scope
+    local -a edited_keys
+    edited_keys=( ${(f)"$(jq -r 'keys[]' "$edited")"} )
+    for key in "${edited_keys[@]}"; do
+        type="${_CKIPPER_SCHEMA_TYPE[$key]:-}"
+        scope="${_CKIPPER_SCHEMA_SCOPE[$key]:-}"
+        if [[ -z "$type" ]]; then
+            echo "Unknown config key in account preferences: '$key'" >&2
+            return 1
+        fi
+        if [[ "$scope" != "account" ]]; then
+            echo "Key '$key' is global-scope; cannot live in account preferences." >&2
+            return 1
+        fi
+        value=$(jq -r --arg k "$key" '.[$k] | tostring' "$edited")
+        _core_config_validate "$key" "$value" || return 1
+    done
 }
 
-# Open an account's preferences in $EDITOR. Round-trip: dump → edit → validate
-# → writeback. Aborts (and leaves the registry untouched) if the edited file
-# is not parseable JSON.
+# Slurp the edited preferences JSON back into the registry under
+# accounts.<name>.preferences. Routes through _core_registry_update so an
+# `edit --account` racing with another writer (e.g. an `account add` or a
+# `config set`) cannot lose updates. The --slurpfile side input pulls the
+# edited file in at jq-call time, inside the lock.
+#
+# Args: $1 — account name, $2 — path to edited JSON file.
+# Returns: 0 on success; 1 on lock-acquisition or jq/write failure.
+_ckipper_config_edit_writeback() {
+    local account="$1" edited="$2"
+    _core_registry_update '.accounts[$n].preferences = $p[0]' \
+        --arg n "$account" --slurpfile p "$edited"
+}
+
+# Open an account's preferences in $EDITOR. Round-trip: dump → edit →
+# validate (parse + schema) → writeback. Aborts (and leaves the registry
+# untouched) on a parse failure or any schema violation.
 #
 # Args: $1 — account name.
 # Returns: 0 on success; 1 on dump/validate/writeback failure or unregistered
@@ -72,9 +101,9 @@ _ckipper_config_edit_writeback() {
 #   "Account '<name>' is not registered." — propagated from _core_account_dir.
 #   "Edited file is not valid JSON; registry not updated." — when the edited
 #     tmpfile fails jq parse.
+#   schema-validation messages — propagated from _ckipper_config_edit_validate_schema.
 _ckipper_config_edit_account() {
     local account="$1"
-    _core_registry_check_version || return 1
     _core_account_dir "$account" >/dev/null || return 1
     # Ensure the tmpfile is removed even if the user kills the editor (Ctrl-C)
     # or the shell receives a TERM signal mid-edit. local_traps scopes the
@@ -88,6 +117,7 @@ _ckipper_config_edit_account() {
         echo "Edited file is not valid JSON; registry not updated." >&2
         return 1
     fi
+    _ckipper_config_edit_validate_schema "$tmp" || return 1
     _ckipper_config_edit_writeback "$account" "$tmp"
 }
 
@@ -106,6 +136,7 @@ _ckipper_config_edit_account() {
 #   "Account '<name>' is not registered." — propagated from _core_account_dir
 #     via _ckipper_config_edit_account.
 _ckipper_config_edit() {
+    _core_registry_check_version || return 1
     local account=""
     while (( $# > 0 )); do
         case "$1" in

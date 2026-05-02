@@ -88,6 +88,9 @@ _core_config_get() {
 # Errors (stderr):
 #   "Unknown config key: '<key>'" — when key not in schema.
 #   "Invalid value for '<key>': '<value>' (expected <type>)" — on type mismatch.
+#   "Invalid value for '<key>': contains shell-breakout characters..." — when a
+#     string/path value contains `"`, `\`, `` ` ``, or `$(` (these would
+#     execute as code on the next shell start when ckipper-config.zsh is sourced).
 _core_config_validate() {
     local key="$1" value="$2"
     local type="${_CKIPPER_SCHEMA_TYPE[$key]:-}"
@@ -106,11 +109,31 @@ _core_config_validate() {
             [[ "$value" =~ ^[0-9]+(,[0-9]+)*$ ]] && return 0
             ;;
         string | path)
+            _core_config_reject_shell_breakout "$key" "$value" || return 1
             return 0
             ;;
     esac
     echo "Invalid value for '$key': '$value' (expected $type)" >&2
     return 1
+}
+
+# Reject string/path values that would inject shell code when the global
+# config file is sourced. The blocked set: `"` (closes the assignment),
+# `\` (escape sequences that can break out), `` ` `` (legacy command
+# substitution), `$(` (modern command substitution). `$VAR` and `${VAR}`
+# are intentionally allowed — the schema defaults rely on `$HOME`.
+#
+# Args: $1 — key (for the error message), $2 — candidate value.
+# Returns: 0 if value is shell-safe; 1 with stderr error otherwise.
+# Errors (stderr): "Invalid value for '<key>': contains shell-breakout characters..."
+_core_config_reject_shell_breakout() {
+    local key="$1" value="$2"
+    if [[ "$value" == *'"'* || "$value" == *'\'* \
+        || "$value" == *'`'* || "$value" == *'$('* ]]; then
+        echo "Invalid value for '$key': contains shell-breakout characters (\", \\, \`, \$()." >&2
+        return 1
+    fi
+    return 0
 }
 
 # Write a global key into the config file, replacing any existing assignment.
@@ -139,22 +162,22 @@ _core_config_write_global() {
 
 # Write an account preference into the registry. Coerces "true"/"false"/numeric
 # strings to native JSON types so consumers don't see stringified bools.
+# Routes through _core_registry_update so concurrent writers cannot lose
+# updates and the file's 0600 perms are re-asserted on every successful write.
 #
 # Args: $1 — key, $2 — value, $3 — account name
-# Returns: 0 on success; 1 on validation or jq/write failure.
+# Returns: 0 on success; 1 on validation, lock-acquisition, or jq/write failure.
 _core_config_write_account() {
     local key="$1" value="$2" account="$3"
     _core_config_validate "$key" "$value" || return 1
-    local tmp
-    tmp=$(mktemp "${CKIPPER_REGISTRY}.XXXXXX")
-    jq --arg n "$account" --arg k "$key" --arg v "$value" '
+    _core_registry_update '
         .accounts[$n].preferences[$k] = (
             if $v == "true" then true
             elif $v == "false" then false
             elif ($v | test("^[0-9]+$")) then ($v | tonumber)
             else $v end
         )
-    ' "$CKIPPER_REGISTRY" >"$tmp" && mv "$tmp" "$CKIPPER_REGISTRY"
+    ' --arg n "$account" --arg k "$key" --arg v "$value"
 }
 
 # Public set — routes to global or account-scoped write per the schema.
@@ -194,17 +217,17 @@ _core_config_unset_global() {
     awk -v v="$var" -F= '$1 != v' "$file" >"$tmp" && mv "$tmp" "$file"
 }
 
-# Remove an account preference override.
+# Remove an account preference override. Routes through _core_registry_update
+# so concurrent writers cannot lose updates.
 #
 # Args: $1 — key, $2 — account name
-# Returns: 0 always (no-op when registry absent).
+# Returns: 0 when registry is absent (no-op) or the lock-protected delete
+#   succeeds; 1 on lock-acquisition or jq/write failure.
 _core_config_unset_account() {
     local key="$1" account="$2"
     [[ -f "$CKIPPER_REGISTRY" ]] || return 0
-    local tmp
-    tmp=$(mktemp "${CKIPPER_REGISTRY}.XXXXXX")
-    jq --arg n "$account" --arg k "$key" 'del(.accounts[$n].preferences[$k])' "$CKIPPER_REGISTRY" >"$tmp" \
-        && mv "$tmp" "$CKIPPER_REGISTRY"
+    _core_registry_update 'del(.accounts[$n].preferences[$k])' \
+        --arg n "$account" --arg k "$key"
 }
 
 # Public unset — routes to global or account-scoped removal per the schema.

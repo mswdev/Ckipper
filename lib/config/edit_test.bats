@@ -112,3 +112,92 @@ SH
     [[ "$output" == *"takes no positional arguments"* ]]
     [[ "$output" == *"--account work"* ]]
 }
+
+# I-1 regression: writeback must route through _core_registry_update so
+# concurrent writers can't lose updates. Stubbing _core_registry_update to
+# drop a marker proves the routing — bypass paths that mktemp+mv directly
+# never invoke the stub.
+@test "edit --account writeback routes through _core_registry_update" {
+    local marker="$CKIPPER_DIR/_registry_update_called"
+
+    EDITOR=true _run_config_edit "
+        _core_registry_update() { : > '$marker'; return 0; }
+        _ckipper_config_edit --account work
+    "
+
+    [ "$status" -eq 0 ]
+    [ -f "$marker" ]
+}
+
+# I-2 regression: edited account preferences must be schema-validated before
+# writeback. The previous implementation only ran `jq empty`, so users could
+# add unknown keys, give known keys a wrong-typed value, or sneak in a
+# global-scope key — and the writeback would silently persist all of it.
+#
+# Each test seeds a mock editor that overwrites the dumped file with the
+# specified malformed JSON, then asserts the writeback aborts and the
+# registry remains untouched.
+
+# Write a one-shot zsh `editor` that overwrites $1 with the supplied JSON.
+# Returns the path to the editor on stdout; the caller chmods+exports it.
+_make_editor_writing() {
+    local json="$1" path="$TMP_HOME/edit-stub-$$"
+    cat >"$path" <<SH
+#!/usr/bin/env zsh
+print -r -- '$json' >"\$1"
+SH
+    chmod +x "$path"
+    echo "$path"
+}
+
+@test "edit --account rejects unknown key and leaves registry untouched" {
+    local editor; editor=$(_make_editor_writing '{"not_a_real_key": true}')
+    local before; before=$(jq -S . "$CKIPPER_REGISTRY")
+
+    EDITOR="$editor" _run_config_edit "_ckipper_config_edit --account work"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not_a_real_key"* ]]
+    local after; after=$(jq -S . "$CKIPPER_REGISTRY")
+    [ "$before" = "$after" ]
+}
+
+@test "edit --account rejects wrong-typed value for known key and leaves registry untouched" {
+    local editor; editor=$(_make_editor_writing '{"always_docker": "rm -rf /"}')
+    local before; before=$(jq -S . "$CKIPPER_REGISTRY")
+
+    EDITOR="$editor" _run_config_edit "_ckipper_config_edit --account work"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"always_docker"* ]]
+    local after; after=$(jq -S . "$CKIPPER_REGISTRY")
+    [ "$before" = "$after" ]
+}
+
+@test "edit --account rejects global-scope key in account preferences" {
+    # notify_bell is a real schema key with scope=global; it must not appear in
+    # an account's preferences block even though the type matches.
+    local editor; editor=$(_make_editor_writing '{"notify_bell": true}')
+    local before; before=$(jq -S . "$CKIPPER_REGISTRY")
+
+    EDITOR="$editor" _run_config_edit "_ckipper_config_edit --account work"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"notify_bell"* ]]
+    local after; after=$(jq -S . "$CKIPPER_REGISTRY")
+    [ "$before" = "$after" ]
+}
+
+@test "edit --account accepts valid edits with all schema keys" {
+    local editor; editor=$(_make_editor_writing '{"always_docker": false, "always_firewall": true, "ssh_forward": false}')
+
+    EDITOR="$editor" _run_config_edit "_ckipper_config_edit --account work"
+
+    [ "$status" -eq 0 ]
+    run jq -r '.accounts.work.preferences.always_docker' "$CKIPPER_REGISTRY"
+    [ "$output" = "false" ]
+    run jq -r '.accounts.work.preferences.always_firewall' "$CKIPPER_REGISTRY"
+    [ "$output" = "true" ]
+    run jq -r '.accounts.work.preferences.ssh_forward' "$CKIPPER_REGISTRY"
+    [ "$output" = "false" ]
+}

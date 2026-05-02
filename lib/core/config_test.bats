@@ -21,14 +21,21 @@ teardown() {
     teardown_isolated_env
 }
 
-# Helper: source schema.zsh + config.zsh in zsh and run zsh_cmd.
+# Helper: source schema.zsh + registry.zsh + config.zsh in zsh and run zsh_cmd.
+# registry.zsh is sourced because account-scoped writes in config.zsh now route
+# through _core_registry_update for lock-protected, atomic updates (I-1 fix).
 _run_config() {
     local zsh_cmd="$1"
     run env HOME="$TMP_HOME" \
         CKIPPER_DIR="$CKIPPER_DIR" \
         CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
         PATH="$PATH" \
-        zsh -c "source \"$REPO_ROOT/lib/config/schema.zsh\"; source \"$REPO_ROOT/lib/core/config.zsh\"; $zsh_cmd"
+        zsh -c "
+            source \"$REPO_ROOT/lib/config/schema.zsh\"
+            source \"$REPO_ROOT/lib/core/registry.zsh\"
+            source \"$REPO_ROOT/lib/core/config.zsh\"
+            $zsh_cmd
+        "
 }
 
 @test "_core_config_get returns schema default when key is unset" {
@@ -127,6 +134,48 @@ _run_config() {
     [ "$status" -eq 0 ]
 }
 
+@test "_core_config_validate allows variable-style \$ in path values" {
+    # Users routinely set projects_dir to e.g. \$HOME/Developer; the global file
+    # is sourced as zsh, so the expansion happens at shell-startup time.
+    # The escaped \$ ensures the validator sees the literal "$HOME/..." string
+    # (not pre-expanded by the zsh -c host) — the whole point of this test.
+    _run_config '_core_config_validate projects_dir "\$HOME/Developer"'
+    [ "$status" -eq 0 ]
+
+    _run_config '_core_config_validate projects_dir "\${HOME}/code"'
+    [ "$status" -eq 0 ]
+}
+
+@test "_core_config_validate rejects shell-breakout chars in string/path values" {
+    # The global config file is sourced by zsh, so these would otherwise execute
+    # arbitrary code on every shell start. Each character class is a distinct
+    # breakout vector; assert each is rejected.
+    _run_config '_core_config_validate projects_dir "evil\"; rm -rf /; echo \""'
+    [ "$status" -ne 0 ]
+
+    _run_config '_core_config_validate projects_dir "\`whoami\`"'
+    [ "$status" -ne 0 ]
+
+    _run_config '_core_config_validate projects_dir "\$(whoami)"'
+    [ "$status" -ne 0 ]
+
+    _run_config '_core_config_validate projects_dir "back\\\\slash"'
+    [ "$status" -ne 0 ]
+
+    _run_config '_core_config_validate dep_install_cmd "npm install \$(echo bad)"'
+    [ "$status" -ne 0 ]
+}
+
+@test "_core_config_set persists no shell injection through the global file" {
+    # End-to-end: a quote-breakout value passed to _core_config_set must NOT
+    # land in the sourced config file. Verifies the validator gates the writer.
+    _run_config '_core_config_set projects_dir "evil\"; export INJECTED=1; echo \""'
+
+    [ "$status" -ne 0 ]
+    run grep -F 'INJECTED=1' "$CKIPPER_DIR/docker/ckipper-config.zsh"
+    [ "$status" -ne 0 ]
+}
+
 @test "_core_config_set rejects account-scoped key with no account argument" {
     _run_config "_core_config_set always_docker true"
 
@@ -140,4 +189,33 @@ _run_config() {
     [ "$status" -eq 0 ]
     [ "${lines[0]}" = "false" ]
     [ "${lines[1]}" = "true" ]
+}
+
+# I-1 regression: account-scoped registry writes must go through the locked
+# update primitive (_core_registry_update). Stubbing _core_registry_update to
+# leave a marker file proves the routing — if a writer bypasses the lock and
+# does its own `mktemp + mv`, the stub never runs and the marker is missing.
+
+@test "_core_config_set account-scoped routes through _core_registry_update" {
+    local marker="$CKIPPER_DIR/_registry_update_called"
+
+    _run_config "
+        _core_registry_update() { : > '$marker'; return 0; }
+        _core_config_set always_docker true work
+    "
+
+    [ "$status" -eq 0 ]
+    [ -f "$marker" ]
+}
+
+@test "_core_config_unset account-scoped routes through _core_registry_update" {
+    local marker="$CKIPPER_DIR/_registry_update_called"
+
+    _run_config "
+        _core_registry_update() { : > '$marker'; return 0; }
+        _core_config_unset always_docker work
+    "
+
+    [ "$status" -eq 0 ]
+    [ -f "$marker" ]
 }
