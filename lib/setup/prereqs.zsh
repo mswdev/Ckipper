@@ -35,15 +35,23 @@ _ckipper_setup_prereq_list_missing() {
 # Prompt the user to brew-install the supplied missing tools. The "Missing
 # tools:" notice is printed to stderr so callers piping stdout still see a
 # clean tool list. Returns success without prompting when no tools are passed.
+# When brew is not on PATH, prints an actionable error and returns 1 instead
+# of attempting a brew invocation that would only produce "command not found".
 #
 # Args: $@ — missing tool names. Empty input is treated as a no-op success.
 # Returns: 0 if the user accepted and brew install succeeded (or no tools
-#   passed); 1 if the user declined or brew install failed.
-# Errors (stderr): "Missing tools: <space-separated list>" — when at least one
-#   tool is supplied.
+#   passed); 1 if brew is missing, the user declined, or brew install failed.
+# Errors (stderr):
+#   "Missing tools: <space-separated list>" — when at least one tool is supplied.
+#   "Homebrew is not installed..." — when brew is not on PATH.
 _ckipper_setup_prereq_install_missing() {
     (( $# == 0 )) && return 0
     echo "Missing tools: $*" >&2
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "Homebrew is not installed. Install it from https://brew.sh/, " >&2
+        echo "then re-run \`ckipper setup\` (or install $* manually)." >&2
+        return 1
+    fi
     _core_prompt_confirm "Install with brew?" || return 1
     brew install "$@"
 }

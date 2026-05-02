@@ -157,8 +157,9 @@ _ckipper_worktree_docker_extract_gh_token() {
 #   unconditional `sudo fix-volume-perms.sh` in entrypoint.sh. Refactoring the
 #   sudo path is out of scope for this script.
 # - SSH agent forwarding (the macOS Docker Desktop magic socket plus the host
-#   ~/.ssh mount) is gated by CKIPPER_WT_FLAG_SSH_FORWARD so users with
-#   ssh_forward=false in their account preferences get a tighter container.
+#   ~/.ssh mount) is gated by CKIPPER_WT_FLAG_SSH_FORWARD via
+#   `_ckipper_worktree_docker_add_ssh_mounts` so users with ssh_forward=false
+#   in their account preferences get a tighter container.
 _ckipper_worktree_docker_build_base_args() {
     CKIPPER_WT_DOCKER_ARGS=(
         docker run --rm -it
@@ -176,16 +177,25 @@ _ckipper_worktree_docker_build_base_args() {
         -e "UV_TOOL_BIN_DIR=/home/claude/.uv-tools/bin"
         -e "UV_PYTHON_INSTALL_DIR=/home/claude/.uv-tools/python"
     )
-    if [[ "$CKIPPER_WT_FLAG_SSH_FORWARD" == "true" ]]; then
-        CKIPPER_WT_DOCKER_ARGS+=(
-            -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
-            -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
-            -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
-        )
-    fi
+    _ckipper_worktree_docker_add_ssh_mounts
     for vol in "${CKIPPER_EXTRA_VOLUMES[@]}"; do
         CKIPPER_WT_DOCKER_ARGS+=( -v "$vol" )
     done
+}
+
+# Append SSH agent forwarding mounts when CKIPPER_WT_FLAG_SSH_FORWARD is set.
+# No-op otherwise.
+#
+# Reads: CKIPPER_WT_FLAG_SSH_FORWARD, HOME globals.
+# Sets: appends to CKIPPER_WT_DOCKER_ARGS.
+# Returns: 0 always.
+_ckipper_worktree_docker_add_ssh_mounts() {
+    [[ "$CKIPPER_WT_FLAG_SSH_FORWARD" == "true" ]] || return 0
+    CKIPPER_WT_DOCKER_ARGS+=(
+        -v "$HOME/.ssh:/home/claude/.ssh-host:ro"
+        -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+        -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+    )
 }
 
 # Add credentials, gh token, and extra env vars to CKIPPER_WT_DOCKER_ARGS.

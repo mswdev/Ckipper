@@ -77,3 +77,16 @@ _run_prereqs() {
     [[ "$output" == *"Missing tools:"* ]]
     [[ "$output" == *"fake_xyz_999"* ]]
 }
+
+@test "_ckipper_setup_prereq_install_missing fails clearly when brew is not on PATH" {
+    # Sandbox PATH so brew is not visible. /usr/bin:/bin holds zsh, command, and
+    # the rest of the function's dependencies; brew lives in /opt/homebrew/bin
+    # or /usr/local/bin and so is filtered out. This proves the precheck fires
+    # before any brew invocation.
+    run env CKIPPER_NO_GUM=1 PATH="/usr/bin:/bin" \
+        zsh -c "source \"$REPO_ROOT/lib/core/prompt.zsh\"; source \"$REPO_ROOT/lib/setup/prereqs.zsh\"; _ckipper_setup_prereq_install_missing fake_xyz_999 2>&1"
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Homebrew is not installed"* ]]
+    [[ "$output" == *"fake_xyz_999"* ]]
+}
