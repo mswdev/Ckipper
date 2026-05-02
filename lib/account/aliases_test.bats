@@ -63,37 +63,37 @@ run_helper() {
     [[ "$output" =~ "/tmp/.claude-work" ]]
 }
 
-# ── _ckipper_account_sync_hooks_for ──────────────────────────────────────────
+# ── _ckipper_account_redeploy_hooks_for ──────────────────────────────────────────
 
-@test "sync_hooks_for copies hooks into the account directory" {
+@test "redeploy_hooks_for copies hooks into the account directory" {
     echo '{"version":1,"default":"dev","accounts":{"dev":{"config_dir":"'"$TMP_HOME"'/.claude-dev","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
     mkdir -p "$TMP_HOME/.claude-dev"
     # Seed the shared hooks directory with a test hook.
     mkdir -p "$CKIPPER_DIR/hooks"
     echo "#!/bin/sh" > "$CKIPPER_DIR/hooks/test-hook.sh"
 
-    run_helper '_ckipper_account_sync_hooks_for "dev"'
+    run_helper '_ckipper_account_redeploy_hooks_for "dev"'
 
     [ "$status" -eq 0 ]
     [ -f "$TMP_HOME/.claude-dev/hooks/test-hook.sh" ]
 }
 
-@test "sync_hooks_for rewrites dollar-HOME hook paths in settings.json" {
+@test "redeploy_hooks_for rewrites dollar-HOME hook paths in settings.json" {
     echo '{"version":1,"default":"dev","accounts":{"dev":{"config_dir":"'"$TMP_HOME"'/.claude-dev","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
     mkdir -p "$TMP_HOME/.claude-dev/hooks"
     # settings.json has a literal $HOME placeholder in a hook path.
     printf '{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"$HOME/.ckipper/hooks/pre.sh"}]}]}}' \
         > "$TMP_HOME/.claude-dev/settings.json"
 
-    run_helper '_ckipper_account_sync_hooks_for "dev"'
+    run_helper '_ckipper_account_redeploy_hooks_for "dev"'
 
     # After rewriting, the path should point to the account's hooks dir.
     grep -q "$TMP_HOME/.claude-dev/hooks/pre.sh" "$TMP_HOME/.claude-dev/settings.json"
 }
 
-# ── _ckipper_account_sync_hooks ───────────────────────────────────────────────
+# ── _ckipper_account_redeploy_hooks ───────────────────────────────────────────
 
-@test "sync_hooks iterates all registered accounts and copies hooks to each" {
+@test "redeploy_hooks iterates all registered accounts and copies hooks to each" {
     local dir_a="$TMP_HOME/.claude-alpha"
     local dir_b="$TMP_HOME/.claude-beta"
     mkdir -p "$dir_a" "$dir_b"
@@ -101,7 +101,7 @@ run_helper() {
     mkdir -p "$CKIPPER_DIR/hooks"
     echo "#!/bin/sh" > "$CKIPPER_DIR/hooks/shared-hook.sh"
 
-    run_helper '_ckipper_account_sync_hooks'
+    run_helper '_ckipper_account_redeploy_hooks'
 
     [ "$status" -eq 0 ]
     [ -f "$dir_a/hooks/shared-hook.sh" ]

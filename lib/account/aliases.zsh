@@ -1,5 +1,6 @@
 #!/usr/bin/env zsh
-# Alias generation and hook sync subcommands: regenerate_aliases, sync_hooks_for, sync_hooks.
+# Alias generation and install-hook redeploy subcommands:
+# regenerate_aliases, redeploy_hooks_for, redeploy_hooks.
 
 readonly ALIASES_FILE_PERMS=644
 
@@ -110,9 +111,12 @@ _ckipper_account_rewrite_settings_json_hooks() {
     ' "$dir/settings.json" > "$settings_tmpfile" && mv "$settings_tmpfile" "$dir/settings.json"
 }
 
-# Copy hook scripts into an account directory and rewrite settings.json hook paths.
-# Allows callers (e.g. _ckipper_account_add) to pass the dir directly before the account
-# is registered in the registry.
+# Redeploy ckipper-managed safety hooks from $CKIPPER_DIR/hooks/ into one
+# account dir and rewrite that account's settings.json hook paths to absolute
+# destination paths. This is install→one redeploy, not peer-to-peer sync.
+#
+# Allows callers (e.g. _ckipper_account_add) to pass the dir directly before
+# the account is registered in the registry.
 #
 # Args:
 #   $1 — account name
@@ -120,7 +124,7 @@ _ckipper_account_rewrite_settings_json_hooks() {
 #
 # Returns:
 #   0 on success; 1 if directory cannot be resolved.
-_ckipper_account_sync_hooks_for() {
+_ckipper_account_redeploy_hooks_for() {
     local name="$1" dir="${2:-}"
     if [[ -z "$dir" ]]; then
         _core_registry_check_version || return 1
@@ -132,11 +136,16 @@ _ckipper_account_sync_hooks_for() {
     _ckipper_account_rewrite_settings_json_hooks "$dir"
 }
 
-# Copy hooks into all registered accounts.
+# Redeploy ckipper-managed safety hooks into every registered account dir.
+#
+# This is install→all redeploy (NOT peer-to-peer sync). Run after editing
+# anything under $CKIPPER_DIR/hooks/ so the change propagates everywhere.
+# For peer-to-peer sync of user-written hooks, see `ckipper account sync
+# <from> <to> --include hooks`.
 #
 # Returns:
 #   0 on success; 1 if registry version check fails.
-_ckipper_account_sync_hooks() {
+_ckipper_account_redeploy_hooks() {
     if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
         echo "No accounts registered."
         return 0
@@ -144,7 +153,7 @@ _ckipper_account_sync_hooks() {
     _core_registry_check_version || return 1
     local names; names=$(jq -r '.accounts | keys[]' "$CKIPPER_REGISTRY")
     while IFS= read -r name; do
-        echo "Syncing hooks → $name"
-        _ckipper_account_sync_hooks_for "$name"
+        echo "Redeploying install hooks → $name"
+        _ckipper_account_redeploy_hooks_for "$name"
     done <<< "$names"
 }
