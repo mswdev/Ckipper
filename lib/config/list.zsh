@@ -121,6 +121,7 @@ _ckipper_config_list_render() {
 #   "Unknown format: '<fmt>' (expected: table, json, env)" — invalid format.
 #   "Account '<name>' is not registered." — propagated from _core_account_dir.
 _ckipper_config_list() {
+    _core_registry_check_version || return 1
     local account="" format="table"
     while (( $# > 0 )); do
         case "$1" in

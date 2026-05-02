@@ -49,6 +49,25 @@ teardown() {
     [[ "$output" =~ "false" ]]
 }
 
+@test "ckipper config set <key> with no value prompts and writes input" {
+    # CKIPPER_NO_GUM=1 is forwarded by run_ckipper so the fallback `read` path
+    # consumes the piped stdin instead of trying to launch gum.
+    run env \
+        HOME="$TMP_HOME" \
+        CKIPPER_DIR="$CKIPPER_DIR" \
+        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" \
+        _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-linux}" \
+        CKIPPER_FORCE="${CKIPPER_FORCE:-1}" \
+        CKIPPER_NO_GUM=1 \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; ckipper config set notify_bell" <<<"false"
+    [ "$status" -eq 0 ]
+
+    run_ckipper config get notify_bell
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "false" ]]
+}
+
 @test "ckipper config unknown subcommand suggests help pointer" {
     run_ckipper config nope
     [ "$status" -ne 0 ]

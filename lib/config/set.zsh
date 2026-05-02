@@ -1,11 +1,10 @@
 #!/usr/bin/env zsh
 # `ckipper config set` handler. Thin wrapper over _core_config_set that adds
 # CLI-level argument parsing, schema-membership validation, and an interactive
-# value-prompt fallback.
+# value-prompt fallback when the user omits the value argument.
 #
-# Phase-2 dependency: _core_prompt_input / _core_prompt_choose live in
-# lib/core/prompt.zsh (not yet landed). Tests exercise only the explicit-value
-# path; the prompt branches are unreachable until prompt.zsh is sourced.
+# The prompt fallback delegates to _core_prompt_input (lib/core/prompt.zsh),
+# which honors CKIPPER_NO_GUM=1 and reads from stdin in the fallback path.
 
 # Verify the user supplied a key and that it exists in the schema. Surfaces
 # both the no-key usage line and the unknown-key error so the caller can
@@ -28,26 +27,62 @@ _ckipper_config_set_validate_key() {
     fi
 }
 
-# Resolve the value to write: use the supplied value when has_value is "true",
-# otherwise prompt the user via the Phase-2 input helper. _core_prompt_input
-# writes back into the caller's variable directly.
+# Module-level scratch globals populated by _ckipper_config_set_parse_args.
+# Lifecycle: reset by the parser on each call, consumed by _ckipper_config_set,
+# then left in place. They are not meant to be read by other modules.
+typeset -g _CKIPPER_CONFIG_SET_ACCOUNT=""
+typeset -g _CKIPPER_CONFIG_SET_KEY=""
+typeset -g _CKIPPER_CONFIG_SET_VALUE=""
+typeset -g _CKIPPER_CONFIG_SET_HAS_VALUE="false"
+
+# Capture a positional arg into the parser's scratch globals: first positional
+# becomes the key, second becomes the value (and flips has_value to "true").
+# Extracted to keep _ckipper_config_set_parse_args at <=2 nesting levels.
 #
-# Args: $1 — schema key, $2 — has_value sentinel ("true"/"false"),
-#       $3 — name of the value variable in the caller's scope.
-# Returns: 0 on success; non-zero if the prompt is cancelled.
-_ckipper_config_set_resolve_value() {
-    local key="$1" has_value="$2" var_name="$3"
-    [[ "$has_value" == "true" ]] && return 0
-    local prompt_label="Value for $key (${_CKIPPER_SCHEMA_TYPE[$key]})"
-    _core_prompt_input "$prompt_label" "$var_name"
+# Args: $1 — the positional token.
+# Returns: 0 always.
+_ckipper_config_set_record_positional() {
+    if [[ -z "$_CKIPPER_CONFIG_SET_KEY" ]]; then
+        _CKIPPER_CONFIG_SET_KEY="$1"
+        return 0
+    fi
+    _CKIPPER_CONFIG_SET_VALUE="$1"
+    _CKIPPER_CONFIG_SET_HAS_VALUE="true"
+}
+
+# Parse the `ckipper config set` arg list into the module scratch globals.
+#
+# Args: $@ — the user's argv after `ckipper config set`.
+# Returns: 0 on success; 1 on missing --account value or unknown flag.
+# Errors (stderr):
+#   "Flag --account requires a value." — when --account has no following arg.
+#   "Unknown flag: '<flag>'" — when an unrecognized flag is encountered.
+_ckipper_config_set_parse_args() {
+    _CKIPPER_CONFIG_SET_ACCOUNT=""
+    _CKIPPER_CONFIG_SET_KEY=""
+    _CKIPPER_CONFIG_SET_VALUE=""
+    _CKIPPER_CONFIG_SET_HAS_VALUE="false"
+    while (( $# > 0 )); do
+        case "$1" in
+            --account)
+                [[ -z "${2:-}" ]] && { echo "Flag --account requires a value." >&2; return 1; }
+                _CKIPPER_CONFIG_SET_ACCOUNT="$2"; shift 2
+                ;;
+            --account=*) _CKIPPER_CONFIG_SET_ACCOUNT="${1#--account=}"; shift ;;
+            -*) echo "Unknown flag: '$1'" >&2; return 1 ;;
+            *) _ckipper_config_set_record_positional "$1"; shift ;;
+        esac
+    done
 }
 
 # Set a configuration key. Routes to the global file or to the account
-# preference store based on the schema scope.
+# preference store based on the schema scope. When the user omits the
+# value argument, prompt them via _core_prompt_input.
 #
 # Args:
 #   $1..$N — `[--account <name>] <key> [<value>]`. When <value> is omitted
-#            the function prompts via _core_prompt_input (Phase-2).
+#            the function prompts the user via _core_prompt_input, which
+#            reads from stdin in its CKIPPER_NO_GUM fallback path.
 #
 # Returns: 0 on success; 1 on unknown key, unknown flag, validation failure,
 #   missing --account on an account-scoped key, or unregistered account.
@@ -63,28 +98,16 @@ _ckipper_config_set_resolve_value() {
 #   "Invalid value for '<key>': '<value>' (expected <type>)" — propagated
 #     from _core_config_validate on type mismatch.
 _ckipper_config_set() {
-    local account="" key="" value="" has_value="false"
-    while (( $# > 0 )); do
-        case "$1" in
-            --account)
-                [[ -z "${2:-}" ]] && { echo "Flag --account requires a value." >&2; return 1; }
-                account="$2"; shift 2
-                ;;
-            --account=*) account="${1#--account=}"; shift ;;
-            -*) echo "Unknown flag: '$1'" >&2; return 1 ;;
-            *)
-                if [[ -z "$key" ]]; then
-                    key="$1"
-                else
-                    value="$1"
-                    has_value="true"
-                fi
-                shift
-                ;;
-        esac
-    done
+    _core_registry_check_version || return 1
+    _ckipper_config_set_parse_args "$@" || return 1
+    local account="$_CKIPPER_CONFIG_SET_ACCOUNT"
+    local key="$_CKIPPER_CONFIG_SET_KEY"
+    local value="$_CKIPPER_CONFIG_SET_VALUE"
     _ckipper_config_set_validate_key "$key" || return 1
     [[ -n "$account" ]] && { _core_account_dir "$account" >/dev/null || return 1; }
-    _ckipper_config_set_resolve_value "$key" "$has_value" value || return 1
+    if [[ "$_CKIPPER_CONFIG_SET_HAS_VALUE" != "true" ]]; then
+        local prompt_label="Value for $key (${_CKIPPER_SCHEMA_TYPE[$key]})"
+        value=$(_core_prompt_input "$prompt_label" "")
+    fi
     _core_config_set "$key" "$value" "$account"
 }

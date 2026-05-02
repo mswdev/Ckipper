@@ -25,7 +25,7 @@ _run_registry() {
         CKIPPER_REGISTRY_VERSION="${CKIPPER_REGISTRY_VERSION:-2}" \
         _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-darwin19.0}" \
         PATH="$PATH" \
-        zsh -c "source \"$REPO_ROOT/lib/core/utils.zsh\"; source \"$REPO_ROOT/lib/core/registry.zsh\"; $zsh_cmd"
+        zsh -c "source \"$REPO_ROOT/lib/core/utils.zsh\"; source \"$REPO_ROOT/lib/config/schema.zsh\"; source \"$REPO_ROOT/lib/core/registry.zsh\"; $zsh_cmd"
 }
 
 # Seed a v1 registry fixture with a single account.
@@ -148,4 +148,78 @@ EOF
     [ "$ssh_forward" = "false" ]
     [ "$always_docker" = "false" ]
     [ "$always_firewall" = "false" ]
+}
+
+# ── End-to-end migration triggers ────────────────────────────────────
+# These tests confirm the v1→v2 auto-migration fires from each entry-point
+# the user is likely to invoke first on an upgrade. Fix #2 added
+# `_core_registry_check_version` to the config and account-list handlers
+# that previously lacked it; without these tests, a future regression
+# (e.g. forgetting to add the call to a new entry-point) would silently
+# write v2-shape `preferences` blocks while leaving `.version=1`.
+
+# Seed a v1 registry with a `work` account (used as the invocation target).
+_seed_v1_registry_work() {
+    cat > "$CKIPPER_REGISTRY" <<'EOF'
+{
+  "version": 1,
+  "default": "work",
+  "accounts": {
+    "work": {
+      "config_dir": "/tmp/.claude-work",
+      "keychain_service": null,
+      "registered_at": "2026-04-30T12:00:00Z"
+    }
+  }
+}
+EOF
+    chmod 600 "$CKIPPER_REGISTRY"
+    mkdir -p "$CKIPPER_DIR/docker"
+    : > "$CKIPPER_DIR/docker/ckipper-config.zsh"
+}
+
+@test "ckipper config set on v1 registry triggers migration" {
+    _seed_v1_registry_work
+
+    run_ckipper config set --account work always_docker true
+
+    [ "$status" -eq 0 ]
+    local v always_docker
+    v=$(jq -r '.version' "$CKIPPER_REGISTRY")
+    always_docker=$(jq -r '.accounts.work.preferences.always_docker' "$CKIPPER_REGISTRY")
+    [ "$v" = "2" ]
+    [ "$always_docker" = "true" ]
+    # The migration backup must be present.
+    local -a backups
+    backups=( "$CKIPPER_REGISTRY".v1.bak.* )
+    [ -f "${backups[0]}" ]
+}
+
+@test "ckipper config get on v1 registry triggers migration" {
+    _seed_v1_registry_work
+
+    run_ckipper config get notify_bell
+
+    [ "$status" -eq 0 ]
+    local v
+    v=$(jq -r '.version' "$CKIPPER_REGISTRY")
+    [ "$v" = "2" ]
+}
+
+@test "_core_registry_account_defaults_json emits all account-scope schema defaults" {
+    # Source the schema and helper, dump JSON, validate keys + values via jq.
+    _run_registry "_core_registry_account_defaults_json"
+
+    [ "$status" -eq 0 ]
+    # Output must be parseable JSON.
+    echo "$output" | jq empty
+    # Every account-scope key in the current schema must be present with
+    # the expected default value.
+    local always_docker always_firewall ssh_forward
+    always_docker=$(echo "$output" | jq -r '.always_docker')
+    always_firewall=$(echo "$output" | jq -r '.always_firewall')
+    ssh_forward=$(echo "$output" | jq -r '.ssh_forward')
+    [ "$always_docker" = "false" ]
+    [ "$always_firewall" = "false" ]
+    [ "$ssh_forward" = "true" ]
 }

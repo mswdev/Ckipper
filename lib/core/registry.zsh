@@ -173,6 +173,34 @@ _core_registry_init() {
     [[ -f "$CKIPPER_REGISTRY" ]] && chmod "$REGISTRY_FILE_PERMS" "$CKIPPER_REGISTRY"
 }
 
+# Build a JSON object of every account-scope schema key with its default
+# value, suitable for embedding in a jq filter via `--argjson p "$(...)"`.
+# Used by both the v1→v2 migration and the account-add finalize step so the
+# two callers cannot drift from the schema.
+#
+# Reads: _CKIPPER_SCHEMA_TYPE, _CKIPPER_SCHEMA_DEFAULT, _CKIPPER_SCHEMA_SCOPE
+#   (lib/config/schema.zsh — must be sourced before this is called).
+#
+# Limitations: only handles bool, int, string, and path types. The current
+# schema has no account-scope `int_array` keys; if one is added, extend the
+# case below to render the comma-separated default as a JSON array.
+#
+# Returns: 0; emits a valid JSON object string to stdout (e.g.
+#   `{"always_docker":false,"always_firewall":false,"ssh_forward":true}`).
+_core_registry_account_defaults_json() {
+    local key entries=""
+    for key in "${(@ko)_CKIPPER_SCHEMA_TYPE}"; do
+        [[ "${_CKIPPER_SCHEMA_SCOPE[$key]}" == "account" ]] || continue
+        local val="${_CKIPPER_SCHEMA_DEFAULT[$key]}"
+        local type="${_CKIPPER_SCHEMA_TYPE[$key]}"
+        case "$type" in
+            bool | int) entries+="\"$key\":$val," ;;
+            *) entries+="\"$key\":\"$val\"," ;;
+        esac
+    done
+    echo "{${entries%,}}"
+}
+
 # Auto-migrate a v1 registry to v2 in place.
 # Backs up the v1 file (refuses to migrate without a backup), then rewrites
 # accounts.json with .version=2 and a per-account .preferences block. Existing
@@ -189,17 +217,16 @@ _core_registry_migrate_v1_to_v2() {
         echo "Error: failed to write migration backup $backup" >&2
         return 1
     fi
+    local defaults
+    defaults=$(_core_registry_account_defaults_json)
     _core_registry_update '
         .version = 2
         | .accounts = (
             .accounts | with_entries(
-                .value.preferences = (
-                    {always_docker: false, always_firewall: false, ssh_forward: true}
-                    + (.value.preferences // {})
-                )
+                .value.preferences = ($defaults + (.value.preferences // {}))
             )
         )
-    '
+    ' --argjson defaults "$defaults"
 }
 
 # Refuse to operate on a registry whose version we don't understand OR whose schema

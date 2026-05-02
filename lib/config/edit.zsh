@@ -74,6 +74,7 @@ _ckipper_config_edit_writeback() {
 #     tmpfile fails jq parse.
 _ckipper_config_edit_account() {
     local account="$1"
+    _core_registry_check_version || return 1
     _core_account_dir "$account" >/dev/null || return 1
     # Ensure the tmpfile is removed even if the user kills the editor (Ctrl-C)
     # or the shell receives a TERM signal mid-edit. local_traps scopes the

@@ -22,6 +22,7 @@ _run_run() {
         zsh -c "
             source \"$REPO_ROOT/lib/worktree/args.zsh\"
             source \"$REPO_ROOT/lib/worktree/run.zsh\"
+            _core_registry_check_version() { :; }
             _ckipper_worktree_resolve_account() { echo 'STUB-RESOLVE'; }
             _ckipper_worktree_resolve_flags() { :; }
             _ckipper_worktree_create_worktree() { echo 'STUB-CREATE' \"\$@\"; }

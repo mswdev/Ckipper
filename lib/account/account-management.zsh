@@ -223,6 +223,7 @@ _ckipper_account_finalize_registration() {
     local dir="${_CKIPPER_FINALIZE_CTX[dir]}"
     local service="${_CKIPPER_FINALIZE_CTX[service]}"
     local now; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local defaults; defaults=$(_core_registry_account_defaults_json)
     _core_registry_init
     if ! _core_registry_update '
         if (.accounts | has($n)) then
@@ -234,11 +235,11 @@ _ckipper_account_finalize_registration() {
                 config_dir: $d,
                 keychain_service: (if $s == "" then null else $s end),
                 registered_at: $t,
-                preferences: {always_docker: false, always_firewall: false, ssh_forward: true}
+                preferences: $p
             }
             | (if .default == null then .default = $n else . end)
         end
-    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"; then
+    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now" --argjson p "$defaults"; then
         _ckipper_account_finalize_diagnose_error "$name" "$dir"
         return 1
     fi
@@ -328,6 +329,7 @@ _ckipper_account_list() {
         echo "No accounts registered. Run: ckipper account add <name>"
         return 0
     fi
+    _core_registry_check_version || return 1
     local default
     default=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
     _core_style_header "Registered accounts"

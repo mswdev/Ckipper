@@ -209,7 +209,7 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs
 # regenerate the cached completion file. The version is embedded as a literal
 # comment in the generated file and matched here.
-CKIPPER_COMPLETION_VERSION=5
+CKIPPER_COMPLETION_VERSION=6
 if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
     # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
@@ -219,7 +219,7 @@ if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     # a completion file, not maintained shell logic).
     cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
 #compdef ckipper ck
-# ckipper-completion-version=5
+# ckipper-completion-version=6
 
 _ckipper() {
     local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
@@ -358,7 +358,11 @@ _ckipper() {
                     local -a flags
                     flags=(
                         '--docker:Run inside the ckipper-dev Docker container'
+                        '--no-docker:Force host-only run (override always_docker preference)'
                         '--firewall:Add egress firewall (requires --docker)'
+                        '--no-firewall:Disable firewall (override always_firewall preference)'
+                        '--ssh-forward:Mount ~/.ssh into container'
+                        '--no-ssh-forward:Do not mount ~/.ssh (override ssh_forward preference)'
                         '--account:Use a specific Ckipper account'
                     )
                     _describe -t flags 'flag' flags
@@ -370,7 +374,11 @@ _ckipper() {
                     local -a flags
                     flags=(
                         '--docker:Run inside the ckipper-dev Docker container'
+                        '--no-docker:Force host-only run (override always_docker preference)'
                         '--firewall:Add egress firewall (requires --docker)'
+                        '--no-firewall:Disable firewall (override always_firewall preference)'
+                        '--ssh-forward:Mount ~/.ssh into container'
+                        '--no-ssh-forward:Do not mount ~/.ssh (override ssh_forward preference)'
                         '--account:Use a specific Ckipper account'
                     )
                     _describe -t flags 'flag' flags

@@ -106,29 +106,64 @@ _ckipper_worktree_help_for() {
     esac
 }
 
+# Print the intro and Args section for `worktree run --help`. Split from the
+# parent renderer so the parent stays under the 25-line cap.
+#
+# Returns: 0 always.
+_ckipper_worktree_help_text_run_intro() {
+    print -- ""
+    print -- "Create-or-cd to a git worktree under CKIPPER_WORKTREES_DIR, then either drop"
+    print -- "you in a shell or run a command. Without --docker, runs on the host."
+    print -- ""
+    print -- "Args:"
+    print -- "  <project>           Path relative to CKIPPER_PROJECTS_DIR (e.g. myorg/app)"
+    print -- "  <branch>            Worktree/branch name (creates from origin/HEAD if new)"
+    print -- "  [cmd...]            Optional command to run in the worktree (e.g. \`claude\`)"
+    print -- ""
+    print -- "Per-account preferences (always_docker, always_firewall, ssh_forward) populate"
+    print -- "flag defaults; --no-* overrides per invocation."
+}
+
+# Print the Flags section for `worktree run --help`. Split from the parent
+# so the parent stays under the 25-line cap.
+#
+# Returns: 0 always.
+_ckipper_worktree_help_text_run_flags() {
+    print -- ""
+    print -- "Flags:"
+    print -- "  --docker            Run inside the ckipper-dev container (shell by default)"
+    print -- "  --no-docker         Force host-only run, even if the account's always_docker"
+    print -- "                      preference is true"
+    print -- "  --firewall          Add the egress firewall (requires --docker)"
+    print -- "  --no-firewall       Disable the firewall, even if the account's always_firewall"
+    print -- "                      preference is true"
+    print -- "  --ssh-forward       Mount ~/.ssh into the container (default for new accounts)"
+    print -- "  --no-ssh-forward    Do not mount ~/.ssh, even if the account's ssh_forward"
+    print -- "                      preference is true"
+    print -- "  --account <name>    Use a specific Ckipper account (default: registered"
+    print -- "                      default, or value of \$CLAUDE_CONFIG_DIR if set)"
+}
+
+# Print the Examples section for `worktree run --help`. Split from the parent
+# so the parent stays under the 25-line cap.
+#
+# Returns: 0 always.
+_ckipper_worktree_help_text_run_examples() {
+    print -- ""
+    print -- "Examples:"
+    print -- "  ckipper wt run myorg/app feature                       # cd to worktree"
+    print -- "  ckipper wt run myorg/app feature claude                # claude on host"
+    print -- "  ckipper wt run myorg/app feature --docker              # shell in container"
+    print -- "  ckipper wt run myorg/app feature --docker claude       # claude in container"
+    print -- "  ckipper wt run myorg/app feature --docker --firewall   # + egress firewall"
+}
+
 _ckipper_worktree_help_text_run() {
-    _core_help_render "ckipper worktree run <project> <branch> [flags] [cmd...]" \
-        "" \
-        "Create-or-cd to a git worktree under CKIPPER_WORKTREES_DIR, then either drop" \
-        "you in a shell or run a command. Without --docker, runs on the host." \
-        "" \
-        "Args:" \
-        "  <project>           Path relative to CKIPPER_PROJECTS_DIR (e.g. myorg/app)" \
-        "  <branch>            Worktree/branch name (creates from origin/HEAD if new)" \
-        "  [cmd...]            Optional command to run in the worktree (e.g. \`claude\`)" \
-        "" \
-        "Flags:" \
-        "  --docker            Run inside the ckipper-dev container (shell by default)" \
-        "  --firewall          Add the egress firewall (requires --docker)" \
-        "  --account <name>    Use a specific Ckipper account (default: registered" \
-        "                      default, or value of \$CLAUDE_CONFIG_DIR if set)" \
-        "" \
-        "Examples:" \
-        "  ckipper wt run myorg/app feature                       # cd to worktree" \
-        "  ckipper wt run myorg/app feature claude                # claude on host" \
-        "  ckipper wt run myorg/app feature --docker              # shell in container" \
-        "  ckipper wt run myorg/app feature --docker claude       # claude in container" \
-        "  ckipper wt run myorg/app feature --docker --firewall   # + egress firewall"
+    _core_help_render "ckipper worktree run <project> <branch> [flags] [cmd...]"
+    _ckipper_worktree_help_text_run_intro
+    _ckipper_worktree_help_text_run_flags
+    _ckipper_worktree_help_text_run_examples
+    echo ""
 }
 
 _ckipper_worktree_help_text_list() {

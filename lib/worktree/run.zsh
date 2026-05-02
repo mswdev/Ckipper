@@ -26,6 +26,7 @@ _ckipper_worktree_run() {
         return 1
     fi
 
+    _core_registry_check_version || return 1
     _ckipper_worktree_resolve_account || return $?
     _ckipper_worktree_resolve_flags "$CKIPPER_WT_ACTIVE_ACCOUNT"
 

@@ -33,6 +33,7 @@ _run_config_edit() {
     run env HOME="$TMP_HOME" \
         CKIPPER_DIR="$CKIPPER_DIR" \
         CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        CKIPPER_REGISTRY_VERSION="${CKIPPER_REGISTRY_VERSION:-2}" \
         PATH="$PATH" \
         EDITOR="${EDITOR:-true}" \
         zsh -c "

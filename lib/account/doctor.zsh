@@ -133,29 +133,48 @@ _ckipper_doctor_registry() {
     _ckipper_doctor_check_preferences
 }
 
-# Verify every registered account has the v2 `preferences` block with the
-# three required account-scoped keys (always_docker, always_firewall,
-# ssh_forward). Migration runs at registry-load, but a user who hand-edits
-# accounts.json between bumps can end up with a partial block — surface it.
+# Build a jq sub-expression that checks `.value.preferences` has every
+# required account-scope schema key. Returns "false" (a literal jq false)
+# when no account-scope keys exist — matches the previous hardcoded behavior.
+#
+# Reads: _CKIPPER_SCHEMA_TYPE, _CKIPPER_SCHEMA_SCOPE.
+# Returns: 0; emits the jq filter to stdout (e.g.
+#   `(.value.preferences | has("always_docker")) and ...`).
+_ckipper_doctor_required_prefs_filter() {
+    local key filter=""
+    for key in "${(@ko)_CKIPPER_SCHEMA_TYPE}"; do
+        [[ "${_CKIPPER_SCHEMA_SCOPE[$key]}" == "account" ]] || continue
+        [[ -n "$filter" ]] && filter+=" and "
+        filter+="(.value.preferences | has(\"$key\"))"
+    done
+    echo "${filter:-true}"
+}
+
+# Verify every registered account has the v2 `preferences` block with all
+# account-scoped schema keys present. Migration runs at registry-load, but a
+# user who hand-edits accounts.json between bumps can end up with a partial
+# block — surface it.
 #
 # Emits WARN (not FAIL) listing the offending accounts. Migration will fix
 # them on next registry-touch operation; this is a heads-up, not a halt.
 #
+# The list of required keys is derived from the schema at call time so
+# adding a new account-scope key in lib/config/schema.zsh updates this
+# check automatically.
+#
 # Returns: 0 always (results printed via _ckipper_doctor_check).
 _ckipper_doctor_check_preferences() {
     [[ -f "$CKIPPER_REGISTRY" ]] || return 0
+    local required_filter
+    required_filter=$(_ckipper_doctor_required_prefs_filter)
     local missing
     missing=$(jq -r '
-        .accounts |
-        to_entries[] |
+        .accounts | to_entries[] |
         select(
             .value.preferences == null or
             (.value.preferences | type) != "object" or
-            (((.value.preferences | has("always_docker")) and
-              (.value.preferences | has("always_firewall")) and
-              (.value.preferences | has("ssh_forward"))) | not)
-        ) |
-        .key
+            (('"$required_filter"') | not)
+        ) | .key
     ' "$CKIPPER_REGISTRY" 2>/dev/null)
     if [[ -n "$missing" ]]; then
         local list; list=$(echo "$missing" | paste -sd "," -)
