@@ -86,3 +86,14 @@ _run_dispatch() {
     [[ "$output" =~ "Unknown command: 'xyzzy'." ]]
     [[ ! "$output" =~ "Did you mean" ]]
 }
+
+# `sync-hooks` was renamed to `redeploy-hooks`. Old name must error AND
+# point the user at the new name. Mirrors the top-level `_ckipper_unknown`
+# legacy-command pattern in ckipper.zsh.
+@test "dispatch points 'sync-hooks' at the new 'redeploy-hooks' name" {
+    _run_dispatch sync-hooks
+
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"sync-hooks"* ]]
+    [[ "$output" == *"redeploy-hooks"* ]]
+}

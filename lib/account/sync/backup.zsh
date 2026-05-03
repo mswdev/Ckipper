@@ -45,6 +45,9 @@ _ckipper_account_sync_backup_create() {
 # Copy a single file or directory from the destination into the backup
 # dir at the given relative path. No-op when the source path does not
 # exist (i.e. operation is "create" — there's nothing to back up).
+# Idempotent: a second call for the same rel within one invocation is a
+# no-op so the original-state snapshot is preserved when two strategies
+# (e.g. settings + statusline) write to the same destination file.
 #
 # Args: $1 — backup_dir; $2 — absolute source path; $3 — relative destination path.
 # Returns: 0 on success or no-op; 1 if cp fails.
@@ -52,6 +55,7 @@ _ckipper_account_sync_backup_file() {
     local backup_dir="$1" src="$2" rel="$3"
     [[ ! -e "$src" ]] && return 0
     local dst="$backup_dir/$rel"
+    [[ -e "$dst" ]] && return 0
     mkdir -p "${dst:h}"
     cp -a "$src" "$dst" || return 1
     [[ -f "$dst" ]] && chmod "$_CKIPPER_SYNC_BACKUP_FILE_PERMS" "$dst"
@@ -78,15 +82,19 @@ _ckipper_account_sync_manifest_init() {
 #
 # Args: $1 — backup_dir; $2 — relative path; $3 — operation (create|overwrite);
 #       $4 — type id; $5 — items (comma-separated, optional).
-# Returns: 0 on success; 1 on jq failure.
+# Returns: 0 on success; 1 on jq failure (tmp file is cleaned up on every path).
 _ckipper_account_sync_manifest_append() {
     local backup_dir="$1" rel="$2" op="$3" type="$4" items="${5:-}"
     local manifest="$backup_dir/$_CKIPPER_SYNC_MANIFEST_FILE"
     local tmp; tmp=$(mktemp "$manifest.XXXXXX")
-    jq --arg p "$rel" --arg o "$op" --arg t "$type" --arg i "$items" \
+    if jq --arg p "$rel" --arg o "$op" --arg t "$type" --arg i "$items" \
         '.files += [{path: $p, operation: $o, type: $t, items: ($i | split(",") | map(select(length > 0)))}]' \
-        "$manifest" > "$tmp" && mv "$tmp" "$manifest" \
-        && chmod "$_CKIPPER_SYNC_BACKUP_FILE_PERMS" "$manifest"
+        "$manifest" > "$tmp"; then
+        mv "$tmp" "$manifest" && chmod "$_CKIPPER_SYNC_BACKUP_FILE_PERMS" "$manifest"
+        return $?
+    fi
+    rm -f "$tmp"
+    return 1
 }
 
 # List backup directories under <dst>, newest first. Returns absolute paths.

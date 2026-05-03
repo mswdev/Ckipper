@@ -12,11 +12,18 @@ _CKIPPER_ACCOUNT_SUBCOMMANDS=(
     add list default remove rename sync redeploy-hooks help
 )
 
+# Account-namespace renames. Used by _ckipper_account_unknown to print a
+# rename hint instead of a bare unknown-command line, since fuzzy distance
+# is too far for "sync-hooks" → "redeploy-hooks" to be auto-suggested.
+typeset -gA _CKIPPER_ACCOUNT_LEGACY_COMMANDS=(
+    [sync-hooks]='redeploy-hooks'
+)
+
 # Dispatch an `account` subcommand.
 #
 # Args:
 #   $1     — subcommand name (add, list, default, remove, rename, sync,
-#             sync-hooks [hidden but callable], help, -h, --help, or empty)
+#             redeploy-hooks, help, -h, --help, or empty)
 #   $2..$N — arguments forwarded to the subcommand handler
 #
 # Returns: 0 on success; 1 on unknown subcommand.
@@ -42,13 +49,20 @@ _ckipper_account_dispatch() {
     esac
 }
 
-# Print the closest-match suggestion (or a bare unknown-command line) and
-# point the user at help. Always writes to stderr.
+# Print a rename hint for a retired account-namespace name, or fall through
+# to the standard unknown-command + fuzzy-suggest path. Always writes to
+# stderr.
 #
 # Args: $1 — the unknown subcommand the user typed.
 # Returns: 0 always.
 _ckipper_account_unknown() {
-    _core_unknown_command "$1" \
+    local cmd="$1"
+    if (( ${+_CKIPPER_ACCOUNT_LEGACY_COMMANDS[$cmd]} )); then
+        echo "'ckipper account $cmd' was renamed to 'ckipper account ${_CKIPPER_ACCOUNT_LEGACY_COMMANDS[$cmd]}' — pass the same arguments." >&2
+        echo "Run 'ckipper account help' for the current command list." >&2
+        return 0
+    fi
+    _core_unknown_command "$cmd" \
         "Run 'ckipper account help' for available commands." \
         "${_CKIPPER_ACCOUNT_SUBCOMMANDS[@]}"
 }
@@ -75,10 +89,8 @@ _ckipper_account_help() {
 }
 
 # Per-subcommand help text router. Each arm prints a focused usage block.
-#
-# Note: the `sync` arm dispatches to the new sync subsystem's help via
-# parse_args before reaching this router, so `_ckipper_account_help_text_sync`
-# is no longer used here — kept only as a fallback.
+# The `sync` arm forwards to the sync subsystem's own help text since that
+# module owns its CLI surface.
 #
 # Args: $1 — subcommand name.
 # Returns: 0 always.

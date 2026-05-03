@@ -54,6 +54,24 @@ run_in_zsh() {
     [[ "$output" == *"OK"* ]]
 }
 
+@test "_ckipper_account_sync_backup_file is idempotent: second call preserves original snapshot" {
+    # Two strategies (e.g. settings + statusline) both back up settings.json.
+    # The first call must capture the pre-sync state; the second must NOT
+    # overwrite it with the post-first-write intermediate state, otherwise
+    # rollback restores a corrupted baseline.
+    local dst="$TMP_HOME/dest"
+    mkdir -p "$dst"
+    echo "ORIGINAL" > "$dst/settings.json"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' personal)
+        _ckipper_account_sync_backup_file \"\$backup_dir\" '$dst/settings.json' 'settings.json'
+        echo MODIFIED > '$dst/settings.json'
+        _ckipper_account_sync_backup_file \"\$backup_dir\" '$dst/settings.json' 'settings.json'
+        cat \"\$backup_dir/settings.json\""
+    [[ "$output" == *"ORIGINAL"* ]]
+    [[ "$output" != *"MODIFIED"* ]]
+}
+
 @test "_ckipper_account_sync_backup_file copies directories recursively (cp -a)" {
     local dst="$TMP_HOME/dest"
     mkdir -p "$dst/skills/foo"
@@ -77,6 +95,20 @@ run_in_zsh() {
     [[ "$output" == *"1"* ]]
     [[ "$output" == *"personal"* ]]
     [[ "$output" == *"work"* ]]
+}
+
+@test "_ckipper_account_sync_manifest_append cleans up its tmp file when jq fails" {
+    local dst="$TMP_HOME/dest"
+    mkdir -p "$dst"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' personal)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" personal work
+        # Corrupt the manifest so jq exits non-zero on the next append.
+        echo 'not-json' > \"\$backup_dir/.ckipper-sync-manifest.json\"
+        _ckipper_account_sync_manifest_append \"\$backup_dir\" 'x' overwrite mcp 'a' 2>/dev/null
+        # Tmp files match .ckipper-sync-manifest.json.XXXXXX in the backup dir.
+        ls \"\$backup_dir\"/.ckipper-sync-manifest.json.* 2>/dev/null | wc -l | tr -d ' '"
+    [[ "$output" == *"0"* ]]
 }
 
 @test "_ckipper_account_sync_manifest_append adds an entry" {

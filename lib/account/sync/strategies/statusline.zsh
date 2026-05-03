@@ -118,7 +118,10 @@ _ckipper_account_sync_statusline_apply() {
 }
 
 # Internal-script branch: copies the script then rewrites .command in the
-# given JSON to point at the destination's path.
+# given JSON to point at the destination's path. Appends a manifest entry
+# for the script file so rollback can delete it (op=create) or restore the
+# previous version (op=overwrite); without this, a mid-write crash leaves
+# the script orphaned with no rollback record.
 #
 # Args: $1 — src dir; $2 — dst dir; $3 — internal script abs path;
 #       $4 — backup_dir; $5 — statusline JSON object.
@@ -126,7 +129,9 @@ _ckipper_account_sync_statusline_apply() {
 _ckipper_account_sync_statusline_copy_and_rewrite() {
     local src="$1" dst="$2" internal="$3" backup_dir="$4" obj="$5"
     local rel="${internal#$src/}"
+    local script_op="overwrite"; [[ -e "$dst/$rel" ]] || script_op="create"
     _ckipper_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
+    _ckipper_account_sync_manifest_append "$backup_dir" "$rel" "$script_op" statusline "$rel"
     mkdir -p "$dst/${rel:h}"
     cp -a "$internal" "$dst/$rel" || return 1
     # Literal split+join (NOT sub/gsub) — paths often contain regex

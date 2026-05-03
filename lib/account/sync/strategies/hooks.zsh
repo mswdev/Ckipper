@@ -143,6 +143,9 @@ _ckipper_account_sync_hooks_merge_settings() {
 # Returns: 0; prints filtered hooks JSON object (may be empty {}).
 _ckipper_account_sync_hooks_filter_src() {
     local src_settings="$1" script_basename="$2" src="$3" dst="$4"
+    # Literal split+join (NOT sub/gsub) — paths often contain regex
+    # metacharacters (`.`, `-`) and gsub would treat the src path as a regex,
+    # silently rewriting unrelated commands that happen to match the pattern.
     jq --arg sb "$script_basename" --arg src "$src" --arg dst "$dst" '
         (.hooks // {})
         | to_entries
@@ -152,7 +155,7 @@ _ckipper_account_sync_hooks_filter_src() {
                 .value
                 | map(.hooks |= map(select(.command | tostring | contains("/" + $sb))))
                 | map(select(.hooks | length > 0))
-                | map(.hooks |= map(.command |= gsub($src; $dst)))
+                | map(.hooks |= map(.command |= (split($src) | join($dst))))
             )
           })
         | map(select(.value | length > 0))

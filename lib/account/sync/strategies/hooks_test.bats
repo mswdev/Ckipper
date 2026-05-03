@@ -52,6 +52,27 @@ run_in_zsh() {
     [[ "$output" == *"new"* ]]
 }
 
+@test "hooks_filter_src: literal substring rewrite (not regex) when src path contains a dot" {
+    # src path has `.` (regex metachar); a separate command that happens to
+    # match the regex but NOT the literal substring must be left alone.
+    local src="$TMP_HOME/.claude-personal" dst="$TMP_HOME/.claude-work"
+    mkdir -p "$src/hooks" "$dst/hooks"
+    touch "$src/hooks/lint.sh"
+    # Settings hook command references TWO paths:
+    #   A) the literal src path — should be rewritten to dst
+    #   B) a different path that matches the src regex (`.` matches `-`)
+    #      — must NOT be rewritten
+    cat > "$src/settings.json" <<JSON
+{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"bash $src/hooks/lint.sh && echo $TMP_HOME/Xclaude-personal/marker"}]}]}}
+JSON
+    run_in_zsh "_ckipper_account_sync_hooks_filter_src '$src/settings.json' lint.sh '$src' '$dst' \
+        | jq -r '.PostToolUse[0].hooks[0].command'"
+    # The literal-src half got rewritten…
+    [[ "$output" == *"$dst/hooks/lint.sh"* ]]
+    # …and the regex-only-matching marker was left untouched.
+    [[ "$output" == *"$TMP_HOME/Xclaude-personal/marker"* ]]
+}
+
 @test "hooks_apply copies the script AND adds the paired settings entry" {
     local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
     mkdir -p "$src/hooks" "$dst/hooks"

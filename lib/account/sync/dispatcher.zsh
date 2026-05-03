@@ -159,7 +159,11 @@ _ckipper_account_sync_run_one_target() {
     local src_dir dst_dir
     src_dir=$(_core_account_dir "$_SYNC_FROM")
     dst_dir=$(_core_account_dir "$target")
-    _ckipper_account_sync_assert_dst_idle "$dst_dir" "$_SYNC_FORCE" || return 1
+    # Dry-run is read-only; the running-Claude refusal exists to prevent
+    # races with writes, so let preview-only invocations through.
+    if [[ "$_SYNC_DRY_RUN" != "true" ]]; then
+        _ckipper_account_sync_assert_dst_idle "$dst_dir" "$_SYNC_FORCE" || return 1
+    fi
     local changeset summaries items
     changeset=$(mktemp); summaries=$(mktemp); items=$(mktemp)
     _SYNC_CTX=(

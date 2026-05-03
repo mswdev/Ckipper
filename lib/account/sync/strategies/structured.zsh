@@ -65,7 +65,10 @@ _ckipper_account_sync_mcp_compare() {
     local s d
     s=$(jq -c --arg n "$name" '.mcpServers[$n] // null' "$src/.claude.json" 2>/dev/null)
     d=$(jq -c --arg n "$name" '.mcpServers[$n] // null' "$dst/.claude.json" 2>/dev/null)
-    if [[ "$d" == "null" ]]; then echo "new"; return 0; fi
+    # Empty `d` means the destination file is missing entirely (jq exited
+    # non-zero); treat the same as "key absent" so the manifest records `op=create`
+    # and rollback knows to delete (not restore-overwrite) the new file.
+    if [[ -z "$d" || "$d" == "null" ]]; then echo "new"; return 0; fi
     if [[ "$s" == "$d" ]]; then echo "unchanged"; return 0; fi
     echo "overwrite"
 }
@@ -152,7 +155,9 @@ _ckipper_account_sync_settings_compare() {
     local s d
     s=$(jq -c "$jq_path // null" "$src/settings.json" 2>/dev/null)
     d=$(jq -c "$jq_path // null" "$dst/settings.json" 2>/dev/null)
-    if [[ "$d" == "null" ]]; then echo "new"; return 0; fi
+    # Empty `d` means the destination file is missing entirely; see the
+    # equivalent guard in `_ckipper_account_sync_mcp_compare` for rationale.
+    if [[ -z "$d" || "$d" == "null" ]]; then echo "new"; return 0; fi
     if [[ "$s" == "$d" ]]; then echo "unchanged"; return 0; fi
     echo "overwrite"
 }

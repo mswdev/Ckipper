@@ -86,6 +86,15 @@ run_in_zsh() {
     [[ "$output" == *"overwrite"* ]]
 }
 
+@test "mcp_compare: new when destination .claude.json does not exist" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"mcpServers":{"github":{"command":"x"}}}' > "$src/.claude.json"
+    run_in_zsh "_ckipper_account_sync_mcp_compare '$src' '$dst' github"
+    [[ "$output" == *"new"* ]]
+    [[ "$output" != *"overwrite"* ]]
+}
+
 @test "mcp_apply merges into destination preserving other servers" {
     local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
     mkdir -p "$src" "$dst"
@@ -146,6 +155,15 @@ run_in_zsh() {
     echo '{"model":"opus"}' > "$dst/settings.json"
     run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' model"
     [[ "$output" == *"unchanged"* ]]
+}
+
+@test "settings_compare: new when destination settings.json does not exist" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"model":"opus"}' > "$src/settings.json"
+    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' model"
+    [[ "$output" == *"new"* ]]
+    [[ "$output" != *"overwrite"* ]]
 }
 
 @test "settings_apply writes nested path without disturbing siblings" {

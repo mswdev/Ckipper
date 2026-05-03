@@ -40,7 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - `ckipper account repair-plugins` (folded into `ckipper doctor --fix`).
-- `ckipper account sync-hooks` from public help (still callable; auto-runs after install/setup).
 
 ## [0.2.0] — 2026-04-30 — Breaking changes: merge `w` into `ckipper`
 

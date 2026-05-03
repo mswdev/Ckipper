@@ -112,6 +112,30 @@ run_full() {
     [[ "$n" == "0" ]]
 }
 
+# Regression: dry-run is read-only; the running-Claude refusal exists to
+# prevent races with writes. A user previewing changes while their session
+# is still open must not be blocked.
+@test "ckipper account sync --dry-run is not blocked when Claude is running on dst" {
+    setup_two_accounts
+    run_full '
+        # Stub: pretend claude is running and its argv includes the dst path.
+        _core_running_claude_processes() { echo "12345 claude $TMP_HOME/dst"; }
+        ckipper account sync src dst --include mcp --dry-run'
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Refusing to sync"* ]]
+}
+
+# Companion check: without --dry-run (and without --force), the same scenario
+# must still abort — the dry-run skip is the only carve-out.
+@test "ckipper account sync without --dry-run IS blocked when Claude is running on dst" {
+    setup_two_accounts
+    run_full '
+        _core_running_claude_processes() { echo "12345 claude $TMP_HOME/dst"; }
+        ckipper account sync src dst --include mcp --yes'
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Refusing to sync"* ]]
+}
+
 @test "ckipper account sync rejects unregistered source" {
     setup_two_accounts
     run_full 'ckipper account sync ghost dst --include mcp --yes'

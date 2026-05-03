@@ -105,3 +105,37 @@ run_in_zsh() {
     [[ "$output" == *"$dst/my-statusline.sh"* ]]
     [[ "$output" == *"COPIED"* ]]
 }
+
+@test "statusline_apply: internal-script copy is recorded in manifest (rollback safety)" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo "#!/bin/bash" > "$src/my-statusline.sh"
+    chmod +x "$src/my-statusline.sh"
+    echo "{\"statusLine\":{\"command\":\"$src/my-statusline.sh\"}}" > "$src/settings.json"
+    echo '{}' > "$dst/settings.json"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
+        _ckipper_account_sync_statusline_apply '$src' '$dst' statusLine \"\$backup_dir\"
+        jq -r '.files[] | \"\(.operation)\t\(.path)\"' \"\$backup_dir\"/.ckipper-sync-manifest.json | sort"
+    # Both files must be in the manifest so a later rollback can restore them.
+    [[ "$output" == *"settings.json"* ]]
+    [[ "$output" == *"my-statusline.sh"* ]]
+}
+
+@test "statusline rollback removes orphaned script when op=create" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo "#!/bin/bash" > "$src/my-statusline.sh"
+    chmod +x "$src/my-statusline.sh"
+    echo "{\"statusLine\":{\"command\":\"$src/my-statusline.sh\"}}" > "$src/settings.json"
+    echo '{}' > "$dst/settings.json"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
+        _ckipper_account_sync_statusline_apply '$src' '$dst' statusLine \"\$backup_dir\"
+        _ckipper_account_sync_rollback_target \"\$backup_dir\" '$dst'
+        [[ -f '$dst/my-statusline.sh' ]] && echo STILL_THERE || echo GONE"
+    [[ "$output" == *"GONE"* ]]
+    [[ "$output" != *"STILL_THERE"* ]]
+}
