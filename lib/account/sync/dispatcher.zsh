@@ -263,7 +263,7 @@ _ckipper_account_sync_help_text() {
         "  --exclude <types>    Subtract from --include." \
         "  --dry-run            Print summary, exit (no prompt, no writes)." \
         "  --yes                Skip the confirm prompt; apply directly." \
-        "  --force              Bypass the destination-Claude-running refusal." \
+        "  --force              Bypass the running-Claude refusal." \
         "" \
         "Subcommand:" \
         "  ckipper account sync undo <account> [--pick | --list]" \
@@ -277,6 +277,13 @@ _ckipper_account_sync_help_text() {
 
 # Undo subcommand dispatcher.
 #
+# Force is read from a LOCAL var, not the module-level _SYNC_FORCE. The
+# previous design read _SYNC_FORCE directly, which leaked across
+# invocations: a prior `sync ... --force` left _SYNC_FORCE="true" in the
+# shell, and a subsequent `sync undo` (without --force) inherited it,
+# silently bypassing the running-Claude refusal. parse_args resets
+# _SYNC_FORCE on the sync path, but the undo path skips parse_args.
+#
 # Args: $1 — account name; flags: --pick | --list | --force.
 # Returns: 0 on success; 1 on user-visible failure.
 # Errors (stderr): "Usage: ckipper account sync undo <account>" — when the
@@ -286,16 +293,16 @@ _ckipper_account_sync_undo_dispatch() {
     local account="$1"; shift 2>/dev/null
     [[ -z "$account" ]] && { echo "Usage: ckipper account sync undo <account>" >&2; return 1; }
     local dst_dir; dst_dir=$(_core_account_dir "$account") || return 1
-    local mode="latest"
+    local mode="latest" force="false"
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --pick) mode="pick"; shift ;;
             --list) mode="list"; shift ;;
-            --force) _SYNC_FORCE="true"; shift ;;
+            --force) force="true"; shift ;;
             *) echo "Unknown flag: $1" >&2; return 1 ;;
         esac
     done
-    _ckipper_account_sync_assert_dst_idle "$dst_dir" "${_SYNC_FORCE:-false}" || return 1
+    _ckipper_account_sync_assert_dst_idle "$dst_dir" "$force" || return 1
     _ckipper_account_sync_undo_run "$account" "$dst_dir" "$mode"
 }
 

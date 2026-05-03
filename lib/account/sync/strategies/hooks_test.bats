@@ -91,3 +91,56 @@ JSON
     [[ "$output" == *"$dst/hooks/lint.sh"* ]]
     [[ "$output" != *"$src/hooks/lint.sh"* ]]
 }
+
+# Bug F: hooks_apply mutates settings.json (adding the paired .hooks entry)
+# but the engine's apply_one only recorded a manifest entry for the script
+# file (manifest_rel returns "<id>" for hooks, which is the script relpath).
+# The settings.json mutation was untracked, so a rollback after a hook sync
+# left the destination with a phantom .hooks entry pointing at a deleted
+# script. Fix: hooks_apply explicitly appends a settings.json manifest
+# entry alongside the script entry.
+@test "hooks_apply records settings.json mutation in the manifest (Bug F)" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src/hooks" "$dst/hooks"
+    echo "#!/bin/bash" > "$src/hooks/lint.sh"
+    cat > "$src/settings.json" <<JSON
+{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"bash $src/hooks/lint.sh"}]}]}}
+JSON
+    echo '{}' > "$dst/settings.json"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
+        _ckipper_account_sync_hooks_apply '$src' '$dst' hooks/lint.sh \"\$backup_dir\"
+        jq -r '.files[].path' \"\$backup_dir/.ckipper-sync-manifest.json\" | sort | tr '\n' ','"
+    [[ "$output" == *"settings.json"* ]]
+}
+
+# Bug F end-to-end: rollback after hook sync restores settings.json — without
+# the manifest entry from the fix, rollback would leave the .hooks block
+# polluted with the synced entry pointing at a (deleted) script.
+@test "rollback after hook sync removes script AND restores settings.json (Bug F)" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src/hooks" "$dst/hooks"
+    echo "#!/bin/bash" > "$src/hooks/lint.sh"
+    cat > "$src/settings.json" <<JSON
+{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"bash $src/hooks/lint.sh"}]}]}}
+JSON
+    # Pre-existing settings.json on dst — rollback must restore THIS state.
+    echo '{"keep":"this"}' > "$dst/settings.json"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
+        _ckipper_account_sync_hooks_apply '$src' '$dst' hooks/lint.sh \"\$backup_dir\"
+        # Sanity: post-apply, settings.json has the synced .hooks entry.
+        jq -r '.hooks.PostToolUse | length' '$dst/settings.json'
+        # Roll back.
+        _ckipper_account_sync_rollback_target \"\$backup_dir\" '$dst'
+        # The script must be gone…
+        [[ -f '$dst/hooks/lint.sh' ]] && echo SCRIPT_KEPT || echo SCRIPT_GONE
+        # …and settings.json restored to the pre-sync state (no .hooks block).
+        jq -r '.keep' '$dst/settings.json'
+        jq -e '.hooks' '$dst/settings.json' >/dev/null 2>&1 && echo STILL_HOOKED || echo CLEAN"
+    [[ "$output" == *"SCRIPT_GONE"* ]]
+    [[ "$output" == *"this"* ]]
+    [[ "$output" == *"CLEAN"* ]]
+}

@@ -92,12 +92,25 @@ _ckipper_account_sync_hooks_diff() {
 
 # Apply: copy script + write paired settings.hooks entry with rewritten paths.
 #
+# Records the settings.json mutation in the manifest in addition to the
+# script file. The engine's apply_one only records the script entry (its
+# manifest_rel returns "<id>" for hooks), but hooks_apply ALSO mutates
+# settings.json — without an explicit manifest entry, rollback wouldn't
+# restore settings.json and would leave dangling .hooks entries pointing
+# at scripts that have just been deleted/restored.
+#
+# Multiple hooks in one sync each append a settings.json entry; rollback
+# is idempotent so duplicate entries are harmless (each restore from the
+# same backup yields the same pre-sync state).
+#
 # Args: $1 — src; $2 — dst; $3 — relpath; $4 — backup_dir.
 # Returns: 0 on success; non-zero on cp/jq/write failure.
 _ckipper_account_sync_hooks_apply() {
     local src="$1" dst="$2" rel="$3" backup_dir="$4"
     _ckipper_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
+    local settings_op="overwrite"; [[ -e "$dst/settings.json" ]] || settings_op="create"
     _ckipper_account_sync_backup_file "$backup_dir" "$dst/settings.json" "settings.json" || return 1
+    _ckipper_account_sync_manifest_append "$backup_dir" "settings.json" "$settings_op" hooks "$rel"
     mkdir -p "$dst/${rel:h}"
     cp -a "$src/$rel" "$dst/$rel" || return 1
     chmod +x "$dst/$rel" 2>/dev/null

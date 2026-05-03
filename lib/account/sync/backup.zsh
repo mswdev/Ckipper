@@ -18,6 +18,23 @@ readonly _CKIPPER_SYNC_BACKUP_FILE_PERMS=600
 readonly _CKIPPER_SYNC_MANIFEST_FILE=".ckipper-sync-manifest.json"
 readonly _CKIPPER_SYNC_MANIFEST_VERSION=1
 
+# Compute the LIVE absolute path for a manifest entry. Most types live
+# under <dst_dir>/<rel>; prefs operates on $CKIPPER_REGISTRY (which is
+# usually outside the destination account dir). Used by both apply_one
+# (op-derivation in engine.zsh) and rollback_one so the two agree on
+# what file is being touched.
+#
+# Args: $1 — type (may be empty for legacy callers); $2 — dst_dir;
+#       $3 — relpath from the manifest.
+# Returns: 0; prints absolute path.
+_ckipper_account_sync_live_path() {
+    local type="$1" dst_dir="$2" rel="$3"
+    case "$type" in
+        prefs) echo "$CKIPPER_REGISTRY" ;;
+        *) echo "$dst_dir/$rel" ;;
+    esac
+}
+
 # Compute the backup-dir path (does NOT create it). Pure function; no IO.
 #
 # Args: $1 — destination account dir; $2 — source account name.
@@ -114,8 +131,11 @@ _ckipper_account_sync_manifest_list_backups() {
 }
 
 # Roll back a single target by reversing every entry in its manifest:
-# - operation=create  → delete the file at <dst>/<rel> (the sync put it there)
+# - operation=create  → delete the file at the live path (the sync put it there)
 # - operation=overwrite → restore from <backup_dir>/<rel> via atomic rename
+#
+# The live path is normally <dst>/<rel>, but for type=prefs it's
+# $CKIPPER_REGISTRY. _ckipper_account_sync_live_path encapsulates that.
 #
 # Best-effort per-entry: a missing backup or a permission error is logged
 # (stderr) but does not stop subsequent entries from rolling back.
@@ -128,21 +148,22 @@ _ckipper_account_sync_rollback_target() {
     local manifest="$backup_dir/$_CKIPPER_SYNC_MANIFEST_FILE"
     [[ ! -f "$manifest" ]] && return 0
     local rc=0
-    while IFS=$'\t' read -r op rel; do
-        _ckipper_account_sync_rollback_one "$backup_dir" "$dst_dir" "$op" "$rel" || rc=1
-    done < <(jq -r '.files[] | "\(.operation)\t\(.path)"' "$manifest")
+    while IFS=$'\t' read -r op rel type; do
+        _ckipper_account_sync_rollback_one "$backup_dir" "$dst_dir" "$op" "$rel" "$type" || rc=1
+    done < <(jq -r '.files[] | "\(.operation)\t\(.path)\t\(.type // "")"' "$manifest")
     return $rc
 }
 
 # Per-entry rollback helper. Kept separate so _rollback_target stays under
 # the 25-line cap and the per-entry logic is independently unit-testable.
 #
-# Args: $1 — backup_dir; $2 — dst_dir; $3 — operation; $4 — relative path.
+# Args: $1 — backup_dir; $2 — dst_dir; $3 — operation; $4 — relative path;
+#       $5 — type (optional; routes prefs to $CKIPPER_REGISTRY instead of dst_dir).
 # Returns: 0 on success; 1 on rm/mv failure.
 # Errors (stderr): "rollback failed: <rel> — <reason>"
 _ckipper_account_sync_rollback_one() {
-    local backup_dir="$1" dst_dir="$2" op="$3" rel="$4"
-    local live="$dst_dir/$rel"
+    local backup_dir="$1" dst_dir="$2" op="$3" rel="$4" type="${5:-}"
+    local live; live=$(_ckipper_account_sync_live_path "$type" "$dst_dir" "$rel")
     if [[ "$op" == "create" ]]; then
         rm -rf "$live" 2>/dev/null || {
             echo "rollback failed: $rel — could not remove created file" >&2

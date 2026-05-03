@@ -56,26 +56,31 @@ _ckipper_account_sync_strategy_fn() {
     echo "_ckipper_account_sync_${type}_${verb}"
 }
 
-# Refuse to sync when Claude is running with the destination's config dir.
-# Reuses lib/core/keychain.zsh::_core_running_claude_processes and filters by
-# whether any line references the destination directory.
+# Refuse to sync when any Claude CLI is running.
 #
-# Args: $1 — destination dir; $2 — force flag ("true" | "false").
-# Returns: 0 if safe to proceed; 1 if Claude is running on dst (unless force).
-# Errors (stderr): a multiline message identifying the running process(es)
-#   and the suggested launcher command.
+# We previously tried to filter by "Claude running on this destination dir,"
+# but that requires reading another process's CLAUDE_CONFIG_DIR env var —
+# macOS does not expose that to non-privileged callers (`ps -E` is a no-op
+# for foreign processes; `pgrep -lx` only shows PID + basename). The only
+# reliable signal we have is "is any claude CLI running at all," so we
+# refuse on that. Coarser than designed, but the original sync.zsh on
+# develop did the same; --force is the documented escape hatch.
+#
+# Args: $1 — destination dir (kept in the signature for forward
+#   compatibility once we have a dst-specific signal); $2 — force flag
+#   ("true" | "false").
+# Returns: 0 if safe to proceed; 1 if any Claude CLI is running (unless force).
+# Errors (stderr): multiline message identifying the running process(es).
 _ckipper_account_sync_assert_dst_idle() {
     local dst_dir="$1" force="$2"
     [[ "$force" == "true" ]] && return 0
     local procs; procs=$(_core_running_claude_processes 2>/dev/null)
     [[ -z "$procs" ]] && return 0
-    local matching; matching=$(echo "$procs" | grep -F "$dst_dir" || true)
-    [[ -z "$matching" ]] && return 0
     {
-        echo "Refusing to sync: Claude is running on the destination config dir."
-        echo "$matching" | sed 's/^/  /'
+        echo "Refusing to sync: a Claude CLI process is running."
+        echo "$procs" | sed 's/^/  /'
         echo ""
-        echo "Quit the session, or pass --force to override (risk of file races)."
+        echo "Quit running Claude (or pass --force to override; risk of file races)."
     } >&2
     return 1
 }
@@ -158,7 +163,7 @@ _ckipper_account_sync_apply_target() {
     local rc=0 type id display change_status
     while IFS=$'\t' read -r type id display change_status; do
         [[ -z "$type" || "$change_status" == "unchanged" ]] && continue
-        _ckipper_account_sync_apply_one "$type" "$id" "$change_status" || { rc=1; break; }
+        _ckipper_account_sync_apply_one "$type" "$id" || { rc=1; break; }
     done
     if (( rc != 0 )); then
         _ckipper_account_sync_rollback_target "$backup_dir" "$dst_dir" >&2
@@ -180,15 +185,22 @@ _ckipper_account_sync_apply_target() {
 # backup dir. Without this, mid-write failures leave the destination
 # half-written with no manifest record (rollback would skip the file).
 #
-# Args: $1 — type; $2 — id; $3 — change status.
+# `op` is derived from whether the live file exists at apply time, NOT
+# from change_status. change_status="new" can fire when a sub-key is
+# absent from a file that already exists (e.g. adding one MCP server to a
+# .claude.json that already has others); recording op=create there would
+# make rollback rm-rf the whole file, destroying unrelated data.
+#
+# Args: $1 — type; $2 — id.
 # Returns: 0 on success; non-zero on apply failure.
 _ckipper_account_sync_apply_one() {
-    local type="$1" id="$2" change_status="$3"
+    local type="$1" id="$2"
     local apply_fn; apply_fn=$(_ckipper_account_sync_strategy_fn "$type" apply)
     local arg_a="${_SYNC_CTX[src_dir]}" arg_b="${_SYNC_CTX[dst_dir]}"
     [[ "$type" == "prefs" ]] && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
-    local op="overwrite"; [[ "$change_status" == "new" ]] && op="create"
     local rel; rel=$(_ckipper_account_sync_manifest_rel "$type" "$id")
+    local live; live=$(_ckipper_account_sync_live_path "$type" "${_SYNC_CTX[dst_dir]}" "$rel")
+    local op="overwrite"; [[ ! -e "$live" ]] && op="create"
     _ckipper_account_sync_manifest_append "${_SYNC_CTX[backup_dir]}" "$rel" "$op" "$type" "$id"
     "$apply_fn" "$arg_a" "$arg_b" "$id" "${_SYNC_CTX[backup_dir]}"
 }

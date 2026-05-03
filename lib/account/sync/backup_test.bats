@@ -184,3 +184,48 @@ run_in_zsh() {
     [[ "$output" == *"original"* ]]
     [[ "$output" == *"BACKUP_REMOVED"* ]]
 }
+
+# ── live_path + type-aware rollback (Bug G fix) ──────────────────────────
+
+@test "_ckipper_account_sync_live_path returns CKIPPER_REGISTRY for type=prefs" {
+    run_in_zsh "
+        export CKIPPER_REGISTRY='$TMP_HOME/.ckipper/accounts.json'
+        _ckipper_account_sync_live_path prefs '$TMP_HOME/dst' 'accounts.json'"
+    [[ "$output" == *".ckipper/accounts.json"* ]]
+    [[ "$output" != *"/dst/accounts.json"* ]]
+}
+
+@test "_ckipper_account_sync_live_path returns dst/rel for non-prefs types" {
+    run_in_zsh "_ckipper_account_sync_live_path mcp '$TMP_HOME/dst' '.claude.json'"
+    [[ "$output" == *"$TMP_HOME/dst/.claude.json"* ]]
+}
+
+@test "_ckipper_account_sync_live_path falls back to dst/rel when type is empty" {
+    run_in_zsh "_ckipper_account_sync_live_path '' '$TMP_HOME/dst' 'foo'"
+    [[ "$output" == *"$TMP_HOME/dst/foo"* ]]
+}
+
+# Bug G: prefs rollback used to write to $dst_dir/accounts.json, NOT to
+# $CKIPPER_REGISTRY — silently corrupting the registry restore. Fix passes
+# the type field from the manifest through to rollback_one so prefs is
+# correctly routed to the registry.
+@test "_ckipper_account_sync_rollback_target restores prefs to CKIPPER_REGISTRY (Bug G)" {
+    local dst="$TMP_HOME/dest"
+    mkdir -p "$dst" "$TMP_HOME/.ckipper"
+    local registry="$TMP_HOME/.ckipper/accounts.json"
+    echo '{"version":2,"original":"yes"}' > "$registry"
+
+    run env HOME="$HOME" CKIPPER_DIR="$CKIPPER_DIR" TMP_HOME="$TMP_HOME" \
+        CKIPPER_REGISTRY="$registry" \
+        zsh -c "source \"$REPO_ROOT/lib/account/sync/backup.zsh\"; \
+                backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src); \
+                _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst; \
+                _ckipper_account_sync_backup_file \"\$backup_dir\" '$registry' 'accounts.json'; \
+                _ckipper_account_sync_manifest_append \"\$backup_dir\" 'accounts.json' overwrite prefs always_docker; \
+                echo '{\"version\":2,\"corrupted\":\"yes\"}' > '$registry'; \
+                _ckipper_account_sync_rollback_target \"\$backup_dir\" '$dst'; \
+                jq -r '.original // \"missing\"' '$registry'; \
+                [[ -e '$dst/accounts.json' ]] && echo STRAY_DST_FILE || echo NO_STRAY"
+    [[ "$output" == *"yes"* ]]
+    [[ "$output" == *"NO_STRAY"* ]]
+}

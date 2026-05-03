@@ -148,6 +148,37 @@ run_full() {
     [ "$status" -ne 0 ]
 }
 
+# Bug B: undo_dispatch used to read $_SYNC_FORCE directly, which leaked
+# state from a prior sync invocation in the same shell. A user who ran
+# `sync ... --force` (setting _SYNC_FORCE=true) and then ran `sync undo`
+# without --force would silently bypass the running-Claude refusal because
+# parse_args resets _SYNC_FORCE only on the sync path. Fix: undo uses a
+# local force var, defaulting to false.
+@test "sync undo does NOT inherit --force from a prior sync invocation (Bug B)" {
+    setup_two_accounts
+    run_full '
+        # Apply a sync first WITH --force so _SYNC_FORCE leaks to module state.
+        _core_running_claude_processes() { return 0; }
+        ckipper account sync src dst --include mcp --yes --force >/dev/null 2>&1
+        # Now undo without --force; running Claude should block it again.
+        _core_running_claude_processes() { echo "12345 claude"; }
+        ckipper account sync undo dst'
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Refusing to sync"* ]]
+}
+
+# Bug B (companion): sync undo --force still works on its own.
+@test "sync undo --force bypasses the running-Claude refusal" {
+    setup_two_accounts
+    # Need at least one backup to exist for undo to do anything past the gate.
+    run_full '
+        _core_running_claude_processes() { return 0; }
+        ckipper account sync src dst --include mcp --yes >/dev/null 2>&1
+        _core_running_claude_processes() { echo "12345 claude"; }
+        ckipper account sync undo dst --force'
+    [ "$status" -eq 0 ]
+}
+
 # Regression: when the user picks "View changes" then "Apply", the diff
 # output written by drill_down_loop must NOT pollute the captured action,
 # else the [[ "$action" == "apply" ]] check downstream silently skips apply.

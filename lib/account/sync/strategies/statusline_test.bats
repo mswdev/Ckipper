@@ -123,6 +123,23 @@ run_in_zsh() {
     [[ "$output" == *"my-statusline.sh"* ]]
 }
 
+# Bug D: statusline_compare lacked the empty-string guard that mcp_compare
+# and settings_compare have. When the destination's settings.json was
+# missing entirely (jq exits non-zero, d=""), the [[ "$d" == "null" ]]
+# branch missed and the function returned "overwrite" instead of "new".
+# That mislabeled the preview UI; with Bug E fixed, op-derivation in
+# apply_one is independent of compare's verdict, so rollback remained
+# correct — but the user-visible label was still wrong.
+@test "statusline_compare returns 'new' when destination settings.json is missing (Bug D)" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"statusLine":{"command":"/usr/bin/echo"}}' > "$src/settings.json"
+    # No settings.json on dst.
+    run_in_zsh "_ckipper_account_sync_statusline_compare '$src' '$dst' statusLine"
+    [[ "$output" == *"new"* ]]
+    [[ "$output" != *"overwrite"* ]]
+}
+
 @test "statusline rollback removes orphaned script when op=create" {
     local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
     mkdir -p "$src" "$dst"
