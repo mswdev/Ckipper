@@ -118,7 +118,11 @@ _ckipper_account_sync_mcp_apply() {
 # their leaf paths so the user can sync just `.permissions.allow` without
 # touching `.permissions.deny`.
 #
-# Excludes the `.hooks` block — the user-hooks sync type owns it.
+# Excludes the `.hooks` block (the user-hooks sync type owns it) and the
+# `.statusLine` subtree (the statusline sync type owns it — the dedicated
+# strategy handles internal-script copy + path rewrite, which `settings`
+# cannot do, so enumerating it here would silently plant broken absolute
+# paths on the destination when sync runs without `statusline` included).
 #
 # Args: $1 — source account dir.
 # Returns: 0; prints "<jq-path-no-leading-dot>\t<display>" per line.
@@ -136,6 +140,7 @@ _ckipper_account_sync_settings_enumerate() {
         | select(($root | getpath($p)) | type != "object")
         | ($p | map(tostring) | join(".")) as $k
         | select($k | startswith("hooks") | not)
+        | select($k | startswith("statusLine") | not)
         | "\($k)\t\($k)"
     ' "$file" 2>/dev/null
 }

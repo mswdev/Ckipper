@@ -116,20 +116,20 @@ run_in_zsh() {
 @test "settings_enumerate emits top-level keys" {
     local src="$TMP_HOME/src"
     mkdir -p "$src"
-    echo '{"statusLine":{"command":"x"},"env":{"FOO":"1"},"model":"opus"}' > "$src/settings.json"
+    echo '{"env":{"FOO":"1"},"model":"opus"}' > "$src/settings.json"
     run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f1 | sort | tr '\n' ','"
     [[ "$output" == *"env.FOO"* ]]
     [[ "$output" == *"model"* ]]
-    [[ "$output" == *"statusLine.command"* ]]
 }
 
-@test "settings_enumerate excludes the .hooks block" {
+@test "settings_enumerate excludes .hooks and .statusLine (owned by other strategies)" {
     local src="$TMP_HOME/src"
     mkdir -p "$src"
-    echo '{"statusLine":{"command":"x"},"hooks":{"PreToolUse":[]}}' > "$src/settings.json"
+    echo '{"statusLine":{"command":"x"},"hooks":{"PreToolUse":[]},"model":"opus"}' > "$src/settings.json"
     run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f1"
     [[ "$output" != *"hooks"* ]]
-    [[ "$output" == *"statusLine"* ]]
+    [[ "$output" != *"statusLine"* ]]
+    [[ "$output" == *"model"* ]]
 }
 
 @test "settings_enumerate produces nested jq paths for object-typed values" {

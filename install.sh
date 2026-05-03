@@ -41,7 +41,7 @@ chmod +x "$CKIPPER_DIR/docker/entrypoint.sh"
 chmod +x "$CKIPPER_DIR/docker/init-firewall.sh"
 chmod +x "$CKIPPER_DIR/docker/cleanup-projects.py"
 
-# 3. Copy hooks (canonical source for ckipper account sync-hooks)
+# 3. Copy hooks (canonical source for ckipper account redeploy-hooks)
 echo "Copying hooks to $CKIPPER_DIR/hooks/..."
 mkdir -p "$CKIPPER_DIR/hooks"
 cp "$REPO_DIR/hooks/protect-claude-config.sh" "$CKIPPER_DIR/hooks/"
@@ -118,10 +118,10 @@ fi
 [[ -f "$CKIPPER_DIR/accounts.json" ]] && echo "  accounts.json already exists (not overwritten — managed by ckipper)"
 [[ -f "$CKIPPER_DIR/aliases.zsh" ]] && echo "  aliases.zsh already exists (not overwritten — auto-generated)"
 
-# 6. Deploy settings-template.json (consumed by ckipper account add / sync-hooks per-account)
+# 6. Deploy settings-template.json (consumed by ckipper account add / redeploy-hooks per-account)
 echo "Copying settings-template.json to $CKIPPER_DIR/..."
 cp "$REPO_DIR/templates/settings-template.json" "$CKIPPER_DIR/settings-template.json"
-echo "  Settings template deployed. ckipper account sync-hooks applies it per-account."
+echo "  Settings template deployed. ckipper account redeploy-hooks applies it per-account."
 
 # 7. Add or update source line in .zshrc
 # Pre-merge installs sourced w-function.zsh from ~/.claude/docker/ or

@@ -9,6 +9,7 @@
 readonly _CKIPPER_SYNC_BADGE_NEW="[+]"
 readonly _CKIPPER_SYNC_BADGE_OVERWRITE="[~]"
 readonly _CKIPPER_SYNC_DIVIDER_WIDTH=45
+readonly _CKIPPER_SYNC_DISPLAY_COL_WIDTH=26
 
 # Per-target context (declared here too because preview_test.bats sources
 # only this module). See engine.zsh for the full key list. Re-declaration
@@ -28,9 +29,10 @@ _ckipper_account_sync_print_divider() {
 # Returns: 0; suppresses unchanged rows.
 _ckipper_account_sync_render_row() {
     local cmp_status="$1" display="$2" summary="$3"
+    local w="$_CKIPPER_SYNC_DISPLAY_COL_WIDTH"
     case "$cmp_status" in
-        new)       printf '    %s %-26s (%s)\n' "$_CKIPPER_SYNC_BADGE_NEW" "$display" "${summary:-new}" ;;
-        overwrite) printf '    %s %-26s (%s)\n' "$_CKIPPER_SYNC_BADGE_OVERWRITE" "$display" "${summary:-overwrite}" ;;
+        new)       printf '    %s %-*s (%s)\n' "$_CKIPPER_SYNC_BADGE_NEW" "$w" "$display" "${summary:-new}" ;;
+        overwrite) printf '    %s %-*s (%s)\n' "$_CKIPPER_SYNC_BADGE_OVERWRITE" "$w" "$display" "${summary:-overwrite}" ;;
         unchanged) ;;
     esac
 }

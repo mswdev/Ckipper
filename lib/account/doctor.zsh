@@ -413,7 +413,7 @@ _ckipper_doctor_account() {
         _ckipper_doctor_check WARN "    .claude.json missing in $dir"
     fi
     if [[ -f "$dir/settings.json" ]]; then _ckipper_doctor_check PASS "    settings.json present"; else _ckipper_doctor_check WARN "    settings.json missing"; fi
-    if [[ -d "$dir/hooks" ]]; then _ckipper_doctor_check PASS "    hooks/ deployed"; else _ckipper_doctor_check WARN "    hooks/ missing — run: ckipper account sync-hooks"; fi
+    if [[ -d "$dir/hooks" ]]; then _ckipper_doctor_check PASS "    hooks/ deployed"; else _ckipper_doctor_check WARN "    hooks/ missing — run: ckipper account redeploy-hooks"; fi
     _ckipper_doctor_account_plugins "$name" "$dir"
     _ckipper_doctor_account_keychain "$svc" "$name"
 }
