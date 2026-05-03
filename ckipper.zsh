@@ -29,10 +29,11 @@ source "$CKIPPER_REPO_DIR/lib/core/prompt.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/account-management.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/cleanup.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/aliases.zsh"
-# Sync subsystem — registry, backup, engine, preview, interactive,
-# dispatcher, then the strategy modules.
+# Sync subsystem — registry, backup, shared helpers, engine, preview,
+# interactive, dispatcher, then the strategy modules.
 source "$CKIPPER_REPO_DIR/lib/account/sync/registry.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/sync/backup.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/sync/_shared.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/sync/engine.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/sync/preview.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/sync/interactive.zsh"

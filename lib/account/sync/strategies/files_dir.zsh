@@ -16,29 +16,6 @@ typeset -gA _CKIPPER_SYNC_FILES_DIR_PATH=(
     [skills]="skills"
 )
 
-# Compute a content hash for a directory or symlink. For symlinks: the
-# target path. For regular dirs: concatenated sha256 of every file in
-# lexical order, hashed once more.
-#
-# Note: arg variable is `target` (not `path`) — zsh ties lowercase `path` to
-# `$PATH` as an array, which corrupts the env if used as a local var.
-#
-# Args: $1 — path to directory or symlink.
-# Returns: 0; prints hex hash or empty if path is missing.
-_ckipper_account_sync_dir_hash() {
-    local target="$1"
-    [[ ! -e "$target" ]] && { echo ""; return 0; }
-    if [[ -L "$target" ]]; then
-        readlink "$target" | shasum -a 256 | cut -d' ' -f1
-        return 0
-    fi
-    [[ ! -d "$target" ]] && { echo ""; return 0; }
-    (cd "$target" && find . -type f -print0 2>/dev/null \
-        | sort -z \
-        | xargs -0 shasum -a 256 2>/dev/null) \
-        | shasum -a 256 | cut -d' ' -f1
-}
-
 # Enumerate top-level items under the type's subdir. Picks up dirs AND
 # symlinks. We use a manual loop so broken symlinks also enumerate, with
 # apply later catching the failure.
@@ -65,8 +42,8 @@ _ckipper_account_sync_files_dir_compare() {
     local type="$1" src="$2" dst="$3" rel="$4"
     [[ ! -e "$dst/$rel" ]] && { echo "new"; return 0; }
     local sh dh
-    sh=$(_ckipper_account_sync_dir_hash "$src/$rel")
-    dh=$(_ckipper_account_sync_dir_hash "$dst/$rel")
+    sh=$(_ckipper_account_sync_hash_dir "$src/$rel")
+    dh=$(_ckipper_account_sync_hash_dir "$dst/$rel")
     [[ "$sh" == "$dh" ]] && { echo "unchanged"; return 0; }
     echo "overwrite"
 }

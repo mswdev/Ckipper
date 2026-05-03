@@ -117,7 +117,8 @@ _ckipper_account_sync_build_change_set() {
     done
 }
 
-# Walk a single type's items. prefs uses account names instead of dirs.
+# Walk a single type's items. Types in _CKIPPER_SYNC_TYPE_USES_NAMES use
+# account names instead of dirs.
 #
 # Args: $1 — type; $2 — src_dir; $3 — dst_dir; $4 — src_name; $5 — dst_name.
 # Returns: 0 always; prints rows.
@@ -127,7 +128,7 @@ _ckipper_account_sync_walk_type() {
     enumerate_fn=$(_ckipper_account_sync_strategy_fn "$type" enumerate)
     compare_fn=$(_ckipper_account_sync_strategy_fn "$type" compare)
     local arg_a="$src_dir" arg_b="$dst_dir"
-    [[ "$type" == "prefs" ]] && { arg_a="$src_name"; arg_b="$dst_name"; }
+    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="$src_name"; arg_b="$dst_name"; }
     local id display change_status
     while IFS=$'\t' read -r id display; do
         [[ -z "$id" ]] && continue
@@ -173,7 +174,8 @@ _ckipper_account_sync_apply_target() {
 }
 
 # Apply one change set entry. Bridges between the strategy contract and
-# the manifest schema. prefs uses names; everything else uses dirs.
+# the manifest schema. Types in _CKIPPER_SYNC_TYPE_USES_NAMES use names;
+# everything else uses dirs.
 #
 # Reads src_dir/dst_dir/src_name/dst_name/backup_dir from _SYNC_CTX (set
 # by apply_target). Keeping these in context drops the parameter count
@@ -197,7 +199,7 @@ _ckipper_account_sync_apply_one() {
     local type="$1" id="$2"
     local apply_fn; apply_fn=$(_ckipper_account_sync_strategy_fn "$type" apply)
     local arg_a="${_SYNC_CTX[src_dir]}" arg_b="${_SYNC_CTX[dst_dir]}"
-    [[ "$type" == "prefs" ]] && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
+    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
     local rel; rel=$(_ckipper_account_sync_manifest_rel "$type" "$id")
     local live; live=$(_ckipper_account_sync_live_path "$type" "${_SYNC_CTX[dst_dir]}" "$rel")
     local op="overwrite"; [[ ! -e "$live" ]] && op="create"
@@ -233,7 +235,7 @@ _ckipper_account_sync_build_summaries() {
         [[ -z "$type" || "$change_status" == "unchanged" ]] && continue
         summary_fn=$(_ckipper_account_sync_strategy_fn "$type" summary)
         arg_a="$src_dir"; arg_b="$dst_dir"
-        [[ "$type" == "prefs" ]] && { arg_a="$src_name"; arg_b="$dst_name"; }
+        (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="$src_name"; arg_b="$dst_name"; }
         summary=$("$summary_fn" "$arg_a" "$arg_b" "$id")
         echo "$type"$'\t'"$id"$'\t'"$summary"
     done

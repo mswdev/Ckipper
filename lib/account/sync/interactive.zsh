@@ -49,7 +49,7 @@ _ckipper_account_sync_pick_targets() {
         echo "No other accounts to sync to." >&2
         return 1
     fi
-    if [[ "$CKIPPER_NO_GUM" != "1" ]] && command -v gum >/dev/null 2>&1; then
+    if _core_prompt_use_gum; then
         printf '%s\n' "${candidates[@]}" | gum choose --no-limit --header "Sync TO which accounts? (space to multi-select)"
         return $?
     fi
@@ -79,7 +79,7 @@ _ckipper_account_sync_pick_types() {
     for t in "${(@k)_CKIPPER_SYNC_TYPE_LABEL}"; do
         labels+=("$t — ${_CKIPPER_SYNC_TYPE_LABEL[$t]}")
     done
-    if [[ "$CKIPPER_NO_GUM" != "1" ]] && command -v gum >/dev/null 2>&1; then
+    if _core_prompt_use_gum; then
         printf '%s\n' "${labels[@]}" \
             | gum choose --no-limit --header "Pick types to sync (space to multi-select)" \
             | awk '{print $1}'

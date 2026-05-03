@@ -20,17 +20,6 @@ typeset -gA _CKIPPER_SYNC_FILES_FLAT_PATH=(
     [output-styles]="output_styles"
 )
 
-# Compute sha256 of a file. Uses shasum (macOS-friendly) which is available
-# in both macOS and Linux containers. Empty stdout if file missing.
-#
-# Args: $1 — file path.
-# Returns: 0; prints hex hash or empty string.
-_ckipper_account_sync_file_hash() {
-    local f="$1"
-    [[ ! -f "$f" ]] && { echo ""; return 0; }
-    shasum -a 256 "$f" | cut -d' ' -f1
-}
-
 # Generic enumerator. Lists items as "<relpath>\t<basename>".
 # - For claude-md: a single line iff CLAUDE.md exists.
 # - For others: every *.md file under the subdir.
@@ -61,8 +50,8 @@ _ckipper_account_sync_files_flat_compare() {
     local type="$1" src="$2" dst="$3" rel="$4"
     [[ ! -f "$dst/$rel" ]] && { echo "new"; return 0; }
     local sh dh
-    sh=$(_ckipper_account_sync_file_hash "$src/$rel")
-    dh=$(_ckipper_account_sync_file_hash "$dst/$rel")
+    sh=$(_ckipper_account_sync_hash_file "$src/$rel")
+    dh=$(_ckipper_account_sync_hash_file "$dst/$rel")
     [[ "$sh" == "$dh" ]] && { echo "unchanged"; return 0; }
     echo "overwrite"
 }
@@ -75,8 +64,7 @@ _ckipper_account_sync_files_flat_summary() {
     local type="$1" src="$2" dst="$3" rel="$4"
     local cmp_status; cmp_status=$(_ckipper_account_sync_files_flat_compare "$type" "$src" "$dst" "$rel")
     [[ "$cmp_status" != "overwrite" ]] && { echo "$cmp_status"; return 0; }
-    local stats; stats=$(diff "$dst/$rel" "$src/$rel" 2>/dev/null \
-        | awk 'BEGIN{a=0;d=0} /^>/{a++} /^</{d++} END{printf "+%d/-%d", a, d}')
+    local stats; stats=$(_ckipper_account_sync_diff_line_stats "$dst/$rel" "$src/$rel")
     echo "overwrite — $stats lines"
 }
 

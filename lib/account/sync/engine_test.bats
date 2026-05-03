@@ -89,6 +89,7 @@ EOH
         TMP_HOME="$TMP_HOME" \
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/engine.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; \
                 _ckipper_account_sync_build_change_set '$src' '$dst' src dst mcp"
     [[ "$output" == *"mcp"$'\t'"github"$'\t'* ]]
@@ -104,6 +105,7 @@ EOH
         TMP_HOME="$TMP_HOME" \
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/engine.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; \
                 printf 'mcp\tgithub\tgithub\toverwrite\n' \
                   | _ckipper_account_sync_build_summaries '$src' '$dst' src dst"
@@ -120,6 +122,7 @@ EOH
         TMP_HOME="$TMP_HOME" \
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/engine.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; \
                 printf 'mcp\tunchanged-srv\tunchanged-srv\tunchanged\n' \
                   | _ckipper_account_sync_build_summaries '$src' '$dst' src dst | wc -l | tr -d ' '"
@@ -137,6 +140,7 @@ EOH
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/backup.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/engine.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; \
                 # Override mcp_apply to simulate a crashing strategy.
                 _ckipper_account_sync_mcp_apply() {
@@ -163,6 +167,7 @@ EOH
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/backup.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/engine.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; \
                 printf 'mcp\tgithub\tgithub\tnew\n' \
                   | _ckipper_account_sync_apply_target '$src' '$dst' src dst
@@ -189,6 +194,7 @@ EOH
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/backup.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/engine.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; \
                 # change_status='new' but the FILE exists with unrelated content.
                 printf 'mcp\tgithub\tgithub\tnew\n' \
@@ -210,6 +216,7 @@ EOH
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/backup.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/engine.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; \
                 printf 'mcp\tgithub\tgithub\tnew\n' \
                   | _ckipper_account_sync_apply_target '$src' '$dst' src dst
@@ -229,6 +236,7 @@ EOH
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/backup.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/engine.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; \
                 printf 'mcp\tgithub\tgithub\tnew\n' \
                   | _ckipper_account_sync_apply_target '$src' '$dst' src dst

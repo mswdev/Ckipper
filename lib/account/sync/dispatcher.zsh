@@ -164,6 +164,25 @@ _ckipper_account_sync_run_one_target() {
     if [[ "$_SYNC_DRY_RUN" != "true" ]]; then
         _ckipper_account_sync_assert_dst_idle "$dst_dir" "$_SYNC_FORCE" || return 1
     fi
+    _ckipper_account_sync_prepare_target_artifacts "$target" "$src_dir" "$dst_dir" "$@"
+    local action="apply"
+    if [[ "$_SYNC_DRY_RUN" != "true" && "$_SYNC_YES" != "true" ]]; then
+        action=$(_ckipper_account_sync_preview_prompt)
+    fi
+    [[ "$_SYNC_DRY_RUN" == "true" ]] && action="dry-run"
+    _ckipper_account_sync_finalize "$action"
+}
+
+# Initialize per-target context and build the diff/summary artifacts.
+# Steps: mktemp the changeset/summaries/items tmpfiles, populate _SYNC_CTX,
+# build the changeset and summaries TSVs, the drill-down items file, then
+# render the preview block.
+#
+# Args: $1 — target name; $2 — src_dir; $3 — dst_dir; $4..$N — types.
+# Returns: 0 always.
+_ckipper_account_sync_prepare_target_artifacts() {
+    local target="$1" src_dir="$2" dst_dir="$3"
+    shift 3
     local changeset summaries items
     changeset=$(mktemp); summaries=$(mktemp); items=$(mktemp)
     _SYNC_CTX=(
@@ -177,15 +196,9 @@ _ckipper_account_sync_run_one_target() {
         "$_SYNC_FROM" "$target" < "$changeset" > "$summaries"
     _ckipper_account_sync_drill_down_items < "$changeset" > "$items"
     _ckipper_account_sync_show_preview "$target" "$dst_dir" "$changeset" "$summaries"
-    local action="apply"
-    if [[ "$_SYNC_DRY_RUN" != "true" && "$_SYNC_YES" != "true" ]]; then
-        action=$(_ckipper_account_sync_preview_prompt)
-    fi
-    [[ "$_SYNC_DRY_RUN" == "true" ]] && action="dry-run"
-    _ckipper_account_sync_finalize "$action"
 }
 
-# Render the §6.1 preview block — header, summary table, change count.
+# Render the preview block — header, summary table, change count.
 #
 # Args: $1 — target; $2 — dst_dir; $3 — changeset file; $4 — summaries file.
 # Returns: 0 always.

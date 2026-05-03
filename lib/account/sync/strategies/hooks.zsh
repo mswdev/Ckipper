@@ -58,8 +58,8 @@ _ckipper_account_sync_hooks_compare() {
     local src="$1" dst="$2" rel="$3"
     [[ ! -f "$dst/$rel" ]] && { echo "new"; return 0; }
     local sh dh
-    sh=$(_ckipper_account_sync_file_hash "$src/$rel" 2>/dev/null)
-    dh=$(_ckipper_account_sync_file_hash "$dst/$rel" 2>/dev/null)
+    sh=$(_ckipper_account_sync_hash_file "$src/$rel" 2>/dev/null)
+    dh=$(_ckipper_account_sync_hash_file "$dst/$rel" 2>/dev/null)
     [[ "$sh" == "$dh" ]] && { echo "unchanged"; return 0; }
     echo "overwrite"
 }
@@ -74,8 +74,7 @@ _ckipper_account_sync_hooks_summary() {
     case "$cmp_status" in
         new) echo "new — paired with settings.hooks entry" ;;
         overwrite)
-            local stats; stats=$(diff "$dst/$rel" "$src/$rel" 2>/dev/null \
-                | awk 'BEGIN{a=0;d=0} /^>/{a++} /^</{d++} END{printf "+%d/-%d", a, d}')
+            local stats; stats=$(_ckipper_account_sync_diff_line_stats "$dst/$rel" "$src/$rel")
             echo "overwrite — $stats lines (+ settings entry)"
             ;;
         unchanged) echo "unchanged" ;;

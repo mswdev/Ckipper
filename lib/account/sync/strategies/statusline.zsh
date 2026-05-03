@@ -39,11 +39,7 @@ _ckipper_account_sync_statusline_compare() {
     local s d
     s=$(jq -c '.statusLine // null' "$src/settings.json" 2>/dev/null)
     d=$(jq -c '.statusLine // null' "$dst/settings.json" 2>/dev/null)
-    # Empty `d` means the destination file is missing entirely (jq exited
-    # non-zero); see the equivalent guard in `_ckipper_account_sync_mcp_compare`.
-    if [[ -z "$d" || "$d" == "null" ]]; then echo "new"; return 0; fi
-    if [[ "$s" == "$d" ]]; then echo "unchanged"; return 0; fi
-    echo "overwrite"
+    _ckipper_account_sync_json_status "$s" "$d"
 }
 
 # Resolve and detect whether the referenced script lives under <src>/.

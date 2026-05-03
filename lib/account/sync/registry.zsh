@@ -33,6 +33,15 @@ typeset -gA _CKIPPER_SYNC_TYPE_KIND=(
     [statusline]=special  [hooks]=special
 )
 
+# Types whose strategy functions take account NAMES (not dirs) as their
+# first two positional args. Currently only `prefs`, which operates on the
+# registry (CKIPPER_REGISTRY) keyed by account name. Engine and preview
+# consult this set to pick the right (a, b) pair when invoking strategy
+# functions; without it they would have to hard-code "prefs" semantics.
+typeset -gA _CKIPPER_SYNC_TYPE_USES_NAMES=(
+    [prefs]=1
+)
+
 # Space-separated list of bundles the type belongs to. Bundles are aliases
 # users may pass to --include / --exclude (see _ckipper_account_sync_resolve_*).
 typeset -gA _CKIPPER_SYNC_TYPE_BUNDLES=(

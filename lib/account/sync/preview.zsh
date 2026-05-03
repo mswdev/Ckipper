@@ -36,7 +36,7 @@ _ckipper_account_sync_render_row() {
 }
 
 # Render the summary table. Reads a change-set on stdin (TSV rows), groups
-# by type, and prints the §6.1 layout to stdout. The 4th positional arg
+# by type, and prints the preview layout to stdout. The 4th positional arg
 # is a path to a precomputed summaries file (one "type\tid\tsummary" per
 # line) — built by the engine before this is called so we don't re-call
 # every strategy's summary function inside the renderer.
@@ -45,22 +45,24 @@ _ckipper_account_sync_render_row() {
 # Returns: 0 always.
 _ckipper_account_sync_render_summary() {
     local src_name="$1" dst_name="$2" backup_dir="$3" summaries="$4"
+    local -A summary_map
+    if [[ -f "$summaries" ]]; then
+        local s_type s_id s_text
+        while IFS=$'\t' read -r s_type s_id s_text; do
+            summary_map["${s_type}"$'\t'"${s_id}"]="$s_text"
+        done < "$summaries"
+    fi
     echo ""
     echo "Sync $src_name → $dst_name"
     _ckipper_account_sync_print_divider
-    local current_type=""
-    local type id display change_status
+    local current_type="" type id display change_status
     while IFS=$'\t' read -r type id display change_status; do
         [[ -z "$type" ]] && continue
         if [[ "$type" != "$current_type" ]]; then
             echo "  ${_CKIPPER_SYNC_TYPE_LABEL[$type]:-$type}"
             current_type="$type"
         fi
-        local summary=""
-        if [[ -f "$summaries" ]]; then
-            summary=$(awk -F'\t' -v t="$type" -v i="$id" '$1==t && $2==i {print $3; exit}' "$summaries")
-        fi
-        _ckipper_account_sync_render_row "$change_status" "$display" "$summary"
+        _ckipper_account_sync_render_row "$change_status" "$display" "${summary_map["${type}"$'\t'"${id}"]}"
     done
     _ckipper_account_sync_print_divider
     echo "Backup → $backup_dir"
@@ -143,7 +145,7 @@ _ckipper_account_sync_drill_down_show() {
     local id; id=$(_ckipper_account_sync_drill_down_resolve_id "$items_file" "$type" "$display")
     local diff_fn; diff_fn=$(_ckipper_account_sync_strategy_fn "$type" diff)
     local arg_a="${_SYNC_CTX[src_dir]}" arg_b="${_SYNC_CTX[dst_dir]}"
-    [[ "$type" == "prefs" ]] && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
+    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
     "$diff_fn" "$arg_a" "$arg_b" "$id"
 }
 

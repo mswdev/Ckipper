@@ -10,6 +10,7 @@ run_in_zsh() {
     run env HOME="$HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
         TMP_HOME="$TMP_HOME" \
         zsh -c "source \"$REPO_ROOT/lib/account/sync/backup.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/strategies/structured.zsh\"; $*"
 }
 
