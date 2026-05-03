@@ -42,9 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ckipper account repair-plugins` (folded into `ckipper doctor --fix`).
 - `ckipper account sync-hooks` from public help (still callable; auto-runs after install/setup).
 
-### Notes
-- `lib/account/sync.zsh` is intentionally untouched — full sync overhaul ships in a separate future PR.
-
 ## [0.2.0] — 2026-04-30 — Breaking changes: merge `w` into `ckipper`
 
 ### Removed

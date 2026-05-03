@@ -10,6 +10,11 @@ readonly _CKIPPER_SYNC_BADGE_NEW="[+]"
 readonly _CKIPPER_SYNC_BADGE_OVERWRITE="[~]"
 readonly _CKIPPER_SYNC_DIVIDER_WIDTH=45
 
+# Per-target context (declared here too because preview_test.bats sources
+# only this module). See engine.zsh for the full key list. Re-declaration
+# without `=()` is a no-op so we don't reset state set by earlier modules.
+typeset -gA _SYNC_CTX
+
 # Print the divider line for the summary table.
 #
 # Returns: 0 always.
@@ -85,20 +90,24 @@ _ckipper_account_sync_drill_down_items() {
 # full diff via the strategy's <type>_diff function. Loops until the user
 # picks "Back" or hits EOF.
 #
-# Args: $1 — src dir; $2 — dst dir; $3 — src name; $4 — dst name; $5 — items file.
+# Reads _SYNC_CTX[items] for the items-file path; drill_down_show reads
+# the rest of the per-target dirs/names directly.
+#
 # Returns: 0 always.
 _ckipper_account_sync_drill_down_loop() {
-    local src_dir="$1" dst_dir="$2" src_name="$3" dst_name="$4" items_file="$5"
+    local items_file="${_SYNC_CTX[items]}"
     [[ ! -s "$items_file" ]] && { echo "No overwrites to drill into."; return 0; }
+    # Hoist `local choice` and `local _ack` out of the loop: re-declaring
+    # `local var` (no =value) on a subsequent iteration causes zsh to
+    # print `var='prior_value'`, which would surface as terminal noise.
+    local choice="" _ack=""
     while true; do
-        local choice
         choice=$(_ckipper_account_sync_drill_down_pick "$items_file") || return 0
         [[ "$choice" == "Back" || -z "$choice" ]] && return 0
-        _ckipper_account_sync_drill_down_show "$choice" "$items_file" \
-            "$src_dir" "$dst_dir" "$src_name" "$dst_name"
+        _ckipper_account_sync_drill_down_show "$choice"
         echo ""
         echo "(Press enter to return to picker)"
-        local _ack; read -r _ack
+        read -r _ack
     done
 }
 
@@ -122,18 +131,19 @@ _ckipper_account_sync_drill_down_pick() {
 # in the items file to recover the original id (which may differ from
 # display, e.g. files-flat: id=agents/foo.md, display=foo.md).
 #
-# Args: $1 — picker choice (e.g. "[mcp] github"); $2 — items file;
-#       $3 — src dir; $4 — dst dir; $5 — src name; $6 — dst name.
+# Reads items file path and src/dst dirs/names from _SYNC_CTX.
+#
+# Args: $1 — picker choice (e.g. "[mcp] github").
 # Returns: 0; prints the strategy's diff output.
 _ckipper_account_sync_drill_down_show() {
-    local choice="$1" items_file="$2"
-    local src_dir="$3" dst_dir="$4" src_name="$5" dst_name="$6"
+    local choice="$1"
+    local items_file="${_SYNC_CTX[items]}"
     local type="${choice#\[}"; type="${type%%]*}"
     local display="${choice#*] }"
     local id; id=$(_ckipper_account_sync_drill_down_resolve_id "$items_file" "$type" "$display")
     local diff_fn; diff_fn=$(_ckipper_account_sync_strategy_fn "$type" diff)
-    local arg_a="$src_dir" arg_b="$dst_dir"
-    [[ "$type" == "prefs" ]] && { arg_a="$src_name"; arg_b="$dst_name"; }
+    local arg_a="${_SYNC_CTX[src_dir]}" arg_b="${_SYNC_CTX[dst_dir]}"
+    [[ "$type" == "prefs" ]] && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
     "$diff_fn" "$arg_a" "$arg_b" "$id"
 }
 

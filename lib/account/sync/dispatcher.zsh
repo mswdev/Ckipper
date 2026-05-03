@@ -16,6 +16,18 @@ typeset -g _SYNC_DRY_RUN="false"
 typeset -g _SYNC_YES="false"
 typeset -g _SYNC_FORCE="false"
 
+# Per-target sync context. Populated once per target by run_one_target (and
+# augmented by apply_target with backup_dir). Engine/preview/finalize helpers
+# read from this map instead of taking 5–8 positional arguments, per the
+# .claude/rules/code-style.md 3-parameter cap. Keys: src_dir, dst_dir,
+# src_name, dst_name, backup_dir, changeset, summaries, items.
+#
+# Re-declaration without `=()` is a no-op so engine.zsh's matching
+# declaration (sourced first in production) keeps any state set there;
+# reset between sync invocations is handled by reset_args, not by the
+# declaration line.
+typeset -gA _SYNC_CTX
+
 # Reset all module-level _SYNC_* holders. Called at the top of every
 # parse_args invocation so re-running the dispatcher in the same shell
 # doesn't see stale state from the previous call.
@@ -25,6 +37,18 @@ _ckipper_account_sync_reset_args() {
     _SYNC_FROM=""; _SYNC_TARGETS=()
     _SYNC_INCLUDE=""; _SYNC_EXCLUDE=""
     _SYNC_DRY_RUN="false"; _SYNC_YES="false"; _SYNC_FORCE="false"
+    _SYNC_CTX=()
+}
+
+# Append a positional arg to _SYNC_FROM (first time) or _SYNC_TARGETS (every
+# subsequent positional). Extracted from parse_args so the case body stays
+# at 2 levels of nesting per .claude/rules/code-style.md.
+#
+# Args: $1 — positional value.
+# Returns: 0 always.
+_ckipper_account_sync_accumulate_positional() {
+    [[ -z "$_SYNC_FROM" ]] && { _SYNC_FROM="$1"; return 0; }
+    _SYNC_TARGETS+=("$1")
 }
 
 # Parse `ckipper account sync` arguments into module-level _SYNC_* vars.
@@ -44,11 +68,7 @@ _ckipper_account_sync_parse_args() {
             --force)   _SYNC_FORCE="true";   shift ;;
             -h|--help) _ckipper_account_sync_help_text; return 2 ;;
             --*) echo "Unknown flag: $1" >&2; return 1 ;;
-            *)
-                if [[ -z "$_SYNC_FROM" ]]; then _SYNC_FROM="$1"
-                else _SYNC_TARGETS+=("$1"); fi
-                shift
-                ;;
+            *) _ckipper_account_sync_accumulate_positional "$1"; shift ;;
         esac
     done
     return 0
@@ -142,6 +162,11 @@ _ckipper_account_sync_run_one_target() {
     _ckipper_account_sync_assert_dst_idle "$dst_dir" "$_SYNC_FORCE" || return 1
     local changeset summaries items
     changeset=$(mktemp); summaries=$(mktemp); items=$(mktemp)
+    _SYNC_CTX=(
+        src_dir "$src_dir" dst_dir "$dst_dir"
+        src_name "$_SYNC_FROM" dst_name "$target"
+        changeset "$changeset" summaries "$summaries" items "$items"
+    )
     _ckipper_account_sync_build_change_set "$src_dir" "$dst_dir" \
         "$_SYNC_FROM" "$target" "$@" > "$changeset"
     _ckipper_account_sync_build_summaries "$src_dir" "$dst_dir" \
@@ -150,11 +175,10 @@ _ckipper_account_sync_run_one_target() {
     _ckipper_account_sync_show_preview "$target" "$dst_dir" "$changeset" "$summaries"
     local action="apply"
     if [[ "$_SYNC_DRY_RUN" != "true" && "$_SYNC_YES" != "true" ]]; then
-        action=$(_ckipper_account_sync_preview_prompt "$src_dir" "$dst_dir" "$target" "$items")
+        action=$(_ckipper_account_sync_preview_prompt)
     fi
     [[ "$_SYNC_DRY_RUN" == "true" ]] && action="dry-run"
-    _ckipper_account_sync_finalize "$action" "$src_dir" "$dst_dir" \
-        "$target" "$changeset" "$summaries" "$items"
+    _ckipper_account_sync_finalize "$action"
 }
 
 # Render the §6.1 preview block — header, summary table, change count.
@@ -175,39 +199,45 @@ _ckipper_account_sync_show_preview() {
 # Apply / View changes / Abort prompt, with View looping back through
 # the drill-down picker until Apply or Abort.
 #
-# Args: $1 — src_dir; $2 — dst_dir; $3 — target; $4 — items file.
+# Reads _SYNC_CTX[dst_name] for the prompt label. Callers capture this
+# function's stdout via $() to read the action token, so two precautions
+# keep "$action" clean: (1) drill_down_loop is redirected to stderr — its
+# diff output and "press enter" prompts are user-facing terminal output,
+# not data; (2) `local choice` is declared once outside the loop, because
+# re-declaring `local choice` inside the loop after the first iteration
+# causes zsh to print the prior value as `choice='...'`, which would also
+# leak into "$action".
+#
 # Returns: 0; prints "apply" | "abort".
 _ckipper_account_sync_preview_prompt() {
-    local src_dir="$1" dst_dir="$2" target="$3" items="$4"
+    local target="${_SYNC_CTX[dst_name]}"
+    local choice=""
     while true; do
-        local choice
         choice=$(_core_prompt_choose "Apply changes to $target?" "Apply" "View changes" "Abort")
         case "$choice" in
             Apply) echo "apply"; return 0 ;;
             Abort|"") echo "abort"; return 0 ;;
-            "View changes")
-                _ckipper_account_sync_drill_down_loop "$src_dir" "$dst_dir" \
-                    "$_SYNC_FROM" "$target" "$items"
-                ;;
+            "View changes") _ckipper_account_sync_drill_down_loop >&2 ;;
         esac
     done
 }
 
-# Run the chosen action, clean up tmpfiles, return the apply rc.
+# Run the chosen action, clean up tmpfiles, return the apply rc. Reads the
+# tmpfile paths and apply args from _SYNC_CTX.
 #
-# Args: $1 — action; $2 — src_dir; $3 — dst_dir; $4 — target;
-#       $5 — changeset; $6 — summaries; $7 — items.
+# Args: $1 — action.
 # Returns: 0 unless action=apply and the apply failed.
 _ckipper_account_sync_finalize() {
-    local action="$1" src_dir="$2" dst_dir="$3" target="$4"
-    local changeset="$5" summaries="$6" items="$7"
+    local action="$1"
     local rc=0
     if [[ "$action" == "apply" ]]; then
-        _ckipper_account_sync_apply_target "$src_dir" "$dst_dir" \
-            "$_SYNC_FROM" "$target" < "$changeset"
+        _ckipper_account_sync_apply_target \
+            "${_SYNC_CTX[src_dir]}" "${_SYNC_CTX[dst_dir]}" \
+            "${_SYNC_CTX[src_name]}" "${_SYNC_CTX[dst_name]}" \
+            < "${_SYNC_CTX[changeset]}"
         rc=$?
     fi
-    rm -f "$changeset" "$summaries" "$items"
+    rm -f "${_SYNC_CTX[changeset]}" "${_SYNC_CTX[summaries]}" "${_SYNC_CTX[items]}"
     return $rc
 }
 
@@ -245,6 +275,9 @@ _ckipper_account_sync_help_text() {
 #
 # Args: $1 — account name; flags: --pick | --list | --force.
 # Returns: 0 on success; 1 on user-visible failure.
+# Errors (stderr): "Usage: ckipper account sync undo <account>" — when the
+#   account positional is missing; "Unknown flag: <flag>" — when an
+#   unrecognized --foo is passed.
 _ckipper_account_sync_undo_dispatch() {
     local account="$1"; shift 2>/dev/null
     [[ -z "$account" ]] && { echo "Usage: ckipper account sync undo <account>" >&2; return 1; }

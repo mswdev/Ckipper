@@ -37,6 +37,15 @@
 # All five functions take their arguments in the same order so the engine
 # can call them through _ckipper_account_sync_strategy_fn uniformly.
 
+# Per-target context shared by apply_target → apply_one and the preview/
+# finalize helpers in dispatcher.zsh. Declared here too because engine.zsh
+# is sourced before dispatcher.zsh, and engine_test.bats sources only the
+# engine. Re-declaration without `=()` is a no-op so dispatcher.zsh's
+# matching declaration doesn't reset state. Keys: src_dir, dst_dir,
+# src_name, dst_name, backup_dir (and from dispatcher: changeset, summaries,
+# items).
+typeset -gA _SYNC_CTX
+
 # Compute the strategy function name for a (type, verb) pair.
 #
 # Args: $1 — type id (e.g. "mcp", "claude-md"); $2 — verb (enumerate, compare,
@@ -123,11 +132,15 @@ _ckipper_account_sync_walk_type() {
 }
 
 # Apply a change set to a single target. Steps:
-#   1. Create backup dir + manifest.
+#   1. Create backup dir + manifest, populate _SYNC_CTX[backup_dir].
 #   2. For each change, call the strategy's apply (which itself calls
 #      _ckipper_account_sync_backup_file before writing).
 #   3. On any failure: roll back via _ckipper_account_sync_rollback_target,
 #      print the partial manifest's path, and return non-zero.
+#
+# Also (re)populates _SYNC_CTX with the four name/dir args so the function
+# is callable on its own (engine_test.bats invokes it directly without
+# going through run_one_target).
 #
 # Reads the change set on stdin: TSV rows of "<type>\t<id>\t<display>\t<status>"
 # where status is one of "new" | "overwrite" (unchanged rows are filtered upstream).
@@ -139,15 +152,13 @@ _ckipper_account_sync_apply_target() {
     local backup_dir
     backup_dir=$(_ckipper_account_sync_backup_create "$dst_dir" "$src_name")
     _ckipper_account_sync_manifest_init "$backup_dir" "$src_name" "$dst_name"
+    _SYNC_CTX[src_dir]="$src_dir"; _SYNC_CTX[dst_dir]="$dst_dir"
+    _SYNC_CTX[src_name]="$src_name"; _SYNC_CTX[dst_name]="$dst_name"
+    _SYNC_CTX[backup_dir]="$backup_dir"
     local rc=0 type id display change_status
     while IFS=$'\t' read -r type id display change_status; do
         [[ -z "$type" || "$change_status" == "unchanged" ]] && continue
-        if ! _ckipper_account_sync_apply_one "$type" "$src_dir" "$dst_dir" \
-                                          "$src_name" "$dst_name" "$id" \
-                                          "$change_status" "$backup_dir"; then
-            rc=1
-            break
-        fi
+        _ckipper_account_sync_apply_one "$type" "$id" "$change_status" || { rc=1; break; }
     done
     if (( rc != 0 )); then
         _ckipper_account_sync_rollback_target "$backup_dir" "$dst_dir" >&2
@@ -159,25 +170,27 @@ _ckipper_account_sync_apply_target() {
 # Apply one change set entry. Bridges between the strategy contract and
 # the manifest schema. prefs uses names; everything else uses dirs.
 #
+# Reads src_dir/dst_dir/src_name/dst_name/backup_dir from _SYNC_CTX (set
+# by apply_target). Keeping these in context drops the parameter count
+# from 8 to 3, satisfying the .claude/rules/code-style.md cap.
+#
 # Manifest is appended BEFORE the apply call, not after. If the apply
 # crashes mid-write (backed-up the file, started writing, errored), the
 # manifest still contains the entry so rollback can restore from the
 # backup dir. Without this, mid-write failures leave the destination
 # half-written with no manifest record (rollback would skip the file).
 #
-# Args: $1 — type; $2 — src_dir; $3 — dst_dir; $4 — src_name; $5 — dst_name;
-#       $6 — id; $7 — change status; $8 — backup_dir.
+# Args: $1 — type; $2 — id; $3 — change status.
 # Returns: 0 on success; non-zero on apply failure.
 _ckipper_account_sync_apply_one() {
-    local type="$1" src_dir="$2" dst_dir="$3" src_name="$4" dst_name="$5"
-    local id="$6" change_status="$7" backup_dir="$8"
+    local type="$1" id="$2" change_status="$3"
     local apply_fn; apply_fn=$(_ckipper_account_sync_strategy_fn "$type" apply)
-    local arg_a="$src_dir" arg_b="$dst_dir"
-    [[ "$type" == "prefs" ]] && { arg_a="$src_name"; arg_b="$dst_name"; }
+    local arg_a="${_SYNC_CTX[src_dir]}" arg_b="${_SYNC_CTX[dst_dir]}"
+    [[ "$type" == "prefs" ]] && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
     local op="overwrite"; [[ "$change_status" == "new" ]] && op="create"
     local rel; rel=$(_ckipper_account_sync_manifest_rel "$type" "$id")
-    _ckipper_account_sync_manifest_append "$backup_dir" "$rel" "$op" "$type" "$id"
-    "$apply_fn" "$arg_a" "$arg_b" "$id" "$backup_dir"
+    _ckipper_account_sync_manifest_append "${_SYNC_CTX[backup_dir]}" "$rel" "$op" "$type" "$id"
+    "$apply_fn" "$arg_a" "$arg_b" "$id" "${_SYNC_CTX[backup_dir]}"
 }
 
 # Compute the manifest's path field for a given (type, id). The relpath

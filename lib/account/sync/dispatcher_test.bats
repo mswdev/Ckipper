@@ -123,3 +123,34 @@ run_full() {
     run_full 'ckipper account sync src src --include mcp --yes'
     [ "$status" -ne 0 ]
 }
+
+# Regression: when the user picks "View changes" then "Apply", the diff
+# output written by drill_down_loop must NOT pollute the captured action,
+# else the [[ "$action" == "apply" ]] check downstream silently skips apply.
+# The mock _core_prompt_choose persists state via a flag file because each
+# choice=$(...) call inside preview_prompt opens a fresh subshell.
+@test "preview_prompt View changes then Apply yields exactly 'apply'" {
+    run_in_zsh '
+        _SYNC_FROM=src
+        items=$(mktemp); echo "x" > "$items"
+        _SYNC_CTX[dst_name]=dst
+        _SYNC_CTX[items]=$items
+        export _PROMPT_FLAG=$(mktemp)
+        _core_prompt_choose() {
+            if [[ -e "$_PROMPT_FLAG" ]]; then
+                rm "$_PROMPT_FLAG"
+                echo "View changes"
+            else
+                echo "Apply"
+            fi
+        }
+        _ckipper_account_sync_drill_down_loop() {
+            echo "── source diff ──"
+            echo "+++ added line"
+            echo "(Press enter to return to picker)"
+        }
+        action=$(_ckipper_account_sync_preview_prompt)
+        rm -f "$items"
+        echo "ACTION=[$action]"'
+    [[ "$output" == *"ACTION=[apply]"* ]]
+}
