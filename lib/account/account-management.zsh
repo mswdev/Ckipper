@@ -416,13 +416,16 @@ _ckipper_account_default() {
 
 # Unregister an account, then prompt to delete its config dir and Keychain
 # entry via _ckipper_account_cleanup_*. Declining a prompt keeps the
-# file/entry and prints the manual cleanup command.
+# file/entry and prints the manual cleanup command. Refuses to operate while
+# any Claude process is running (mirrors `account rename`) because the
+# subsequent `rm -rf` of the config dir would yank state out from under a
+# live session.
 #
 # Args:
 #   $1 — account name to remove
 #
 # Returns:
-#   0 on success; 1 if account is not registered.
+#   0 on success; 1 if account is not registered or Claude is running.
 _ckipper_account_remove() {
     _core_registry_check_version || return 1
     local name="$1"
@@ -431,6 +434,7 @@ _ckipper_account_remove() {
         echo "Account '$name' is not registered." >&2
         return 1
     fi
+    _core_assert_no_running_claude || return 1
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
     local service; service=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
     _core_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"
