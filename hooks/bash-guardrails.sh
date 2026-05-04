@@ -74,8 +74,13 @@ if echo "$NORMALIZED" | grep -qE 'git\s+config\s+--(local|worktree)\s'; then
     fi
 fi
 
-# 5. .git/hooks, .git/config, and .git/worktrees modification (execute on host)
-if echo "$NORMALIZED" | grep -qE '\.git/(hooks|config|info/(attributes|exclude)|worktrees)'; then
+# 5. .git/hooks, .git/config, .git/info/, and .git/worktrees modification.
+# These execute on the host on the next git invocation. Pattern kept in sync
+# with hooks/protect-claude-config.sh:47 — the leading-anchor differs (Bash
+# sees command strings, the Edit/Write hook sees realpath-resolved file paths)
+# but the inner subpath alternation is the same so both hooks agree on which
+# parts of .git/ are protected.
+if echo "$NORMALIZED" | grep -qE '\.git/(config|info/|hooks/|worktrees/)'; then
     if echo "$NORMALIZED" | grep -qE '^(cat|less|head|tail|grep|rg|wc|ls|file|stat|git)\s'; then
         # Allow reads but block output redirects (cat > .git/hooks/x is a write, not a read)
         if ! echo "$NORMALIZED" | grep -qE '>'; then

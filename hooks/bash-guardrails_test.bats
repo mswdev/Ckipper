@@ -99,3 +99,27 @@ _run_guardrails() {
     [ "$status" -eq 2 ]
     [[ "$output" =~ "force" ]]
 }
+
+# Path-protection regex should agree with hooks/protect-claude-config.sh
+# on which .git/ subpaths are blocked. Slice 5 of the develop-branch
+# review flagged the prior divergence — Bash blocked only
+# `info/(attributes|exclude)`, Edit/Write blocked all of `info/`.
+@test "bash-guardrails blocks writes anywhere under .git/info/ (matches Edit/Write hook)" {
+    _run_guardrails "echo bad > .git/info/refs"
+
+    [ "$status" -eq 2 ]
+    [[ "$output" =~ "Blocked" ]]
+}
+
+@test "bash-guardrails blocks writes to .git/info/attributes" {
+    _run_guardrails "echo bad-pattern > .git/info/attributes"
+
+    [ "$status" -eq 2 ]
+    [[ "$output" =~ "Blocked" ]]
+}
+
+@test "bash-guardrails still allows reading .git/info/ files" {
+    _run_guardrails "cat .git/info/exclude"
+
+    [ "$status" -eq 0 ]
+}
