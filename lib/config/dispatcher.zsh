@@ -22,11 +22,16 @@ _ckipper_config_dispatch() {
     local cmd="$1"
     shift 2>/dev/null
     case "$cmd" in
-        get)              _ckipper_config_get "$@" ;;
-        set)              _ckipper_config_set "$@" ;;
-        unset)            _ckipper_config_unset "$@" ;;
-        list)             _ckipper_config_list "$@" ;;
-        edit)             _ckipper_config_edit "$@" ;;
+        get|set|unset|list|edit)
+            # Honour the `<subcommand> --help` contract documented in
+            # ckipper.zsh — short-circuit before invoking the handler so the
+            # user sees usage instead of a "missing required arg" error.
+            if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+                _ckipper_config_help
+                return 0
+            fi
+            "_ckipper_config_${cmd}" "$@"
+            ;;
         ""|help|-h|--help) _ckipper_config_help ;;
         *) _ckipper_config_unknown "$cmd"; return 1 ;;
     esac
