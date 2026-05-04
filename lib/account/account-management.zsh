@@ -23,15 +23,15 @@ typeset -gA _CKIPPER_RENAME_CTX
 _ckipper_account_add_validate_name() {
     local name="$1"
     if [[ -z "$name" ]]; then
-        echo "Usage: ckipper account add <name> [--adopt]"
+        echo "Usage: ckipper account add <name> [--adopt]" >&2
         return 1
     fi
     if [[ ! "$name" =~ ^[a-z0-9_-]+$ ]]; then
-        echo "Account name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)."
+        echo "Account name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)." >&2
         return 1
     fi
     if jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>/dev/null; then
-        echo "Account '$name' is already registered."
+        echo "Account '$name' is already registered." >&2
         return 1
     fi
 }
@@ -47,7 +47,7 @@ _ckipper_account_add_validate_name() {
 _ckipper_account_add_adopt_flow() {
     local name="$1" dir="$2"
     if [[ ! -d "$dir" ]]; then
-        echo "Cannot adopt: $dir does not exist."
+        echo "Cannot adopt: $dir does not exist." >&2
         return 1
     fi
     local picked=""
@@ -60,8 +60,14 @@ _ckipper_account_add_adopt_flow() {
     _ckipper_account_finalize_registration "adopt"
 }
 
+# Sentinel item shown alongside Keychain candidates so the picker has an
+# explicit "skip" choice (consistent with _core_prompt_choose's no-empty-on-cancel
+# semantics).
+readonly _CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL="(skip — register without Keychain entry)"
+
 # Prompt the user to pick a Keychain entry from the available candidates.
-# On return, the nameref variable (arg $2) holds the chosen service (may be empty).
+# On return, the nameref variable (arg $2) holds the chosen service (may be empty
+# if the user picked the skip sentinel).
 #
 # Args:
 #   $1 — account name (for error messages)
@@ -75,16 +81,16 @@ _ckipper_account_add_pick_keychain_entry() {
     local candidates
     candidates=$(_core_keychain_snapshot) || return 1
     [[ -z "$candidates" ]] && return 0
-    echo "Candidate Keychain entries:"
-    echo "$candidates" | nl
-    local keychain_index
-    read -r "?Pick a number (or empty to skip): " keychain_index
-    [[ -z "$keychain_index" ]] && return 0
-    _picked_ref=$(printf '%s\n' "$candidates" | sed -n "${keychain_index}p")
-    if [[ -n "$_picked_ref" ]] && ! _core_keychain_validate "$_picked_ref"; then
-        echo "Invalid Keychain service shape: $_picked_ref"
+    local -a items
+    items=( ${(f)candidates} "$_CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL" )
+    local picked
+    picked=$(_core_prompt_choose "Pick a Keychain entry for '$name'" "${items[@]}")
+    [[ -z "$picked" || "$picked" == "$_CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL" ]] && return 0
+    if ! _core_keychain_validate "$picked"; then
+        echo "Invalid Keychain service shape: $picked" >&2
         return 1
     fi
+    _picked_ref="$picked"
 }
 
 # Run the fresh registration flow: create the dir, deploy hooks, launch Claude, detect new keychain.
@@ -98,7 +104,7 @@ _ckipper_account_add_pick_keychain_entry() {
 _ckipper_account_add_fresh_flow() {
     local name="$1" dir="$2"
     if [[ -d "$dir" ]]; then
-        echo "Directory $dir already exists. Use --adopt to register it."
+        echo "Directory $dir already exists. Use --adopt to register it." >&2
         return 1
     fi
     mkdir -p "$dir/hooks"
@@ -170,8 +176,8 @@ _ckipper_account_add_check_credentials() {
     local name="$1" dir="$2" new_service="$3"
     if [[ -n "$new_service" ]]; then
         if ! _core_keychain_validate "$new_service"; then
-            echo "Detected entry has unexpected shape: $new_service"
-            echo "Refusing to register. Use --adopt to register manually."
+            echo "Detected entry has unexpected shape: $new_service" >&2
+            echo "Refusing to register. Use --adopt to register manually." >&2
             return 1
         fi
         echo "Detected new Keychain entry: $new_service"
@@ -181,8 +187,8 @@ _ckipper_account_add_check_credentials() {
         echo "No new Keychain entry, but $dir/.credentials.json exists — proceeding with on-disk credentials."
         return 0
     fi
-    echo "Warning: no new Keychain entry detected and no .credentials.json on disk."
-    echo "Login may not have completed. Re-run /login or use: ckipper account add $name --adopt"
+    echo "Warning: no new Keychain entry detected and no .credentials.json on disk." >&2
+    echo "Login may not have completed. Re-run /login or use: ckipper account add $name --adopt" >&2
     return 1
 }
 
@@ -395,9 +401,9 @@ _ckipper_account_list_row() {
 _ckipper_account_default() {
     _core_registry_check_version || return 1
     local name="$1"
-    [[ -z "$name" ]] && { echo "Usage: ckipper account default <name>"; return 1; }
+    [[ -z "$name" ]] && { echo "Usage: ckipper account default <name>" >&2; return 1; }
     if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null; then
-        echo "Account '$name' is not registered."
+        echo "Account '$name' is not registered." >&2
         return 1
     fi
     _core_registry_update '.default = $n' --arg n "$name"
@@ -416,9 +422,9 @@ _ckipper_account_default() {
 _ckipper_account_remove() {
     _core_registry_check_version || return 1
     local name="$1"
-    [[ -z "$name" ]] && { echo "Usage: ckipper account remove <name>"; return 1; }
+    [[ -z "$name" ]] && { echo "Usage: ckipper account remove <name>" >&2; return 1; }
     if ! jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null; then
-        echo "Account '$name' is not registered."
+        echo "Account '$name' is not registered." >&2
         return 1
     fi
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
@@ -444,23 +450,23 @@ _ckipper_account_remove() {
 _ckipper_account_rename_validate() {
     local old="$1" new="$2"
     if [[ -z "$old" || -z "$new" ]]; then
-        echo "Usage: ckipper account rename <old> <new>"
+        echo "Usage: ckipper account rename <old> <new>" >&2
         return 1
     fi
     if [[ ! "$new" =~ ^[a-z0-9_-]+$ ]]; then
-        echo "New name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)."
+        echo "New name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)." >&2
         return 1
     fi
     if [[ "$old" == "$new" ]]; then
-        echo "Old and new name are the same. Nothing to do."
+        echo "Old and new name are the same. Nothing to do." >&2
         return 1
     fi
     if ! jq -e --arg n "$old" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
-        echo "Account '$old' is not registered."
+        echo "Account '$old' is not registered." >&2
         return 1
     fi
     if jq -e --arg n "$new" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
-        echo "Account '$new' is already registered."
+        echo "Account '$new' is already registered." >&2
         return 1
     fi
 }
@@ -475,11 +481,11 @@ _ckipper_account_rename_validate() {
 _ckipper_account_rename_check_preconditions() {
     local new_dir="$1" old_dir="$2"
     if [[ -e "$new_dir" ]]; then
-        echo "Error: $new_dir already exists. Pick a different name or remove it first."
+        echo "Error: $new_dir already exists. Pick a different name or remove it first." >&2
         return 1
     fi
     if [[ ! -d "$old_dir" ]]; then
-        echo "Error: source directory $old_dir does not exist."
+        echo "Error: source directory $old_dir does not exist." >&2
         return 1
     fi
     _core_assert_no_running_claude || return 1
