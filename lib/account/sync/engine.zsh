@@ -44,7 +44,7 @@
 # matching declaration doesn't reset state. Keys: src_dir, dst_dir,
 # src_name, dst_name, backup_dir (and from dispatcher: changeset, summaries,
 # items).
-typeset -gA _SYNC_CTX
+typeset -gA _CKIPPER_SYNC_CTX
 
 # Compute the strategy function name for a (type, verb) pair.
 #
@@ -138,13 +138,13 @@ _ckipper_account_sync_walk_type() {
 }
 
 # Apply a change set to a single target. Steps:
-#   1. Create backup dir + manifest, populate _SYNC_CTX[backup_dir].
+#   1. Create backup dir + manifest, populate _CKIPPER_SYNC_CTX[backup_dir].
 #   2. For each change, call the strategy's apply (which itself calls
 #      _ckipper_account_sync_backup_file before writing).
 #   3. On any failure: roll back via _ckipper_account_sync_rollback_target,
 #      print the partial manifest's path, and return non-zero.
 #
-# Also (re)populates _SYNC_CTX with the four name/dir args so the function
+# Also (re)populates _CKIPPER_SYNC_CTX with the four name/dir args so the function
 # is callable on its own (engine_test.bats invokes it directly without
 # going through run_one_target).
 #
@@ -158,9 +158,9 @@ _ckipper_account_sync_apply_target() {
     local backup_dir
     backup_dir=$(_ckipper_account_sync_backup_create "$dst_dir" "$src_name")
     _ckipper_account_sync_manifest_init "$backup_dir" "$src_name" "$dst_name"
-    _SYNC_CTX[src_dir]="$src_dir"; _SYNC_CTX[dst_dir]="$dst_dir"
-    _SYNC_CTX[src_name]="$src_name"; _SYNC_CTX[dst_name]="$dst_name"
-    _SYNC_CTX[backup_dir]="$backup_dir"
+    _CKIPPER_SYNC_CTX[src_dir]="$src_dir"; _CKIPPER_SYNC_CTX[dst_dir]="$dst_dir"
+    _CKIPPER_SYNC_CTX[src_name]="$src_name"; _CKIPPER_SYNC_CTX[dst_name]="$dst_name"
+    _CKIPPER_SYNC_CTX[backup_dir]="$backup_dir"
     local rc=0 type id display change_status
     while IFS=$'\t' read -r type id display change_status; do
         [[ -z "$type" || "$change_status" == "unchanged" ]] && continue
@@ -177,7 +177,7 @@ _ckipper_account_sync_apply_target() {
 # the manifest schema. Types in _CKIPPER_SYNC_TYPE_USES_NAMES use names;
 # everything else uses dirs.
 #
-# Reads src_dir/dst_dir/src_name/dst_name/backup_dir from _SYNC_CTX (set
+# Reads src_dir/dst_dir/src_name/dst_name/backup_dir from _CKIPPER_SYNC_CTX (set
 # by apply_target). Keeping these in context drops the parameter count
 # from 8 to 3, satisfying the .claude/rules/code-style.md cap.
 #
@@ -198,13 +198,13 @@ _ckipper_account_sync_apply_target() {
 _ckipper_account_sync_apply_one() {
     local type="$1" id="$2"
     local apply_fn; apply_fn=$(_ckipper_account_sync_strategy_fn "$type" apply)
-    local arg_a="${_SYNC_CTX[src_dir]}" arg_b="${_SYNC_CTX[dst_dir]}"
-    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
+    local arg_a="${_CKIPPER_SYNC_CTX[src_dir]}" arg_b="${_CKIPPER_SYNC_CTX[dst_dir]}"
+    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="${_CKIPPER_SYNC_CTX[src_name]}"; arg_b="${_CKIPPER_SYNC_CTX[dst_name]}"; }
     local rel; rel=$(_ckipper_account_sync_manifest_rel "$type" "$id")
-    local live; live=$(_ckipper_account_sync_live_path "$type" "${_SYNC_CTX[dst_dir]}" "$rel")
+    local live; live=$(_ckipper_account_sync_live_path "$type" "${_CKIPPER_SYNC_CTX[dst_dir]}" "$rel")
     local op="overwrite"; [[ ! -e "$live" ]] && op="create"
-    _ckipper_account_sync_manifest_append "${_SYNC_CTX[backup_dir]}" "$rel" "$op" "$type" "$id"
-    "$apply_fn" "$arg_a" "$arg_b" "$id" "${_SYNC_CTX[backup_dir]}"
+    _ckipper_account_sync_manifest_append "${_CKIPPER_SYNC_CTX[backup_dir]}" "$rel" "$op" "$type" "$id"
+    "$apply_fn" "$arg_a" "$arg_b" "$id" "${_CKIPPER_SYNC_CTX[backup_dir]}"
 }
 
 # Compute the manifest's path field for a given (type, id). The relpath

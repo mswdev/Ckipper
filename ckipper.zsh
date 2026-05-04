@@ -222,7 +222,7 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs
 # regenerate the cached completion file. The version is embedded as a literal
 # comment in the generated file and matched here.
-CKIPPER_COMPLETION_VERSION=7
+CKIPPER_COMPLETION_VERSION=8
 if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
     # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
@@ -232,7 +232,7 @@ if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     # a completion file, not maintained shell logic).
     cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
 #compdef ckipper ck
-# ckipper-completion-version=7
+# ckipper-completion-version=8
 
 _ckipper() {
     local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
@@ -327,6 +327,11 @@ _ckipper() {
                         accounts=( $(jq -r '.accounts | keys[]' "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" 2>/dev/null) )
                     fi
                     _describe -t accounts 'account name' accounts && return 0
+                    ;;
+                config/get|config/set|config/unset)
+                    local -a config_keys
+                    config_keys=( "${(@k)_CKIPPER_SCHEMA_TYPE}" )
+                    _describe -t keys 'config key' config_keys && return 0
                     ;;
             esac
             case "${words[2]}" in

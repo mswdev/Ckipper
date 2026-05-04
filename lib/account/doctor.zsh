@@ -6,7 +6,7 @@
 # plugin metadata has stale ~/.claude/ paths. The repair functions kept their
 # original names so their existing tests work unchanged.
 
-readonly MIN_HOOK_FILES=4
+readonly _CKIPPER_DOCTOR_MIN_HOOK_FILES=4
 
 # Module-level counters shared across all doctor helpers.
 typeset -g _CKIPPER_DOCTOR_FAIL=0
@@ -49,13 +49,28 @@ _ckipper_doctor_tooling() {
     if [[ -f "$CKIPPER_DIR/docker/ckipper.zsh" ]]; then _ckipper_doctor_check PASS "ckipper.zsh deployed"; else _ckipper_doctor_check FAIL "ckipper.zsh missing in $CKIPPER_DIR/docker/"; fi
     if [[ -f "$CKIPPER_DIR/docker/cleanup-projects.py" ]]; then _ckipper_doctor_check PASS "cleanup-projects.py deployed"; else _ckipper_doctor_check WARN "cleanup-projects.py missing — ckipper worktree rm cleanup will silently skip"; fi
     if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then _ckipper_doctor_check PASS "settings-template.json deployed"; else _ckipper_doctor_check WARN "settings-template.json missing — ckipper account add will skip seeding settings.json"; fi
-    if [[ -d "$CKIPPER_DIR/hooks" ]] && (( $(ls -1 "$CKIPPER_DIR/hooks" 2>/dev/null | wc -l) >= MIN_HOOK_FILES )); then
-        _ckipper_doctor_check PASS "hooks/ has ${MIN_HOOK_FILES}+ files"
+    if [[ -d "$CKIPPER_DIR/hooks" ]] && (( $(ls -1 "$CKIPPER_DIR/hooks" 2>/dev/null | wc -l) >= _CKIPPER_DOCTOR_MIN_HOOK_FILES )); then
+        _ckipper_doctor_check PASS "hooks/ has ${_CKIPPER_DOCTOR_MIN_HOOK_FILES}+ files"
     else
-        _ckipper_doctor_check WARN "hooks/ is missing or has fewer than $MIN_HOOK_FILES hook files"
+        _ckipper_doctor_check WARN "hooks/ is missing or has fewer than $_CKIPPER_DOCTOR_MIN_HOOK_FILES hook files"
     fi
     _ckipper_doctor_check_stale_w_vars
     _ckipper_doctor_check_config_keys
+    _ckipper_doctor_check_gum
+}
+
+# Check that gum (charmbracelet/gum) is on PATH. Gum is a hard prereq for the
+# setup wizard, sync wizard, and every interactive picker; without it ckipper
+# falls back to read-prompt mode but loses keybindings, multi-select, and the
+# spinner. Surface a missing install loudly so the user runs `brew install gum`.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_check_gum() {
+    if command -v gum >/dev/null 2>&1; then
+        _ckipper_doctor_check PASS "gum on PATH"
+    else
+        _ckipper_doctor_check FAIL "gum not on PATH — install via 'brew install gum'"
+    fi
 }
 
 # Detect pre-merge W_* variable assignments in ckipper-config.zsh.
@@ -436,6 +451,41 @@ _ckipper_doctor_accounts() {
     done <<< "$names"
 }
 
+# Verify the generated aliases.zsh parses cleanly with `zsh -n`. A broken
+# aliases file can land if disk fills mid-write or jq emits unexpected
+# characters — the calling shell's `source` then prints errors and may leave
+# the launcher functions undefined.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_check_aliases_parse() {
+    local f="$CKIPPER_DIR/aliases.zsh"
+    [[ -f "$f" ]] || return 0
+    if zsh -n "$f" 2>/dev/null; then
+        _ckipper_doctor_check PASS "aliases.zsh parses cleanly"
+    else
+        _ckipper_doctor_check FAIL "aliases.zsh has parse errors — regenerate via 'ckipper account add/remove' or re-run install.sh"
+    fi
+}
+
+# Check that the cached completion file matches the current
+# CKIPPER_COMPLETION_VERSION. Stale files don't break ckipper but produce
+# outdated tab-completions until the user starts a new zsh shell that re-runs
+# the heredoc-regen block at the bottom of ckipper.zsh.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_check_completion() {
+    local cf="$HOME/.zsh/completions/_ckipper"
+    if [[ ! -f "$cf" ]]; then
+        _ckipper_doctor_check WARN "completion file ~/.zsh/completions/_ckipper missing — start a new zsh shell to regenerate"
+        return 0
+    fi
+    if grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" "$cf" 2>/dev/null; then
+        _ckipper_doctor_check PASS "completion file matches version $CKIPPER_COMPLETION_VERSION"
+    else
+        _ckipper_doctor_check WARN "completion file is stale (expected version $CKIPPER_COMPLETION_VERSION) — start a new zsh shell to regenerate"
+    fi
+}
+
 # Check aliases.zsh and .zshrc integration lines, plus stub dir/file presence.
 #
 # Returns:
@@ -445,10 +495,12 @@ _ckipper_doctor_shell() {
     _core_style_header "Aliases & shell integration"
     if [[ -f "$CKIPPER_DIR/aliases.zsh" ]]; then _ckipper_doctor_check PASS "aliases.zsh exists at $CKIPPER_DIR/aliases.zsh"
     else _ckipper_doctor_check WARN "aliases.zsh missing — will be regenerated on next add/remove"; fi
+    _ckipper_doctor_check_aliases_parse
     if grep -q 'ckipper/aliases.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources aliases.zsh"
     else _ckipper_doctor_check WARN "~/.zshrc does NOT source aliases.zsh — add: [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh"; fi
     if grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources ckipper.zsh"
     else _ckipper_doctor_check FAIL "~/.zshrc does NOT source ckipper.zsh — re-run install.sh"; fi
+    _ckipper_doctor_check_completion
     echo ""
     _core_style_header "Stub files (cosmetic)"
     if [[ -d "$HOME/.claude" ]]; then

@@ -14,7 +14,7 @@ readonly _CKIPPER_SYNC_DISPLAY_COL_WIDTH=26
 # Per-target context (declared here too because preview_test.bats sources
 # only this module). See engine.zsh for the full key list. Re-declaration
 # without `=()` is a no-op so we don't reset state set by earlier modules.
-typeset -gA _SYNC_CTX
+typeset -gA _CKIPPER_SYNC_CTX
 
 # Print the divider line for the summary table.
 #
@@ -94,12 +94,12 @@ _ckipper_account_sync_drill_down_items() {
 # full diff via the strategy's <type>_diff function. Loops until the user
 # picks "Back" or hits EOF.
 #
-# Reads _SYNC_CTX[items] for the items-file path; drill_down_show reads
+# Reads _CKIPPER_SYNC_CTX[items] for the items-file path; drill_down_show reads
 # the rest of the per-target dirs/names directly.
 #
 # Returns: 0 always.
 _ckipper_account_sync_drill_down_loop() {
-    local items_file="${_SYNC_CTX[items]}"
+    local items_file="${_CKIPPER_SYNC_CTX[items]}"
     [[ ! -s "$items_file" ]] && { echo "No overwrites to drill into."; return 0; }
     # Hoist `local choice` and `local _ack` out of the loop: re-declaring
     # `local var` (no =value) on a subsequent iteration causes zsh to
@@ -135,19 +135,19 @@ _ckipper_account_sync_drill_down_pick() {
 # in the items file to recover the original id (which may differ from
 # display, e.g. files-flat: id=agents/foo.md, display=foo.md).
 #
-# Reads items file path and src/dst dirs/names from _SYNC_CTX.
+# Reads items file path and src/dst dirs/names from _CKIPPER_SYNC_CTX.
 #
 # Args: $1 — picker choice (e.g. "[mcp] github").
 # Returns: 0; prints the strategy's diff output.
 _ckipper_account_sync_drill_down_show() {
     local choice="$1"
-    local items_file="${_SYNC_CTX[items]}"
+    local items_file="${_CKIPPER_SYNC_CTX[items]}"
     local type="${choice#\[}"; type="${type%%]*}"
     local display="${choice#*] }"
     local id; id=$(_ckipper_account_sync_drill_down_resolve_id "$items_file" "$type" "$display")
     local diff_fn; diff_fn=$(_ckipper_account_sync_strategy_fn "$type" diff)
-    local arg_a="${_SYNC_CTX[src_dir]}" arg_b="${_SYNC_CTX[dst_dir]}"
-    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="${_SYNC_CTX[src_name]}"; arg_b="${_SYNC_CTX[dst_name]}"; }
+    local arg_a="${_CKIPPER_SYNC_CTX[src_dir]}" arg_b="${_CKIPPER_SYNC_CTX[dst_dir]}"
+    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="${_CKIPPER_SYNC_CTX[src_name]}"; arg_b="${_CKIPPER_SYNC_CTX[dst_name]}"; }
     "$diff_fn" "$arg_a" "$arg_b" "$id"
 }
 

@@ -4,7 +4,7 @@
 
 > **Platform:** macOS only — uses macOS Keychain, Docker Desktop, and host SSH agent forwarding.
 
-Multi-account Claude Code manager with Docker isolation, per-account preferences, and worktree-aware launchers.
+A lightweight CLI for managing Claude Code accounts, worktrees, and Docker sandboxes.
 
 Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, an egress firewall, safety hooks, macOS Keychain auth, and per-account isolation across credentials, settings, MCP, plugins, and projects.
 
@@ -45,7 +45,7 @@ cd Ckipper
 | `ck setup` | Interactive wizard for configuring Ckipper |
 | `ck run <project> <branch>` | Create-or-cd to a worktree, optionally Docker |
 | `ck config get/set/unset/list/edit` | View and modify settings |
-| `ck account add/list/default/remove/rename` | Manage Claude accounts |
+| `ck account add/list/default/remove/rename/sync/redeploy-hooks` | Manage Claude accounts (see [Sync state between accounts](#sync-state-between-accounts)) |
 | `ck worktree run/list/rm/rebuild-image` | Manage git worktrees |
 | `ck doctor [--fix]` | Diagnose registry, hooks, schema; optionally repair |
 | `ck` (no args) | Interactive launcher menu |
@@ -327,9 +327,9 @@ docker volume rm claude-uv-cache claude-uv-tools
 
 The volumes are recreated automatically on the next container start.
 
-## Known limitations
+## Known limitations (Docker mode only)
 
-These are inherent to running Claude Code inside a Docker container on macOS and cannot be fully resolved without upstream changes.
+These apply only when you launch Claude Code inside the Ckipper Docker container (`ck run ... --docker`). On the host, these features work normally. They cannot be fully resolved without upstream changes.
 
 ### OAuth token expiry across host and container
 
@@ -343,9 +343,17 @@ Ctrl+V image paste does not work inside the container. Claude Code uses `pbpaste
 
 Voice mode requires microphone access, which is unavailable inside the container. Docker Desktop for Mac does not expose the host's microphone to containers. There is no equivalent of the SSH agent forwarding pattern for audio devices on macOS.
 
-## Multi-account caveats
+### Claude in Chrome MCP
 
-These apply to the multi-account model in general — they're upstream Claude Code behavior, not Ckipper bugs. Ckipper papers over some of them; others you should know about.
+The [Claude in Chrome](https://www.anthropic.com/news/claude-for-chrome) browser extension cannot connect to Claude Code inside the container. The extension's discovery mechanism doesn't bridge the host/container boundary, so the extension reports "Browser extension is not connected." Reference: [#25506](https://github.com/anthropics/claude-code/issues/25506). Workaround: run Claude Code on the host (without `--docker`) when you need the Chrome extension.
+
+### Custom system-sound hooks
+
+User-written hooks that shell out to macOS audio/AppleScript binaries (`afplay`, `say`, `osascript`) won't work inside the container — the binaries don't exist on Linux and there's no host audio device. Ckipper's built-in `notify-bell.sh` sidesteps this by emitting the terminal bell character (`\a`), which most modern terminals translate into a system notification. If you author a hook that needs richer host-only notifications, gate it on `[ ! -f /.dockerenv ]` (the same idiom every built-in safety hook uses) so it no-ops in the container.
+
+## Multi-account caveats (host and Docker)
+
+These apply to the multi-account model in general — they're upstream Claude Code behavior, not Ckipper bugs, and they apply equally on the host and inside Docker. Ckipper papers over some of them; others you should know about.
 
 ### OAuth refresh token races (upstream)
 

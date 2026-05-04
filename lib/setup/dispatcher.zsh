@@ -38,9 +38,27 @@ _ckipper_setup() {
     fi
     _ckipper_setup_offer_account
     _ckipper_setup_offer_image_build
+    _ckipper_setup_print_completion_summary
+}
+
+# Print the post-setup hint block: review-settings command, two ways to launch
+# Claude (per-account aliases or `ckipper run`), and the bare-`ck` menu.
+# Extracted so `_ckipper_setup` stays under the 25-line cap.
+#
+# Returns: 0 always.
+_ckipper_setup_print_completion_summary() {
     _core_style_header "Setup complete"
-    echo "Run 'ckipper config list' to review settings."
-    echo "Run 'ckipper run <project> <branch>' to start working."
+    echo "Review settings:        ckipper config list"
+    echo "Diagnose installation:  ckipper doctor"
+    echo ""
+    echo "Launch Claude in a worktree (host or Docker):"
+    echo "  ckipper run <project> <branch>     # bundles worktree + Claude in one step"
+    echo ""
+    echo "Launch Claude directly with an account context:"
+    echo "  claude-<account>                   # auto-generated launcher"
+    echo "  <account>                          # bare-name shortcut, when free"
+    echo ""
+    echo "Or just run 'ck' for the interactive menu."
 }
 
 # Print top-level setup help.

@@ -94,9 +94,7 @@ _ckipper_setup_prompts_use_gum() {
 #
 # Returns: 0 always.
 _ckipper_setup_prompts_pick_keys_fallback() {
-    local ans=""
-    read -r "ans?Customize all? (y/N): "
-    [[ "$ans" =~ ^[yY] ]] || return 0
+    _core_prompt_confirm "Customize all?" || return 0
     _ckipper_setup_prompts_global_keys
 }
 
