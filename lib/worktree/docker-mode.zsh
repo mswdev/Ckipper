@@ -1,19 +1,19 @@
 #!/usr/bin/env zsh
 # Docker mode execution for `ckipper worktree run --docker`. Builds docker run args and launches the container.
 
-readonly SHASUM_BITS=256
+readonly _CKIPPER_WT_SHASUM_BITS=256
 
 # Container user identity. Must match useradd -u/-g in docker/Dockerfile.
-readonly CLAUDE_CONTAINER_UID=1000
-readonly CLAUDE_CONTAINER_GID=1000
+readonly _CKIPPER_WT_CLAUDE_CONTAINER_UID=1000
+readonly _CKIPPER_WT_CLAUDE_CONTAINER_GID=1000
 
 # tmpfs for /tmp/claude-creds inside the container.
-readonly CREDS_TMPFS_MODE=700
-readonly CREDS_TMPFS_SIZE="1m"
+readonly _CKIPPER_WT_CREDS_TMPFS_MODE=700
+readonly _CKIPPER_WT_CREDS_TMPFS_SIZE="1m"
 
 # Host gid 0 (wheel/root) added so the container user can read host-mounted files
 # owned by macOS staff/wheel without needing world-readable bits.
-readonly DOCKER_GROUP_ADD_HOST_ROOT=0
+readonly _CKIPPER_WT_DOCKER_GROUP_ADD_HOST_ROOT=0
 
 # Run the worktree in a Docker container.
 #
@@ -169,8 +169,8 @@ _ckipper_worktree_docker_build_base_args() {
         -v "$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git:rw"
         -v "$CKIPPER_WT_ACTIVE_CONFIG_DIR:$CKIPPER_WT_ACTIVE_CONFIG_DIR:rw"
         -e "CLAUDE_CONFIG_DIR=$CKIPPER_WT_ACTIVE_CONFIG_DIR"
-        --group-add "$DOCKER_GROUP_ADD_HOST_ROOT"
-        --tmpfs "/tmp/claude-creds:mode=$CREDS_TMPFS_MODE,uid=$CLAUDE_CONTAINER_UID,gid=$CLAUDE_CONTAINER_GID,size=$CREDS_TMPFS_SIZE"
+        --group-add "$_CKIPPER_WT_DOCKER_GROUP_ADD_HOST_ROOT"
+        --tmpfs "/tmp/claude-creds:mode=$_CKIPPER_WT_CREDS_TMPFS_MODE,uid=$_CKIPPER_WT_CLAUDE_CONTAINER_UID,gid=$_CKIPPER_WT_CLAUDE_CONTAINER_GID,size=$_CKIPPER_WT_CREDS_TMPFS_SIZE"
         -v "claude-uv-cache:/home/claude/.cache/uv"
         -v "claude-uv-tools:/home/claude/.uv-tools"
         -e "UV_TOOL_DIR=/home/claude/.uv-tools/envs"
@@ -265,7 +265,7 @@ _ckipper_worktree_docker_print_banner() {
 _ckipper_worktree_docker_snapshot_and_run() {
     local git_config="$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git/config"
     local git_config_hash=""
-    [[ -f "$git_config" ]] && git_config_hash=$(shasum -a "$SHASUM_BITS" "$git_config" | cut -d' ' -f1)
+    [[ -f "$git_config" ]] && git_config_hash=$(shasum -a "$_CKIPPER_WT_SHASUM_BITS" "$git_config" | cut -d' ' -f1)
 
     local git_worktrees_dir="$CKIPPER_PROJECTS_DIR/$CKIPPER_WT_PROJECT/.git/worktrees"
     local -a worktrees_before=()
@@ -294,7 +294,7 @@ _ckipper_worktree_docker_check_git_config_tampering() {
     local original_hash="$2"
     if [[ -n "$original_hash" && -f "$git_config" ]]; then
         local new_hash
-        new_hash=$(shasum -a "$SHASUM_BITS" "$git_config" | cut -d' ' -f1)
+        new_hash=$(shasum -a "$_CKIPPER_WT_SHASUM_BITS" "$git_config" | cut -d' ' -f1)
         if [[ "$original_hash" != "$new_hash" ]]; then
             echo ""
             echo "WARNING: .git/config was modified during the Docker session!"

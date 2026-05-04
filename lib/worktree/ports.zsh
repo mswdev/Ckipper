@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # Port resolution for `ckipper worktree run --docker`. Finds available host ports for dev servers.
 
-readonly MAX_PORT_FALLBACK_ATTEMPTS=10
+readonly _CKIPPER_WT_MAX_PORT_FALLBACK_ATTEMPTS=10
 
 # Resolve port mappings for Docker, using fallback host ports when the
 # preferred port is already in use. Appends -p flags to the CKIPPER_WT_DOCKER_ARGS array.
@@ -28,7 +28,7 @@ _ckipper_worktree_bind_port() {
     local host_port=$port
     local is_bound="false"
 
-    for (( i=0; i<MAX_PORT_FALLBACK_ATTEMPTS; i++ )); do
+    for (( i=0; i<_CKIPPER_WT_MAX_PORT_FALLBACK_ATTEMPTS; i++ )); do
         if ! lsof -i :"$host_port" -P -n &>/dev/null; then
             _ckipper_worktree_record_bound_port "$port" "$host_port"
             is_bound="true"
@@ -38,7 +38,7 @@ _ckipper_worktree_bind_port() {
     done
 
     if [[ "$is_bound" != "true" ]]; then
-        echo "  Port $port: no available host port found ($port-$((port+MAX_PORT_FALLBACK_ATTEMPTS-1)) all in use)"
+        echo "  Port $port: no available host port found ($port-$((port+_CKIPPER_WT_MAX_PORT_FALLBACK_ATTEMPTS-1)) all in use)"
     fi
 }
 
