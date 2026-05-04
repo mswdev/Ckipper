@@ -219,3 +219,53 @@ _run_config() {
     [ "$status" -eq 0 ]
     [ -f "$marker" ]
 }
+
+# Regression: _core_config_write_global emitted `CKIPPER_PORTS="3000,3030,6006"`
+# regardless of schema type, so an int_array key got rewritten as a quoted scalar.
+# When the file was sourced, CKIPPER_PORTS became a string, breaking
+# `for port in "${CKIPPER_PORTS[@]}"` in lib/worktree/ports.zsh. The writer must
+# emit zsh array literal form for int_array types so the value round-trips
+# correctly through both the file and the reader.
+
+@test "_core_config_set writes int_array as zsh array literal (not quoted scalar)" {
+    _run_config "_core_config_set ports 3000,3030,6006"
+
+    [ "$status" -eq 0 ]
+    run grep -E '^CKIPPER_PORTS=' "$CKIPPER_DIR/docker/ckipper-config.zsh"
+    [ "$status" -eq 0 ]
+    [[ "$output" == 'CKIPPER_PORTS=(3000 3030 6006)' ]]
+}
+
+@test "_core_config_get round-trips an int_array as CSV" {
+    _run_config "_core_config_set ports 3000,3030,6006 && _core_config_get ports"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "3000,3030,6006" ]
+}
+
+@test "sourcing the written config file populates CKIPPER_PORTS as a real array" {
+    _run_config '
+        _core_config_set ports 3000,3030,6006 || exit 1
+        unset CKIPPER_PORTS
+        source "$CKIPPER_DIR/docker/ckipper-config.zsh"
+        # Assert array shape: 3 elements, first is 3000.
+        (( ${#CKIPPER_PORTS[@]} == 3 )) || { echo "expected 3 elements, got ${#CKIPPER_PORTS[@]}" >&2; exit 2; }
+        [[ "${CKIPPER_PORTS[1]}" == "3000" ]] || { echo "expected first=3000, got ${CKIPPER_PORTS[1]}" >&2; exit 3; }
+        [[ "${CKIPPER_PORTS[3]}" == "6006" ]] || { echo "expected third=6006, got ${CKIPPER_PORTS[3]}" >&2; exit 4; }
+    '
+
+    [ "$status" -eq 0 ]
+}
+
+@test "_core_config_set rewrites a pre-existing array literal in place (idempotent)" {
+    echo 'CKIPPER_PORTS=(3000)' > "$CKIPPER_DIR/docker/ckipper-config.zsh"
+
+    _run_config "_core_config_set ports 4000,5000"
+
+    [ "$status" -eq 0 ]
+    local count
+    count=$(grep -c '^CKIPPER_PORTS=' "$CKIPPER_DIR/docker/ckipper-config.zsh")
+    [ "$count" = "1" ]
+    run grep -E '^CKIPPER_PORTS=' "$CKIPPER_DIR/docker/ckipper-config.zsh"
+    [[ "$output" == 'CKIPPER_PORTS=(4000 5000)' ]]
+}
