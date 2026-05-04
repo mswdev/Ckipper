@@ -1,14 +1,28 @@
 #!/bin/bash
 set -e
 
-# Copy host's .claude.json to writable location (mounted read-only to avoid race condition)
-if [ -f "$HOME/.claude-host.json" ]; then
-    cp "$HOME/.claude-host.json" "$HOME/.claude.json"
-    # Disable Chrome extension check in container (no browser available)
-    if command -v jq &>/dev/null; then
-        jq '.claudeInChromeDefaultEnabled = false | .cachedChromeExtensionInstalled = false' \
-            "$HOME/.claude.json" > "$HOME/.claude.json.tmp" && mv "$HOME/.claude.json.tmp" "$HOME/.claude.json"
-    fi
+# Constants
+readonly CREDENTIALS_MAX_BYTES=1048576 # 1 MiB (2^20)
+readonly GIT_CONFIG_COUNT=2
+
+# Require CLAUDE_CONFIG_DIR — Ckipper's account context. No silent fallback.
+if [ -z "$CLAUDE_CONFIG_DIR" ]; then
+    echo "Error: CLAUDE_CONFIG_DIR is not set inside the container." >&2
+    echo "This means ckipper worktree run did not pass the account context. Bug — please report." >&2
+    exit 1
+fi
+if [ ! -d "$CLAUDE_CONFIG_DIR" ]; then
+    echo "Error: CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR does not exist (mount failed?)." >&2
+    exit 1
+fi
+
+# Disable Chrome extension check in the bind-mounted .claude.json (no browser in container).
+# This mutates the host file too — accepted, because the same-account-twice rule
+# prevents concurrent host/container use of the same file.
+if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null; then
+    jq '.claudeInChromeDefaultEnabled = false | .cachedChromeExtensionInstalled = false' \
+        "$CLAUDE_CONFIG_DIR/.claude.json" >"$CLAUDE_CONFIG_DIR/.claude.json.tmp" &&
+        mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
 fi
 
 # Copy SSH config from staging mount, stripping macOS-specific options.
@@ -22,22 +36,27 @@ if [ -d "$HOME/.ssh-host" ]; then
     fi
 fi
 
-# Write credentials to tmpfs (not the host-mounted ~/.claude — prevents credential
+# Write credentials to tmpfs (not the host-mounted account dir — prevents credential
 # leakage to the host filesystem). The tmpfs mount at /tmp/claude-creds is
 # container-local and disappears when the container exits.
 if [ -n "$CLAUDE_CREDENTIALS" ]; then
+    creds_byte_count=$(printf '%s' "$CLAUDE_CREDENTIALS" | wc -c)
+    if [ "$creds_byte_count" -gt "$CREDENTIALS_MAX_BYTES" ]; then
+        echo "Error: CLAUDE_CREDENTIALS exceeds $CREDENTIALS_MAX_BYTES bytes; refusing to write" >&2
+        exit 1
+    fi
     mkdir -p /tmp/claude-creds
-    echo "$CLAUDE_CREDENTIALS" > /tmp/claude-creds/.credentials.json
+    printf '%s' "$CLAUDE_CREDENTIALS" >/tmp/claude-creds/.credentials.json
     chmod 700 /tmp/claude-creds
     chmod 600 /tmp/claude-creds/.credentials.json
-    # Symlink from expected location — Claude Code reads ~/.claude/.credentials.json
-    ln -sf /tmp/claude-creds/.credentials.json "$HOME/.claude/.credentials.json"
+    # Symlink from the account dir — Claude Code reads $CLAUDE_CONFIG_DIR/.credentials.json
+    ln -sf /tmp/claude-creds/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json"
 fi
 
 # Set git identity from .claude.json account info (needed for commits inside container)
-if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null; then
-    git_name=$(jq -r '.oauthAccount.displayName // empty' "$HOME/.claude.json" 2>/dev/null)
-    git_email=$(jq -r '.oauthAccount.emailAddress // empty' "$HOME/.claude.json" 2>/dev/null)
+if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null; then
+    git_name=$(jq -r '.oauthAccount.displayName // empty' "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null)
+    git_email=$(jq -r '.oauthAccount.emailAddress // empty' "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null)
     [ -n "$git_name" ] && git config --global user.name "$git_name"
     [ -n "$git_email" ] && git config --global user.email "$git_email"
 fi
@@ -46,7 +65,7 @@ fi
 # Uses GIT_CONFIG_COUNT instead of git config so we never modify the host's
 # .git/config (mounted rw). Env vars take highest priority, overriding both
 # local and global config, and disappear when the container exits.
-export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_COUNT
 export GIT_CONFIG_KEY_0=commit.gpgsign
 export GIT_CONFIG_VALUE_0=false
 export GIT_CONFIG_KEY_1=tag.gpgsign
@@ -81,7 +100,7 @@ export TURBO_CACHE_DIR=/workspace/.turbo/cache
 # unsets NO_COLOR to prevent chalk from stripping ANSI codes.
 export FORCE_COLOR=3
 export COLORTERM=truecolor
-cat > "$HOME/.local/bin/bunx" << 'WRAPPER'
+cat >"$HOME/.local/bin/bunx" <<'WRAPPER'
 #!/bin/bash
 export FORCE_COLOR=3
 export COLORTERM=truecolor
@@ -112,17 +131,17 @@ uv_bin_dir="${UV_TOOL_BIN_DIR:-$HOME/.local/bin}"
 mkdir -p "$uv_bin_dir" "${UV_TOOL_DIR:-$HOME/.local/share/uv/tools}" "${UV_PYTHON_INSTALL_DIR:-$HOME/.local/share/uv/python}" 2>/dev/null || true
 export PATH="$uv_bin_dir:$PATH"
 
-if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/dev/null; then
+if [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/dev/null; then
     uvx_servers=$(jq -r '
         .mcpServers // {} | to_entries[] |
         select(.value.command == "uvx") | .key
-    ' "$HOME/.claude.json" 2>/dev/null)
+    ' "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null)
 
     if [ -n "$uvx_servers" ]; then
         echo "Pre-installing uvx-based MCP servers..."
         while IFS= read -r name; do
             [ -z "$name" ] && continue
-            pkg=$(jq -r ".mcpServers[\"$name\"].args[0]" "$HOME/.claude.json")
+            pkg=$(jq -r ".mcpServers[\"$name\"].args[0]" "$CLAUDE_CONFIG_DIR/.claude.json")
             [ -z "$pkg" ] && continue
 
             # Derive binary name from package spec
@@ -148,13 +167,13 @@ if [ -f "$HOME/.claude.json" ] && command -v jq &>/dev/null && command -v uv &>/
                 jq --arg n "$name" --arg b "$bin_path" '
                     .mcpServers[$n].command = $b |
                     .mcpServers[$n].args = .mcpServers[$n].args[1:]
-                ' "$HOME/.claude.json" > "$HOME/.claude.json.tmp" \
-                    && mv "$HOME/.claude.json.tmp" "$HOME/.claude.json"
+                ' "$CLAUDE_CONFIG_DIR/.claude.json" >"$CLAUDE_CONFIG_DIR/.claude.json.tmp" &&
+                    mv "$CLAUDE_CONFIG_DIR/.claude.json.tmp" "$CLAUDE_CONFIG_DIR/.claude.json"
                 echo "  $name -> $bin_path"
             else
                 echo "  $name: binary not found at $bin_path, keeping uvx"
             fi
-        done <<< "$uvx_servers"
+        done <<<"$uvx_servers"
     fi
 fi
 

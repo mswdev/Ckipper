@@ -1,0 +1,28 @@
+# Implementation plan artifacts and design docs (per repo policy, commit 5cef1de)
+docs/plans/
+
+# Editor / IDE local state
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+
+# OS cruft
+.DS_Store
+
+# Python tooling caches
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+
+# Claude Code per-machine settings (also covered by user's global gitignore, but defensive)
+.claude/settings.local.json
+.claude/.session_*.json
+
+# install.sh creates timestamped .zshrc backups
+.zshrc.ckipper-bak.*
+
+# Node modules (in case anyone runs install steps locally)
+node_modules/

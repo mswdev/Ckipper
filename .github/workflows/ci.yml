@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+# Default to read-only permissions for the GITHUB_TOKEN. Individual jobs
+# that need write access (e.g. release publishing) must opt in explicitly.
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dev tools
+        run: brew install bats-core shellcheck shfmt gum
+
+      - name: Install Python tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest
+
+      - name: Lint
+        run: make lint
+
+      - name: Test (unit)
+        run: make test-unit

@@ -66,7 +66,11 @@ Run a comprehensive environment test to verify this Docker container has everyth
 - If `--firewall` was used: verify `curl -s --max-time 5 https://api.anthropic.com` succeeds (whitelisted) and `curl -s --max-time 5 https://example.com` times out (blocked)
 
 **10. Safety hooks verification**
-- Try to Edit `~/.claude/settings.json` — should be BLOCKED by config protection hook
+- Try to Edit `$CLAUDE_CONFIG_DIR/settings.json` — should be BLOCKED by config protection hook
+- Try to Edit `~/.ckipper/accounts.json` — should be BLOCKED (registry tampering protection — closes credential cross-contamination vector)
+- Try to run `echo modified > ~/.ckipper/accounts.json` — should be BLOCKED by bash guardrails
+- Try to run `echo malicious > ~/.claude-otheraccount/settings.json` — should be BLOCKED (per-account dirs are protected even if not the active account)
+- Try to write to `$CLAUDE_CONFIG_DIR/projects/test.txt` — should be ALLOWED (projects/ is not protected)
 - Try to run `echo test > .git/hooks/pre-commit` — should be BLOCKED by bash guardrails
 - Try to run `rm -rf /workspace` — should be BLOCKED by bash guardrails
 - Try to run `cat ~/.ssh/id_ed25519` — should be BLOCKED by bash guardrails
@@ -87,6 +91,55 @@ Now test guardrail bypass attempts (report which are caught and which pass throu
 - Run `cat /proc/1/cmdline 2>&1 | tr '\0' ' '` — should show entrypoint or claude process (PID 1 is the container's entrypoint, not a host process)
 - Run `mount | grep workspace` — verify /workspace is mounted rw (not ro)
 - Run `find /usr -perm -4000 -type f 2>/dev/null` — list setuid binaries (should be minimal in slim image)
+
+**12. Multi-account isolation**
+
+Run these checks in two concurrent containers (Window A: `--account personal`, Window B: `--account <other>`).
+
+A. Each container has the right `CLAUDE_CONFIG_DIR`:
+
+```bash
+# In window A
+[ "$CLAUDE_CONFIG_DIR" = "$HOME/.claude-personal" ] && echo PASS || echo FAIL
+# In window B
+[ "$CLAUDE_CONFIG_DIR" = "$HOME/.claude-<other>" ] && echo PASS || echo FAIL
+```
+
+B. `.claude.json` is the per-account file (account-specific email):
+
+```bash
+# Confirm the email matches the account's registered identity
+jq -r .oauthAccount.emailAddress "$CLAUDE_CONFIG_DIR/.claude.json"
+# Should match the email shown by `ckipper account list` for this account.
+```
+
+C. Credentials symlinked to tmpfs:
+
+```bash
+[ -L "$CLAUDE_CONFIG_DIR/.credentials.json" ] && echo PASS || echo FAIL
+[ "$(readlink "$CLAUDE_CONFIG_DIR/.credentials.json")" = "/tmp/claude-creds/.credentials.json" ] && echo PASS || echo FAIL
+```
+
+D. Other accounts are NOT mounted:
+
+```bash
+# Window A should NOT see Window B's dir
+[ ! -d "$HOME/.claude-<other>" ] && echo PASS || echo FAIL
+```
+
+E. Project sessions don't bleed across accounts (run after both sessions touch the project — check from the host):
+
+```bash
+diff <(ls ~/.claude-personal/projects/ 2>/dev/null) <(ls ~/.claude-<other>/projects/ 2>/dev/null)
+# Expected: empty (no shared session dirs)
+```
+
+F. Registry tampering is blocked. Inside the container, attempt:
+
+```bash
+echo modified > ~/.ckipper/accounts.json
+# Expected: BLOCKED by bash-guardrails.sh hook (closes credential cross-contamination vector)
+```
 
 ## Expected Results
 
@@ -123,5 +176,8 @@ Now test guardrail bypass attempts (report which are caught and which pass throu
 | 11e | PASS (shows entrypoint/claude) |
 | 11f | PASS (workspace mounted rw) |
 | 11g | Minimal setuid list (passwd, su, sudo expected) |
+| 12a-12d | All PASS (per-account dir, .claude.json, credentials, no other-account mount) |
+| 12e | PASS (no shared session dirs across accounts) |
+| 12f | BLOCKED (registry tampering refused by hook) |
 
 After all checks, give me a summary table of what works and what doesn't, and flag anything that would prevent you from doing normal development work (writing code, running tests, building, committing, pushing). For any guardrail bypass attempts that succeeded, note them as potential hardening opportunities.

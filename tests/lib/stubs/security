@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Test stub for `security`. Reads scripted responses from env vars.
+# Set SECURITY_STUB_FAIL_FIND=1 to make find-generic-password exit non-zero
+# (used to exercise the keychain fallback path in _ckipper_migrate_detect_keychain).
+case "$1 $2" in
+    "find-generic-password -s")
+        if [ -n "$SECURITY_STUB_FAIL_FIND" ]; then
+            exit 1
+        fi
+        echo "${SECURITY_STUB_PASSWORD:-{\"oauth\":\"fake-token\"}}"
+        exit 0
+        ;;
+    "dump-keychain")
+        echo "${SECURITY_STUB_DUMP:-empty}"
+        exit 0
+        ;;
+    *)
+        echo "Stub received: $*" >&2
+        exit 0
+        ;;
+esac

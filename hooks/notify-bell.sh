@@ -4,7 +4,8 @@
 # triggering native notifications (dock bounce, sound, etc.).
 # No-op on the host (host Claude handles notifications natively).
 
-[ ! -f /.dockerenv ] && exit 0
+# Skip bell when not in Docker (CKIPPER_DOCKERENV overrides path for testing)
+[ ! -f "${CKIPPER_DOCKERENV:-/.dockerenv}" ] && exit 0
 
 printf '\a'
 exit 0

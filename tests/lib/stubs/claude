@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Test stub for the claude CLI binary.
+# Always exits 0 so normal-mode tests can exercise the invocation path.
+exit 0

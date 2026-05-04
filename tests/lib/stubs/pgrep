@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Test stub for `pgrep`. Returns no processes by default so ckipper's
+# "no running Claude" guard always passes in tests.
+# Set PGREP_STUB_MATCH=1 to simulate a running process.
+if [[ "${PGREP_STUB_MATCH:-0}" == "1" ]]; then
+    echo "99999 claude"
+    exit 0
+fi
+exit 1

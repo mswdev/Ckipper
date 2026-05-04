@@ -1,0 +1,57 @@
+# ── ckipper-config.zsh ───────────────────────────────────────────
+# User-specific configuration for ckipper (the worktree manager + account
+# tools). This file is sourced by ckipper.zsh. It is never overwritten by
+# install.sh — your customizations are safe across updates.
+#
+# After editing, run: source ~/.zshrc
+# ─────────────────────────────────────────────────────────────────
+
+# Base directory containing your git projects. The first arg to
+# `ckipper worktree run` is resolved relative to this path. Default:
+# $HOME/Developer
+# Examples:
+#   CKIPPER_PROJECTS_DIR="$HOME/code"
+#   CKIPPER_PROJECTS_DIR="$HOME/work/repos"
+# CKIPPER_PROJECTS_DIR="$HOME/Developer"
+
+# Where `ckipper worktree run` creates per-project worktrees. Default:
+# $CKIPPER_PROJECTS_DIR/.worktrees
+# Override only if you want worktrees outside your projects tree.
+# CKIPPER_WORKTREES_DIR="$HOME/.worktrees"
+
+# Ports to forward from container to host.
+# These should match your dev servers (Next.js, Storybook, etc.)
+CKIPPER_PORTS=(3000 3030 6006)
+
+# Extra Docker volume mounts (for MCP servers that reference local files).
+# Mount at the exact same host path so MCP configs work unchanged.
+# Format: "host_path:container_path:mode"
+# Examples:
+#   "$HOME/Developer/my-data:$HOME/Developer/my-data:ro"
+#   "$HOME/path/to/file.json:$HOME/path/to/file.json:ro"
+CKIPPER_EXTRA_VOLUMES=()
+
+# Extra Docker environment variables.
+# Format: "KEY=value"
+# Examples:
+#   "MY_MCP_SERVER=host.docker.internal"
+CKIPPER_EXTRA_ENV=()
+
+# Fallback base branch when origin/HEAD is unset for a project. Empty
+# (default) means: always require origin/HEAD or fail explicitly.
+# CKIPPER_DEFAULT_BRANCH=""
+
+# Command run after worktree creation to install dependencies. Empty
+# string skips the install. Examples: "pnpm install", "yarn install",
+# "bun install".
+# CKIPPER_DEP_INSTALL_CMD="npm install"
+
+# Install the notification-bell hook into account dirs (forwards Claude
+# Code's bell-on-notification through Docker's TTY to your host
+# terminal).
+# CKIPPER_NOTIFY_BELL=true
+
+# install.sh auto-adds `source ~/.ckipper/aliases.zsh` to your .zshrc
+# when enabled (so claude-<account> launchers work without manual
+# setup).
+# CKIPPER_ALIASES_AUTO_SOURCE=true
