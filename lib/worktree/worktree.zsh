@@ -195,7 +195,7 @@ _ckipper_worktree_fetch_and_create() {
 #      records; this is the cheap, definitive answer when origin/HEAD is set.
 #   2. `git remote show origin` parse — slower, network-dependent fallback when
 #      the symbolic ref isn't present locally.
-#   3. $CKIPPER_DEFAULT_BRANCH — global config override (lib/config/schema.zsh
+#   3. $CKIPPER_DEFAULT_BRANCH — global config override (lib/core/schema.zsh
 #      key `default_branch`), exported by ckipper-config.zsh on shell init.
 #   4. Hardcoded "develop" — preserves pre-overhaul behaviour.
 #

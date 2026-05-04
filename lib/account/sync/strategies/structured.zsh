@@ -214,7 +214,7 @@ _ckipper_account_sync_settings_apply() {
 # passes account NAMES through the dir args. This is the only strategy that
 # uses CKIPPER_REGISTRY rather than the dir paths.
 #
-# Depends on lib/config/schema.zsh (account-scope key list) and
+# Depends on lib/core/schema.zsh (account-scope key list) and
 # lib/core/config.zsh (_core_config_get/_core_config_set).
 
 # Enumerate every account-scope schema key.

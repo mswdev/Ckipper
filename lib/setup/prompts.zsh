@@ -8,7 +8,7 @@
 # `setup` is configuring.
 #
 # Depends on:
-#   - lib/config/schema.zsh   (`_CKIPPER_SCHEMA_*` arrays)
+#   - lib/core/schema.zsh   (`_CKIPPER_SCHEMA_*` arrays)
 #   - lib/core/config.zsh     (`_core_config_get`, `_core_config_read_global`)
 #   - lib/core/style.zsh      (`_core_style_header`, `_core_style_divider`,
 #                              `_core_style_table`)

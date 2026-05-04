@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Module-level tests for lib/config/schema.zsh.
+# Module-level tests for lib/core/schema.zsh.
 # Verifies the four schema arrays (TYPE, DEFAULT, SCOPE, DESCRIPTION) declare
 # the expected keys with the expected values. Schema is data-only zsh; bats
 # runs in bash, so each assertion spawns a zsh subshell that sources the file
@@ -10,7 +10,7 @@ load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 # Helper: source schema.zsh in zsh and print the array entry $1[$2].
 _schema_lookup() {
     local array_name="$1" key="$2"
-    run zsh -c "source \"$REPO_ROOT/lib/config/schema.zsh\"; print -- \"\${${array_name}[${key}]}\""
+    run zsh -c "source \"$REPO_ROOT/lib/core/schema.zsh\"; print -- \"\${${array_name}[${key}]}\""
     [ "$status" -eq 0 ]
 }
 
@@ -63,7 +63,7 @@ _schema_lookup() {
     # Walk every key in _CKIPPER_SCHEMA_TYPE and require a non-empty
     # _CKIPPER_SCHEMA_DESCRIPTION entry. Any missing key is printed by name.
     run zsh -c "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         for key in \"\${(@k)_CKIPPER_SCHEMA_TYPE}\"; do
             if [[ -z \"\${_CKIPPER_SCHEMA_DESCRIPTION[\$key]}\" ]]; then
                 print -- \"missing description for \$key\"

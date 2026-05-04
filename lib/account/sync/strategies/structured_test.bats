@@ -276,7 +276,7 @@ JSON
 @test "prefs_enumerate lists the 3 schema keys" {
     setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         _ckipper_account_sync_prefs_enumerate 'src' | cut -f1 | sort | tr '\n' ','"
     [[ "$output" == *"always_docker,always_firewall,ssh_forward,"* ]]
 }
@@ -284,7 +284,7 @@ JSON
 @test "prefs_compare: new when destination has no override (default value)" {
     setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         source \"$REPO_ROOT/lib/core/config.zsh\"
         _ckipper_account_sync_prefs_compare 'src' 'dst' always_docker"
     [[ "$output" == *"overwrite"* ]]
@@ -293,7 +293,7 @@ JSON
 @test "prefs_compare: unchanged when values match" {
     setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         source \"$REPO_ROOT/lib/core/config.zsh\"
         _ckipper_account_sync_prefs_compare 'src' 'dst' always_firewall"
     [[ "$output" == *"unchanged"* ]]
@@ -302,7 +302,7 @@ JSON
 @test "prefs_apply writes the source value to the destination's registry entry" {
     setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         source \"$REPO_ROOT/lib/core/registry.zsh\"
         source \"$REPO_ROOT/lib/core/config.zsh\"
         backup_dir=\$(_ckipper_account_sync_backup_create '$TMP_HOME/dst' src)

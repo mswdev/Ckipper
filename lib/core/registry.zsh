@@ -189,7 +189,7 @@ _core_registry_init() {
 # two callers cannot drift from the schema.
 #
 # Reads: _CKIPPER_SCHEMA_TYPE, _CKIPPER_SCHEMA_DEFAULT, _CKIPPER_SCHEMA_SCOPE
-#   (lib/config/schema.zsh — must be sourced before this is called).
+#   (lib/core/schema.zsh — must be sourced before this is called).
 #
 # Limitations: only handles bool, int, string, and path types. The current
 # schema has no account-scope `int_array` keys; if one is added, extend the

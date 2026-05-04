@@ -110,7 +110,7 @@ _run_resolve_flags() {
         CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
         PATH="$PATH" \
         zsh -c "
-            source \"$REPO_ROOT/lib/config/schema.zsh\"
+            source \"$REPO_ROOT/lib/core/schema.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"
             source \"$REPO_ROOT/lib/worktree/args.zsh\"
             source \"$REPO_ROOT/lib/worktree/run.zsh\"

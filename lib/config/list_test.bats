@@ -29,7 +29,7 @@ _run_config_list() {
         CKIPPER_REGISTRY_VERSION="${CKIPPER_REGISTRY_VERSION:-2}" \
         PATH="$PATH" \
         zsh -c "
-            source \"$REPO_ROOT/lib/config/schema.zsh\"
+            source \"$REPO_ROOT/lib/core/schema.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
             _core_style_header() { print -- \"## \$1\"; }

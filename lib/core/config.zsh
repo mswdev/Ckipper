@@ -3,7 +3,7 @@
 #   - global file: $CKIPPER_DIR/docker/ckipper-config.zsh (zsh assignments)
 #   - per-account: $CKIPPER_REGISTRY (.accounts.<name>.preferences.<key>)
 #
-# Schema source-of-truth: lib/config/schema.zsh — must be sourced before this.
+# Schema source-of-truth: lib/core/schema.zsh — must be sourced before this.
 # Functions here resolve the schema arrays at call time, never source-time.
 
 readonly _CKIPPER_GLOBAL_PREFIX="CKIPPER_"

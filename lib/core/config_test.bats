@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Module-level tests for lib/core/config.zsh.
 # Verifies _core_config_get/set/unset/validate primitives against the schema
-# from lib/config/schema.zsh. config.zsh is zsh-only, so each assertion spawns
+# from lib/core/schema.zsh. config.zsh is zsh-only, so each assertion spawns
 # a zsh subshell that sources schema then config and runs the function under
 # test (matching the pattern in registry_test.bats and schema_test.bats).
 
@@ -31,7 +31,7 @@ _run_config() {
         CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
         PATH="$PATH" \
         zsh -c "
-            source \"$REPO_ROOT/lib/config/schema.zsh\"
+            source \"$REPO_ROOT/lib/core/schema.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"
             $zsh_cmd
