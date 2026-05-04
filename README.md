@@ -54,7 +54,7 @@ cd Ckipper
 
 ## Configuration
 
-Ckipper has a single source of truth for user-configurable settings ([`lib/config/schema.zsh`](lib/config/schema.zsh)). Use `ck config` to view and modify settings, or `ck setup` to walk the wizard.
+Ckipper has a single source of truth for user-configurable settings ([`lib/core/schema.zsh`](lib/core/schema.zsh)). Use `ck config` to view and modify settings, or `ck setup` to walk the wizard.
 
 ### Global keys
 

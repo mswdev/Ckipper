@@ -37,10 +37,10 @@ We follow the rules in [`.claude/rules/`](.claude/rules/) — please read them. 
 
 ## Adding a new config key
 
-1. Add the key to all four arrays in `lib/config/schema.zsh` — `_CKIPPER_SCHEMA_TYPE`, `_DEFAULT`, `_SCOPE`, `_DESCRIPTION`.
+1. Add the key to all four arrays in `lib/core/schema.zsh` — `_CKIPPER_SCHEMA_TYPE`, `_DEFAULT`, `_SCOPE`, `_DESCRIPTION`.
 2. The key is now usable via `ck config get/set/unset/list` and appears in the wizard automatically.
 3. If the key affects worktree-creation behavior, update `lib/worktree/worktree.zsh` to read it via `_core_config_get`.
-4. Add a test in `lib/config/schema_test.bats` to cover the new declaration.
+4. Add a test in `lib/core/schema_test.bats` to cover the new declaration.
 
 ## Module structure
 

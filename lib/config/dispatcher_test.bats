@@ -35,7 +35,7 @@ _run_config_dispatch() {
         CKIPPER_REGISTRY_VERSION="${CKIPPER_REGISTRY_VERSION:-2}" \
         PATH="$PATH" \
         zsh -c "
-            source \"$REPO_ROOT/lib/config/schema.zsh\"
+            source \"$REPO_ROOT/lib/core/schema.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
             source \"$REPO_ROOT/lib/core/fuzzy.zsh\"
@@ -83,4 +83,43 @@ _run_config_dispatch() {
 
     [ "$status" -ne 0 ]
     [[ "$output" =~ "config help" ]]
+}
+
+# Regression: per the contract documented in ckipper.zsh:191-193, every
+# namespace dispatcher must accept `<subcommand> --help` as a synonym for
+# overview help. Account/worktree dispatchers honoured this; config did not
+# — `ckipper config get --help` returned "Unknown flag: '--help'".
+@test "dispatcher routes 'set --help' to namespace help (does not run set)" {
+    _run_config_dispatch "_ckipper_config_dispatch set --help"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper config" ]]
+}
+
+@test "dispatcher routes 'get -h' to namespace help" {
+    _run_config_dispatch "_ckipper_config_dispatch get -h"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper config" ]]
+}
+
+@test "dispatcher routes 'unset --help' to namespace help" {
+    _run_config_dispatch "_ckipper_config_dispatch unset --help"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper config" ]]
+}
+
+@test "dispatcher routes 'list --help' to namespace help" {
+    _run_config_dispatch "_ckipper_config_dispatch list --help"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper config" ]]
+}
+
+@test "dispatcher routes 'edit --help' to namespace help" {
+    _run_config_dispatch "_ckipper_config_dispatch edit --help"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper config" ]]
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # Worktree list, remove, and create operations for `ckipper worktree`.
 
-readonly CKIPPER_WT_FIND_MAX_DEPTH=3
+readonly _CKIPPER_WT_FIND_MAX_DEPTH=3
 
 # Print all worktrees under $CKIPPER_WORKTREES_DIR, grouped by project.
 #
@@ -84,7 +84,7 @@ _ckipper_worktree_remove_worktree() {
     fi
 
     local force_flag=""
-    [[ "$CKIPPER_WT_FLAG_FORCE" = true ]] && force_flag="--force"
+    [[ "$CKIPPER_WT_FLAG_FORCE" = "true" ]] && force_flag="--force"
 
     (cd "$CKIPPER_PROJECTS_DIR/$project" && git worktree remove $force_flag -- "$wt_path" && git branch -D -- "$worktree" 2>/dev/null) || {
         echo "Failed to remove worktree. Use --force if it has uncommitted changes." >&2
@@ -195,7 +195,7 @@ _ckipper_worktree_fetch_and_create() {
 #      records; this is the cheap, definitive answer when origin/HEAD is set.
 #   2. `git remote show origin` parse — slower, network-dependent fallback when
 #      the symbolic ref isn't present locally.
-#   3. $CKIPPER_DEFAULT_BRANCH — global config override (lib/config/schema.zsh
+#   3. $CKIPPER_DEFAULT_BRANCH — global config override (lib/core/schema.zsh
 #      key `default_branch`), exported by ckipper-config.zsh on shell init.
 #   4. Hardcoded "develop" — preserves pre-overhaul behaviour.
 #
@@ -328,13 +328,14 @@ _ckipper_worktree_post_create_setup() {
             || echo "Warning: '$install_cmd' failed. You may need to run it manually."
     fi
 
-    for env_file in $(find "$CKIPPER_PROJECTS_DIR/$project" -maxdepth "$CKIPPER_WT_FIND_MAX_DEPTH" -name ".env*" -not -name "*.example" -not -path "*/node_modules/*" -not -path "*/.git/*"); do
-        local rel_path="${env_file#$CKIPPER_PROJECTS_DIR/$project/}"
-        local dest_dir="$CKIPPER_WT_PATH/$(dirname "$rel_path")"
+    local env_file rel_path dest_dir
+    while IFS= read -r -d '' env_file; do
+        rel_path="${env_file#$CKIPPER_PROJECTS_DIR/$project/}"
+        dest_dir="$CKIPPER_WT_PATH/$(dirname "$rel_path")"
         mkdir -p "$dest_dir"
         cp "$env_file" "$dest_dir/"
         echo "Copied $rel_path"
-    done
+    done < <(find "$CKIPPER_PROJECTS_DIR/$project" -maxdepth "$_CKIPPER_WT_FIND_MAX_DEPTH" -name ".env*" -not -name "*.example" -not -path "*/node_modules/*" -not -path "*/.git/*" -print0)
 
     _ckipper_worktree_sync_project_registry "$project"
 }

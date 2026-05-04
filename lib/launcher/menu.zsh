@@ -93,12 +93,12 @@ _ckipper_launcher_discover_projects() {
     local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
     [[ -d "$projects_dir" ]] || return 0
     local dir repo_dir rel
-    for dir in $(find "$projects_dir" -maxdepth "$_CKIPPER_LAUNCHER_PROJECTS_MAXDEPTH" \
-        -name ".git" -type d -not -path "*/.worktrees/*" 2>/dev/null); do
+    while IFS= read -r -d '' dir; do
         repo_dir="${dir:h}"
         rel="${repo_dir#$projects_dir/}"
         print -- "$rel"
-    done
+    done < <(find "$projects_dir" -maxdepth "$_CKIPPER_LAUNCHER_PROJECTS_MAXDEPTH" \
+        -name ".git" -type d -not -path "*/.worktrees/*" -print0 2>/dev/null)
 }
 
 # Run-Claude flow: enumerate projects under `$CKIPPER_PROJECTS_DIR`, prompt

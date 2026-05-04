@@ -19,7 +19,7 @@ source "$CKIPPER_REPO_DIR/lib/core/utils.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/registry.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/keychain.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/fuzzy.zsh"
-source "$CKIPPER_REPO_DIR/lib/config/schema.zsh"
+source "$CKIPPER_REPO_DIR/lib/core/schema.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/config.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/style.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/help.zsh"
@@ -301,11 +301,12 @@ _ckipper() {
                     ;;
                 run)
                     local -a projects
-                    for dir in $(find "$projects_dir" -maxdepth 3 -name ".git" -type d -not -path "*/.worktrees/*" 2>/dev/null); do
-                        local repo_dir="${dir:h}"
-                        local rel="${repo_dir#$projects_dir/}"
+                    local dir repo_dir rel
+                    while IFS= read -r -d '' dir; do
+                        repo_dir="${dir:h}"
+                        rel="${repo_dir#$projects_dir/}"
                         projects+=("$rel")
-                    done
+                    done < <(find "$projects_dir" -maxdepth 3 -name ".git" -type d -not -path "*/.worktrees/*" -print0 2>/dev/null)
                     _describe -t projects 'project' projects && return 0
                     ;;
             esac
@@ -314,11 +315,12 @@ _ckipper() {
             case "${words[2]}/${words[3]}" in
                 worktree/run|wt/run|worktree/rm|wt/rm)
                     local -a projects
-                    for dir in $(find "$projects_dir" -maxdepth 3 -name ".git" -type d -not -path "*/.worktrees/*" 2>/dev/null); do
-                        local repo_dir="${dir:h}"
-                        local rel="${repo_dir#$projects_dir/}"
+                    local dir repo_dir rel
+                    while IFS= read -r -d '' dir; do
+                        repo_dir="${dir:h}"
+                        rel="${repo_dir#$projects_dir/}"
                         projects+=("$rel")
-                    done
+                    done < <(find "$projects_dir" -maxdepth 3 -name ".git" -type d -not -path "*/.worktrees/*" -print0 2>/dev/null)
                     _describe -t projects 'project' projects && return 0
                     ;;
                 account/default|acct/default|account/remove|acct/remove|account/rename|acct/rename|account/sync|acct/sync)

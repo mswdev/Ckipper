@@ -90,7 +90,7 @@ _ckipper_doctor_check_stale_w_vars() {
 }
 
 # Validate every CKIPPER_<KEY>= assignment in ckipper-config.zsh against the
-# config schema (lib/config/schema.zsh). Unknown keys produce a WARN — they
+# config schema (lib/core/schema.zsh). Unknown keys produce a WARN — they
 # are likely typos that the source loader will silently set into a global
 # variable that nothing reads.
 #
@@ -174,7 +174,7 @@ _ckipper_doctor_required_prefs_filter() {
 # them on next registry-touch operation; this is a heads-up, not a halt.
 #
 # The list of required keys is derived from the schema at call time so
-# adding a new account-scope key in lib/config/schema.zsh updates this
+# adding a new account-scope key in lib/core/schema.zsh updates this
 # check automatically.
 #
 # Returns: 0 always (results printed via _ckipper_doctor_check).

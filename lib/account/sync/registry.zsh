@@ -5,7 +5,7 @@
 # syncable type is: append to all three parallel arrays AND implement the
 # strategy contract (see lib/account/sync/engine.zsh for the contract).
 #
-# Mirrors the parallel-array idiom used by lib/config/schema.zsh.
+# Mirrors the parallel-array idiom used by lib/core/schema.zsh.
 
 # Human-readable label, shown in pickers and the summary table.
 typeset -gA _CKIPPER_SYNC_TYPE_LABEL=(

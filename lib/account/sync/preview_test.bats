@@ -9,6 +9,7 @@ teardown() { teardown_isolated_env; }
 run_in_zsh() {
     run env HOME="$HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_NO_GUM=1 TMP_HOME="$TMP_HOME" \
         zsh -c "source \"$REPO_ROOT/lib/core/style.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/preview.zsh\"; $*"
 }

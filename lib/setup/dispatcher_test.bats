@@ -38,7 +38,7 @@ _run_setup() {
             CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
             HOME="$TMP_HOME" PATH="$PATH" \
         zsh -c "
-            source \"$REPO_ROOT/lib/config/schema.zsh\"
+            source \"$REPO_ROOT/lib/core/schema.zsh\"
             source \"$REPO_ROOT/lib/core/utils.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"

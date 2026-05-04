@@ -5,7 +5,7 @@
 # routing via _core_config_set.
 #
 # Depends on:
-#   - lib/config/schema.zsh   (`_CKIPPER_SCHEMA_*` arrays — read by _core_config_set)
+#   - lib/core/schema.zsh   (`_CKIPPER_SCHEMA_*` arrays — read by _core_config_set)
 #   - lib/core/config.zsh     (`_core_config_set`)
 #   - lib/core/registry.zsh   (`_core_account_dir` — account-existence guard)
 #

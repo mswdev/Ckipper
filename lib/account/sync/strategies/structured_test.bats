@@ -113,20 +113,29 @@ run_in_zsh() {
 
 # ── Settings strategy ────────────────────────────────────────────────────
 
-@test "settings_enumerate emits top-level keys" {
+@test "settings_enumerate emits top-level keys (display column is dotted)" {
     local src="$TMP_HOME/src"
     mkdir -p "$src"
     echo '{"env":{"FOO":"1"},"model":"opus"}' > "$src/settings.json"
-    run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f1 | sort | tr '\n' ','"
+    run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f2 | sort | tr '\n' ','"
     [[ "$output" == *"env.FOO"* ]]
     [[ "$output" == *"model"* ]]
+}
+
+@test "settings_enumerate id column is JSON path array" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src"
+    echo '{"env":{"FOO":"1"},"model":"opus"}' > "$src/settings.json"
+    run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f1 | sort | tr '\n' '|'"
+    [[ "$output" == *'["env","FOO"]'* ]]
+    [[ "$output" == *'["model"]'* ]]
 }
 
 @test "settings_enumerate excludes .hooks and .statusLine (owned by other strategies)" {
     local src="$TMP_HOME/src"
     mkdir -p "$src"
     echo '{"statusLine":{"command":"x"},"hooks":{"PreToolUse":[]},"model":"opus"}' > "$src/settings.json"
-    run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f1"
+    run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f2"
     [[ "$output" != *"hooks"* ]]
     [[ "$output" != *"statusLine"* ]]
     [[ "$output" == *"model"* ]]
@@ -136,8 +145,76 @@ run_in_zsh() {
     local src="$TMP_HOME/src"
     mkdir -p "$src"
     echo '{"permissions":{"allow":["Bash(ls:*)"],"deny":["Bash(rm:*)"]}}' > "$src/settings.json"
-    run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f1 | sort | tr '\n' ','"
+    run_in_zsh "_ckipper_account_sync_settings_enumerate '$src' | cut -f2 | sort | tr '\n' ','"
     [[ "$output" == *"permissions.allow,permissions.deny,"* ]]
+}
+
+# Regression: hyphenated keys (most Claude Code settings — e.g. cleanup-period-days)
+# previously got interpolated into a jq filter as `.cleanup-period-days`, which
+# jq parsed as `.cleanup - .period - .days` (subtraction). settings_compare
+# returned "new" for both source and destination (both jq calls errored to
+# empty), and settings_apply aborted with a jq compile error mid-stream,
+# rolling back the entire sync.
+@test "settings_enumerate id is JSON-array-safe for hyphenated keys" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src"
+    echo '{"cleanup-period-days":7}' > "$src/settings.json"
+    run_in_zsh "_ckipper_account_sync_settings_enumerate '$src'"
+    [[ "$output" == *'["cleanup-period-days"]'* ]]
+    [[ "$output" == *"cleanup-period-days"* ]]
+}
+
+@test "settings_compare handles hyphenated keys without jq compile error" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"cleanup-period-days":7}' > "$src/settings.json"
+    echo '{"cleanup-period-days":14}' > "$dst/settings.json"
+    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' '[\"cleanup-period-days\"]'"
+    [[ "$output" == *"overwrite"* ]]
+}
+
+@test "settings_apply writes hyphenated keys correctly" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"cleanup-period-days":7,"unrelated":"keep"}' > "$src/settings.json"
+    echo '{"unrelated":"keep","cleanup-period-days":14}' > "$dst/settings.json"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
+        _ckipper_account_sync_settings_apply '$src' '$dst' '[\"cleanup-period-days\"]' \"\$backup_dir\" || echo APPLY_FAILED
+        jq -r '.\"cleanup-period-days\"' '$dst/settings.json'
+        jq -r '.unrelated' '$dst/settings.json'"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"APPLY_FAILED"* ]]
+    [[ "$output" == *"7"* ]]
+    [[ "$output" == *"keep"* ]]
+}
+
+# Regression: keys containing literal dots (rare, but legal JSON) used to be
+# silently corrupted — settings_apply did `jq -n --arg p "$id" '$p | split(".")'`
+# which split "some.key" into ["some","key"] and then setpath() built a nested
+# structure. The actual `"some.key"` key was clobbered with a null or replaced
+# entirely. Fix: keys travel as JSON-encoded path arrays, never split.
+@test "settings_apply preserves keys with literal dots" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"some.key":"value-from-src"}' > "$src/settings.json"
+    echo '{"some.key":"value-from-dst","unrelated":"keep"}' > "$dst/settings.json"
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
+        _ckipper_account_sync_settings_apply '$src' '$dst' '[\"some.key\"]' \"\$backup_dir\"
+        jq -r '.\"some.key\"' '$dst/settings.json'
+        jq -r '.unrelated' '$dst/settings.json'
+        if jq -e 'has(\"some\") and (.some | type == \"object\")' '$dst/settings.json' >/dev/null 2>&1; then
+            echo NESTED_OBJECT_LEAKED
+        else
+            echo NO_NESTED_LEAK
+        fi"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"value-from-src"* ]]
+    [[ "$output" == *"keep"* ]]
+    [[ "$output" == *"NO_NESTED_LEAK"* ]]
 }
 
 @test "settings_compare: new when path missing in destination" {
@@ -145,7 +222,7 @@ run_in_zsh() {
     mkdir -p "$src" "$dst"
     echo '{"model":"opus"}' > "$src/settings.json"
     echo '{}' > "$dst/settings.json"
-    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' model"
+    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' '[\"model\"]'"
     [[ "$output" == *"new"* ]]
 }
 
@@ -154,7 +231,7 @@ run_in_zsh() {
     mkdir -p "$src" "$dst"
     echo '{"model":"opus"}' > "$src/settings.json"
     echo '{"model":"opus"}' > "$dst/settings.json"
-    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' model"
+    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' '[\"model\"]'"
     [[ "$output" == *"unchanged"* ]]
 }
 
@@ -162,7 +239,7 @@ run_in_zsh() {
     local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
     mkdir -p "$src" "$dst"
     echo '{"model":"opus"}' > "$src/settings.json"
-    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' model"
+    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' '[\"model\"]'"
     [[ "$output" == *"new"* ]]
     [[ "$output" != *"overwrite"* ]]
 }
@@ -175,7 +252,7 @@ run_in_zsh() {
     run_in_zsh "
         backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
         _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
-        _ckipper_account_sync_settings_apply '$src' '$dst' 'permissions.allow' \"\$backup_dir\"
+        _ckipper_account_sync_settings_apply '$src' '$dst' '[\"permissions\",\"allow\"]' \"\$backup_dir\"
         jq -c '.permissions.allow' '$dst/settings.json'
         jq -c '.permissions.deny' '$dst/settings.json'
         jq -r '.unrelated' '$dst/settings.json'"
@@ -199,7 +276,7 @@ JSON
 @test "prefs_enumerate lists the 3 schema keys" {
     setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         _ckipper_account_sync_prefs_enumerate 'src' | cut -f1 | sort | tr '\n' ','"
     [[ "$output" == *"always_docker,always_firewall,ssh_forward,"* ]]
 }
@@ -207,7 +284,7 @@ JSON
 @test "prefs_compare: new when destination has no override (default value)" {
     setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         source \"$REPO_ROOT/lib/core/config.zsh\"
         _ckipper_account_sync_prefs_compare 'src' 'dst' always_docker"
     [[ "$output" == *"overwrite"* ]]
@@ -216,7 +293,7 @@ JSON
 @test "prefs_compare: unchanged when values match" {
     setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         source \"$REPO_ROOT/lib/core/config.zsh\"
         _ckipper_account_sync_prefs_compare 'src' 'dst' always_firewall"
     [[ "$output" == *"unchanged"* ]]
@@ -225,7 +302,7 @@ JSON
 @test "prefs_apply writes the source value to the destination's registry entry" {
     setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/config/schema.zsh\"
+        source \"$REPO_ROOT/lib/core/schema.zsh\"
         source \"$REPO_ROOT/lib/core/registry.zsh\"
         source \"$REPO_ROOT/lib/core/config.zsh\"
         backup_dir=\$(_ckipper_account_sync_backup_create '$TMP_HOME/dst' src)

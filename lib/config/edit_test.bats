@@ -37,7 +37,7 @@ _run_config_edit() {
         PATH="$PATH" \
         EDITOR="${EDITOR:-true}" \
         zsh -c "
-            source \"$REPO_ROOT/lib/config/schema.zsh\"
+            source \"$REPO_ROOT/lib/core/schema.zsh\"
             source \"$REPO_ROOT/lib/core/config.zsh\"
             source \"$REPO_ROOT/lib/core/registry.zsh\"
             source \"$REPO_ROOT/lib/config/edit.zsh\"

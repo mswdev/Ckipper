@@ -16,17 +16,10 @@ typeset -g _CKIPPER_SYNC_DRY_RUN="false"
 typeset -g _CKIPPER_SYNC_YES="false"
 typeset -g _CKIPPER_SYNC_FORCE="false"
 
-# Per-target sync context. Populated once per target by run_one_target (and
-# augmented by apply_target with backup_dir). Engine/preview/finalize helpers
-# read from this map instead of taking 5–8 positional arguments, per the
-# .claude/rules/code-style.md 3-parameter cap. Keys: src_dir, dst_dir,
-# src_name, dst_name, backup_dir, changeset, summaries, items.
-#
-# Re-declaration without `=()` is a no-op so engine.zsh's matching
-# declaration (sourced first in production) keeps any state set there;
-# reset between sync invocations is handled by reset_args, not by the
-# declaration line.
-typeset -gA _CKIPPER_SYNC_CTX
+# _CKIPPER_SYNC_CTX is declared in lib/account/sync/_shared.zsh — a single
+# canonical declaration that the engine, dispatcher, and preview modules
+# all share. Reset between invocations is handled by reset_args, not at
+# declaration.
 
 # Reset all module-level _SYNC_* holders. Called at the top of every
 # parse_args invocation so re-running the dispatcher in the same shell

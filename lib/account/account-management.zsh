@@ -11,6 +11,12 @@ typeset -gA _CKIPPER_FINALIZE_CTX
 # Fields: old_dir, new_dir
 typeset -gA _CKIPPER_RENAME_CTX
 
+# Module-level context for `ckipper account list`: the default account name,
+# read once by `_ckipper_account_list` and read by `_ckipper_account_list_row`
+# to pick the marker. Lets the row helper stay at 3 positional args (the
+# 3-parameter cap from .claude/rules/code-style.md).
+typeset -g _CKIPPER_ACCOUNT_LIST_DEFAULT=""
+
 # Validate the account name and --adopt flag from `ckipper account add` arguments.
 # Prints error messages to stdout and returns non-zero on failure.
 #
@@ -52,7 +58,7 @@ _ckipper_account_add_adopt_flow() {
     fi
     local picked=""
     if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
-        _ckipper_account_add_pick_keychain_entry "$name" picked || return 1
+        picked=$(_ckipper_account_add_pick_keychain_entry "$name") || return 1
     fi
     _CKIPPER_FINALIZE_CTX[name]="$name"
     _CKIPPER_FINALIZE_CTX[dir]="$dir"
@@ -66,18 +72,22 @@ _ckipper_account_add_adopt_flow() {
 readonly _CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL="(skip — register without Keychain entry)"
 
 # Prompt the user to pick a Keychain entry from the available candidates.
-# On return, the nameref variable (arg $2) holds the chosen service (may be empty
-# if the user picked the skip sentinel).
+# Echoes the chosen service name to stdout (or empty string when the user
+# picked the skip sentinel or no candidates exist). zsh has no working
+# `local -n` / `typeset -n`, so the contract is stdout-capture rather than
+# nameref — the caller does `picked=$(_ckipper_account_add_pick_keychain_entry "$name")`.
 #
 # Args:
-#   $1 — account name (for error messages)
-#   $2 — nameref variable to receive the chosen service name
+#   $1 — account name (for the prompt label and error messages)
 #
 # Returns:
 #   0 on success; 1 on keychain error or invalid service shape.
+#
+# Errors (stderr):
+#   "Invalid Keychain service shape: <service>" — when the picked entry has
+#     an unexpected shape (caught by _core_keychain_validate).
 _ckipper_account_add_pick_keychain_entry() {
     local name="$1"
-    local -n _picked_ref="$2"
     local candidates
     candidates=$(_core_keychain_snapshot) || return 1
     [[ -z "$candidates" ]] && return 0
@@ -90,7 +100,7 @@ _ckipper_account_add_pick_keychain_entry() {
         echo "Invalid Keychain service shape: $picked" >&2
         return 1
     fi
-    _picked_ref="$picked"
+    echo "$picked"
 }
 
 # Run the fresh registration flow: create the dir, deploy hooks, launch Claude, detect new keychain.
@@ -336,14 +346,13 @@ _ckipper_account_list() {
         return 0
     fi
     _core_registry_check_version || return 1
-    local default
-    default=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
+    _CKIPPER_ACCOUNT_LIST_DEFAULT=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
     _core_style_header "Registered accounts"
     _ckipper_account_list_header
     _core_style_divider
     jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)\t\(.value.keychain_service // "null")"' "$CKIPPER_REGISTRY" | \
         while IFS=$'\t' read -r name dir keychain; do
-            _ckipper_account_list_row "$name" "$dir" "$keychain" "$default"
+            _ckipper_account_list_row "$name" "$dir" "$keychain"
         done
     echo ""
     echo "* = default. Run: ckipper account default <name>"
@@ -367,12 +376,17 @@ _ckipper_account_list_short_dir() {
 #   $1 — account name
 #   $2 — config directory
 #   $3 — keychain service ("null" string when unset)
-#   $4 — default account name
+#
+# Reads `_CKIPPER_ACCOUNT_LIST_DEFAULT` (set by `_ckipper_account_list`) to
+# decide whether to mark this row as the default. Threading default through
+# the registry-stream pipeline as a 4th positional would break the
+# 3-parameter cap.
 #
 # Returns:
 #   0 always.
 _ckipper_account_list_row() {
-    local name="$1" dir="$2" keychain="$3" default="$4"
+    local name="$1" dir="$2" keychain="$3"
+    local default="$_CKIPPER_ACCOUNT_LIST_DEFAULT"
     local short_dir; short_dir=$(_ckipper_account_list_short_dir "$dir")
     local email="-"
     if [[ -f "$dir/.claude.json" ]]; then
@@ -406,19 +420,25 @@ _ckipper_account_default() {
         echo "Account '$name' is not registered." >&2
         return 1
     fi
-    _core_registry_update '.default = $n' --arg n "$name"
+    if ! _core_registry_update '.default = $n' --arg n "$name"; then
+        echo "Error: failed to set default account in registry." >&2
+        return 1
+    fi
     echo "Default account is now '$name'."
 }
 
 # Unregister an account, then prompt to delete its config dir and Keychain
 # entry via _ckipper_account_cleanup_*. Declining a prompt keeps the
-# file/entry and prints the manual cleanup command.
+# file/entry and prints the manual cleanup command. Refuses to operate while
+# any Claude process is running (mirrors `account rename`) because the
+# subsequent `rm -rf` of the config dir would yank state out from under a
+# live session.
 #
 # Args:
 #   $1 — account name to remove
 #
 # Returns:
-#   0 on success; 1 if account is not registered.
+#   0 on success; 1 if account is not registered or Claude is running.
 _ckipper_account_remove() {
     _core_registry_check_version || return 1
     local name="$1"
@@ -427,9 +447,13 @@ _ckipper_account_remove() {
         echo "Account '$name' is not registered." >&2
         return 1
     fi
+    _core_assert_no_running_claude || return 1
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
     local service; service=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
-    _core_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"
+    if ! _core_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"; then
+        echo "Error: failed to unregister '$name' from the registry. Skipping cleanup of '$dir'." >&2
+        return 1
+    fi
     # Drop the now-stale launcher functions from the calling shell.
     unset -f "claude-$name" 2>/dev/null
     unset -f "$name" 2>/dev/null

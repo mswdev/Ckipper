@@ -219,3 +219,137 @@ run_helper() {
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not registered" ]]
 }
+
+# ── _ckipper_account_add_pick_keychain_entry ─────────────────────────────────
+# Regression: zsh has no working `local -n` / `typeset -n`, so the previous
+# nameref-style implementation silently leaked the picked value to a global
+# named `_picked_ref` and the caller's variable stayed empty. The contract is
+# now stdout-capture: the function echoes the picked service to stdout (or
+# nothing on skip / no candidates).
+
+@test "pick_keychain_entry echoes the picked service to stdout" {
+    run_helper '
+        _core_keychain_snapshot() { printf "Claude Code-credentials\nClaude Code-credentials-personal\n"; }
+        _core_prompt_choose() { echo "Claude Code-credentials-personal"; }
+        _core_keychain_validate() { return 0; }
+        _ckipper_account_add_pick_keychain_entry myaccount
+    '
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "Claude Code-credentials-personal" ]
+}
+
+@test "pick_keychain_entry emits nothing on skip selection" {
+    run_helper '
+        _core_keychain_snapshot() { printf "Claude Code-credentials\n"; }
+        _core_prompt_choose() { echo "$_CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL"; }
+        _ckipper_account_add_pick_keychain_entry myaccount
+    '
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "pick_keychain_entry emits nothing when keychain_snapshot returns no candidates" {
+    run_helper '
+        _core_keychain_snapshot() { :; }
+        _ckipper_account_add_pick_keychain_entry myaccount
+    '
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "pick_keychain_entry returns 1 with stderr error when picked service has bad shape" {
+    run_helper '
+        _core_keychain_snapshot() { echo "bogus-service"; }
+        _core_prompt_choose() { echo "bogus-service"; }
+        _core_keychain_validate() { return 1; }
+        _ckipper_account_add_pick_keychain_entry myaccount
+    '
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid Keychain service shape" ]]
+}
+
+# ── _ckipper_account_remove ──────────────────────────────────────────────────
+# Regression: `account remove` performed `rm -rf` on the account's config dir
+# (via _ckipper_account_cleanup_dir) without first asserting that no Claude
+# process was running. A user with Claude open in another terminal could lose
+# their live session's config dir. `account rename` already had the guard;
+# `remove` is strictly more destructive and now mirrors it.
+
+@test "account remove refuses to act when a Claude process is running" {
+    local dir="$TMP_HOME/.claude-work"
+    mkdir -p "$dir"
+    cat > "$CKIPPER_REGISTRY" <<JSON
+{"version":2,"default":"work","accounts":{"work":{"config_dir":"$dir","keychain_service":null,"registered_at":"t","preferences":{}}}}
+JSON
+
+    # CKIPPER_FORCE=0 → the assert is enforced (not bypassed); PGREP_STUB_MATCH=1
+    # → the pgrep stub reports a fake live Claude process.
+    run env \
+        HOME="$TMP_HOME" \
+        CKIPPER_DIR="$CKIPPER_DIR" \
+        CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" \
+        _CKIPPER_TEST_OSTYPE="darwin19.0" \
+        CKIPPER_FORCE=0 \
+        PGREP_STUB_MATCH=1 \
+        CKIPPER_NO_GUM=1 \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_account_remove work"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Claude process" ]]
+    # Registry entry is still present (no destructive write happened).
+    local accts
+    accts=$(jq -r '.accounts | keys | length' "$CKIPPER_REGISTRY")
+    [ "$accts" = "1" ]
+    # Config dir is still present (no rm -rf happened).
+    [[ -d "$dir" ]]
+}
+
+# ── _ckipper_account_default / remove registry-write error surfacing ─────────
+# Regression: both functions called _core_registry_update without checking $?,
+# then printed success ("Default account is now …" / "Unregistered …") even
+# when the registry write silently failed. account_remove additionally
+# proceeded to delete the config dir and keychain entry based on a registry
+# state that didn't change.
+
+@test "account default surfaces registry-update failure and does not print success" {
+    cat > "$CKIPPER_REGISTRY" <<'JSON'
+{"version":2,"default":null,"accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":null,"registered_at":"t","preferences":{}}}}
+JSON
+
+    run_helper '
+        _core_registry_update() { return 1; }
+        _ckipper_account_default work
+    '
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Error" ]]
+    [[ ! "$output" =~ "Default account is now" ]]
+}
+
+@test "account remove surfaces registry-update failure and skips destructive cleanup" {
+    local dir="$TMP_HOME/.claude-work"
+    mkdir -p "$dir"
+    cat > "$CKIPPER_REGISTRY" <<JSON
+{"version":2,"default":"work","accounts":{"work":{"config_dir":"$dir","keychain_service":null,"registered_at":"t","preferences":{}}}}
+JSON
+
+    run_helper '
+        _core_registry_update() { return 1; }
+        _ckipper_account_remove work
+    '
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Error" ]]
+    [[ ! "$output" =~ "Unregistered" ]]
+    # Config dir must NOT have been rm -rf'd because the registry write failed.
+    [[ -d "$dir" ]]
+    # Registry entry must still be present.
+    local accts
+    accts=$(jq -r '.accounts | keys | length' "$CKIPPER_REGISTRY")
+    [ "$accts" = "1" ]
+}

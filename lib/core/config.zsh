@@ -3,10 +3,10 @@
 #   - global file: $CKIPPER_DIR/docker/ckipper-config.zsh (zsh assignments)
 #   - per-account: $CKIPPER_REGISTRY (.accounts.<name>.preferences.<key>)
 #
-# Schema source-of-truth: lib/config/schema.zsh — must be sourced before this.
+# Schema source-of-truth: lib/core/schema.zsh — must be sourced before this.
 # Functions here resolve the schema arrays at call time, never source-time.
 
-readonly _CKIPPER_GLOBAL_PREFIX="CKIPPER_"
+readonly _CORE_CONFIG_GLOBAL_PREFIX="CKIPPER_"
 
 # Translate a schema key to the global file's variable name.
 #
@@ -14,7 +14,7 @@ readonly _CKIPPER_GLOBAL_PREFIX="CKIPPER_"
 # Returns: 0; prints "CKIPPER_NOTIFY_BELL".
 _core_config_global_var() {
     local key="$1"
-    echo "${_CKIPPER_GLOBAL_PREFIX}${(U)key}"
+    echo "${_CORE_CONFIG_GLOBAL_PREFIX}${(U)key}"
 }
 
 # Path to the global config file.
@@ -25,9 +25,12 @@ _core_config_global_file() {
 }
 
 # Read a global value from the config file without sourcing it.
+# int_array values stored as zsh array literals (KEY=(a b c)) are returned as
+# CSV (a,b,c) so callers see a consistent shape regardless of on-disk form.
 #
 # Args: $1 — schema key
-# Returns: 0; prints the assigned value (quotes stripped) or empty string if unset.
+# Returns: 0; prints the assigned value (quotes stripped, array→CSV) or empty
+#   string if unset.
 _core_config_read_global() {
     local key="$1"
     local var
@@ -38,6 +41,20 @@ _core_config_read_global() {
         echo ""
         return 0
     }
+    local type="${_CKIPPER_SCHEMA_TYPE[$key]:-}"
+    if [[ "$type" == "int_array" ]]; then
+        awk -v v="$var" -F= '
+            $1 == v {
+                sub(/^[^=]+=/, "")
+                gsub(/^\(|\)$/, "")
+                gsub(/^[ \t]+|[ \t]+$/, "")
+                gsub(/[ \t]+/, ",")
+                print
+                exit
+            }
+        ' "$file"
+        return 0
+    fi
     awk -v v="$var" -F= '$1 == v { sub(/^[^=]+=/, ""); gsub(/^"|"$/, ""); print; exit }' "$file"
 }
 
@@ -136,9 +153,26 @@ _core_config_reject_shell_breakout() {
     return 0
 }
 
+# Format a global config-file line for a given key/value pair, picking the
+# right zsh syntax based on schema type. int_array values land as zsh array
+# literals so a `for x in "${KEY[@]}"` consumer sees real elements; all other
+# types land as quoted scalars.
+#
+# Args: $1 — variable name (e.g. CKIPPER_PORTS), $2 — value, $3 — schema type
+# Returns: 0; prints the formatted assignment line.
+_core_config_format_line() {
+    local var="$1" value="$2" type="$3"
+    if [[ "$type" == "int_array" ]]; then
+        echo "${var}=(${value//,/ })"
+        return 0
+    fi
+    echo "${var}=\"${value}\""
+}
+
 # Write a global key into the config file, replacing any existing assignment.
 # Idempotent: existing CKIPPER_<KEY>= line is rewritten in place; absent keys
-# are appended.
+# are appended. The on-disk form depends on the schema type — see
+# _core_config_format_line.
 #
 # Args: $1 — key, $2 — value
 # Returns: 0 on success; 1 on validation failure.
@@ -147,16 +181,19 @@ _core_config_write_global() {
     _core_config_validate "$key" "$value" || return 1
     local var
     var=$(_core_config_global_var "$key")
+    local type="${_CKIPPER_SCHEMA_TYPE[$key]:-}"
+    local line
+    line=$(_core_config_format_line "$var" "$value" "$type")
     local file
     file=$(_core_config_global_file)
     mkdir -p "${file:h}"
     [[ -f "$file" ]] || : >"$file"
     local tmp
     tmp=$(mktemp "${file}.XXXXXX")
-    awk -v v="$var" -v val="$value" -F= '
-        $1 == v { print v "=\"" val "\""; found=1; next }
+    awk -v v="$var" -v repl="$line" -F= '
+        $1 == v { print repl; found=1; next }
         { print }
-        END { if (!found) print v "=\"" val "\"" }
+        END { if (!found) print repl }
     ' "$file" >"$tmp" && mv "$tmp" "$file"
 }
 

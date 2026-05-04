@@ -25,7 +25,7 @@ _run_registry() {
         CKIPPER_REGISTRY_VERSION="${CKIPPER_REGISTRY_VERSION:-2}" \
         _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-darwin19.0}" \
         PATH="$PATH" \
-        zsh -c "source \"$REPO_ROOT/lib/core/utils.zsh\"; source \"$REPO_ROOT/lib/config/schema.zsh\"; source \"$REPO_ROOT/lib/core/registry.zsh\"; $zsh_cmd"
+        zsh -c "source \"$REPO_ROOT/lib/core/utils.zsh\"; source \"$REPO_ROOT/lib/core/schema.zsh\"; source \"$REPO_ROOT/lib/core/registry.zsh\"; $zsh_cmd"
 }
 
 # Seed a v1 registry fixture with a single account.

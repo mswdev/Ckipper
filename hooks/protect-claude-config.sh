@@ -44,6 +44,7 @@ fi
 # .git/worktrees/ execute on the host the next time the user runs git, so they
 # constitute a container-escape vector. The leading '/' anchor avoids
 # over-blocking '.gitignore', '.github/', or directories like '.git-foo/'.
+# Pattern subpath kept in sync with hooks/bash-guardrails.sh:78.
 if [[ $RESOLVED_PATH =~ /\.git/(config|info/|hooks/|worktrees/) ]]; then
     echo "Blocked: cannot modify $FILE_PATH (protected host .git file)" >&2
     exit 2

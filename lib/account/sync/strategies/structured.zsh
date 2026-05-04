@@ -124,8 +124,14 @@ _ckipper_account_sync_mcp_apply() {
 # cannot do, so enumerating it here would silently plant broken absolute
 # paths on the destination when sync runs without `statusline` included).
 #
+# The id column is the JSON-encoded path array (e.g. `["permissions","allow"]`
+# or `["cleanup-period-days"]`). compare/diff/apply parse it back via
+# `--argjson p` and use `getpath`/`setpath` — never `.foo.bar` filter strings,
+# which jq would mis-parse for keys containing `-`, `.`, or other operator
+# characters. The display column is the dotted string for the preview UI.
+#
 # Args: $1 — source account dir.
-# Returns: 0; prints "<jq-path-no-leading-dot>\t<display>" per line.
+# Returns: 0; prints "<json-path-array>\t<display>" per line.
 _ckipper_account_sync_settings_enumerate() {
     local src="$1"
     local file="$src/settings.json"
@@ -138,44 +144,28 @@ _ckipper_account_sync_settings_enumerate() {
         | .[]
         | . as $p
         | select(($root | getpath($p)) | type != "object")
-        | ($p | map(tostring) | join(".")) as $k
-        | select($k | startswith("hooks") | not)
-        | select($k | startswith("statusLine") | not)
-        | "\($k)\t\($k)"
+        | ($p | map(tostring) | join(".")) as $display
+        | select($display | startswith("hooks") | not)
+        | select($display | startswith("statusLine") | not)
+        | "\($p | tojson)\t\($display)"
     ' "$file" 2>/dev/null
 }
 
 # Compare a jq-path between source and destination.
 #
-# Args: $1 — src; $2 — dst; $3 — jq path (no leading dot).
+# Args: $1 — src; $2 — dst; $3 — JSON path array (e.g. '["model"]').
 # Returns: 0; prints "new" | "overwrite" | "unchanged".
 _ckipper_account_sync_settings_compare() {
     local src="$1" dst="$2" id="$3"
-    local jq_path; jq_path=$(_ckipper_account_sync_settings_jq_path "$id")
     local s d
-    s=$(jq -c "$jq_path // null" "$src/settings.json" 2>/dev/null)
-    d=$(jq -c "$jq_path // null" "$dst/settings.json" 2>/dev/null)
+    s=$(jq -c --argjson p "$id" 'getpath($p) // null' "$src/settings.json" 2>/dev/null)
+    d=$(jq -c --argjson p "$id" 'getpath($p) // null' "$dst/settings.json" 2>/dev/null)
     _ckipper_account_sync_json_status "$s" "$d"
-}
-
-# Convert a dotted id like "permissions.allow" into a jq filter ".permissions.allow".
-# Bare id goes to the empty filter "." which selects the document root —
-# never used in practice because enumerate filters to leaves.
-#
-# Note: arg variable is `id` (not `path`) — zsh ties lowercase `path` to `$PATH`
-# as an array, which corrupts the env if used as a local var.
-#
-# Args: $1 — dotted id (no leading dot).
-# Returns: 0; prints jq filter string.
-_ckipper_account_sync_settings_jq_path() {
-    local id="$1"
-    [[ -z "$id" ]] && { echo "."; return 0; }
-    echo ".$id"
 }
 
 # One-line summary for the preview table.
 #
-# Args: $1 — src; $2 — dst; $3 — jq path.
+# Args: $1 — src; $2 — dst; $3 — JSON path array.
 # Returns: 0; prints summary.
 _ckipper_account_sync_settings_summary() {
     local src="$1" dst="$2" id="$3"
@@ -189,34 +179,31 @@ _ckipper_account_sync_settings_summary() {
 
 # Full diff for drill-down.
 #
-# Args: $1 — src; $2 — dst; $3 — jq path.
+# Args: $1 — src; $2 — dst; $3 — JSON path array.
 # Returns: 0; prints labeled before/after.
 _ckipper_account_sync_settings_diff() {
     local src="$1" dst="$2" id="$3"
-    local jq_path; jq_path=$(_ckipper_account_sync_settings_jq_path "$id")
-    echo "── source ($src/settings.json:$id) ──"
-    jq "$jq_path" "$src/settings.json"
-    echo "── destination ($dst/settings.json:$id) ──"
-    jq "$jq_path" "$dst/settings.json" 2>/dev/null
+    local display; display=$(jq -r -n --argjson p "$id" '$p | map(tostring) | join(".")')
+    echo "── source ($src/settings.json:$display) ──"
+    jq --argjson p "$id" 'getpath($p)' "$src/settings.json"
+    echo "── destination ($dst/settings.json:$display) ──"
+    jq --argjson p "$id" 'getpath($p)' "$dst/settings.json" 2>/dev/null
 }
 
-# Apply: write the source value at jq-path into the destination's settings.json
-# using jq's `setpath`, preserving all sibling content. Uses atomic write +
-# JSON validation gate.
+# Apply: write the source value at the given path into the destination's
+# settings.json using jq's `setpath`, preserving all sibling content. Uses
+# atomic write + JSON validation gate.
 #
-# Args: $1 — src; $2 — dst; $3 — jq path; $4 — backup_dir.
+# Args: $1 — src; $2 — dst; $3 — JSON path array; $4 — backup_dir.
 # Returns: 0 on success; non-zero on jq/write failure.
 _ckipper_account_sync_settings_apply() {
     local src="$1" dst="$2" id="$3" backup_dir="$4"
     _ckipper_account_sync_backup_file "$backup_dir" "$dst/settings.json" "settings.json" || return 1
     [[ -f "$dst/settings.json" ]] || echo '{}' > "$dst/settings.json"
-    local jq_path; jq_path=$(_ckipper_account_sync_settings_jq_path "$id")
     local val_json
-    val_json=$(jq -c "$jq_path" "$src/settings.json")
-    local id_array
-    id_array=$(jq -c -n --arg p "$id" '$p | split(".")')
+    val_json=$(jq -c --argjson p "$id" 'getpath($p)' "$src/settings.json")
     local merged
-    merged=$(jq --argjson p "$id_array" --argjson v "$val_json" \
+    merged=$(jq --argjson p "$id" --argjson v "$val_json" \
         'setpath($p; $v)' "$dst/settings.json")
     _ckipper_account_sync_json_atomic_write "$dst/settings.json" "$merged"
 }
@@ -227,7 +214,7 @@ _ckipper_account_sync_settings_apply() {
 # passes account NAMES through the dir args. This is the only strategy that
 # uses CKIPPER_REGISTRY rather than the dir paths.
 #
-# Depends on lib/config/schema.zsh (account-scope key list) and
+# Depends on lib/core/schema.zsh (account-scope key list) and
 # lib/core/config.zsh (_core_config_get/_core_config_set).
 
 # Enumerate every account-scope schema key.
