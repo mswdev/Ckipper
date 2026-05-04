@@ -46,6 +46,63 @@ _run_worktree() {
     [[ "$output" =~ "Worktrees" ]]
 }
 
+# Regression: scanning was unbounded and pruned only node_modules. With a
+# 6 GB worktrees tree the scan took ~700 ms. Pruning the heavy build dirs
+# (`dist`, `.next`, `target`, `__pycache__`, etc.) brings it to ~30 ms and
+# avoids reporting any phantom `.git` files nested inside those trees.
+@test "_ckipper_worktree_list_worktrees skips .git files inside pruned dirs" {
+    # Real worktree (should appear in output).
+    mkdir -p "$CKIPPER_WORKTREES_DIR/myapp/feature-x"
+    touch    "$CKIPPER_WORKTREES_DIR/myapp/feature-x/.git"
+
+    # Phantom .git files buried inside dirs we should prune. Each filename
+    # is unique so we can assert it does NOT show up by name.
+    mkdir -p "$CKIPPER_WORKTREES_DIR/myapp/feature-x/node_modules/pkg-a"
+    touch    "$CKIPPER_WORKTREES_DIR/myapp/feature-x/node_modules/pkg-a/.git"
+    mkdir -p "$CKIPPER_WORKTREES_DIR/myapp/feature-x/dist/pkg-b"
+    touch    "$CKIPPER_WORKTREES_DIR/myapp/feature-x/dist/pkg-b/.git"
+    mkdir -p "$CKIPPER_WORKTREES_DIR/myapp/feature-x/__pycache__/pkg-c"
+    touch    "$CKIPPER_WORKTREES_DIR/myapp/feature-x/__pycache__/pkg-c/.git"
+
+    _run_worktree "_ckipper_worktree_list_worktrees"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"feature-x"* ]]
+    [[ "$output" != *"pkg-a"* ]]
+    [[ "$output" != *"pkg-b"* ]]
+    [[ "$output" != *"pkg-c"* ]]
+}
+
+# Regression: branches contain slashes (`feature/foo`, `fix/bar`) so the
+# scan must not be depth-bounded — the pruned find still has to surface a
+# worktree whose `.git` lives several levels deep.
+@test "_ckipper_worktree_list_worktrees finds worktrees whose branch name contains slashes" {
+    mkdir -p "$CKIPPER_WORKTREES_DIR/myapp/feature/OGD-320-deep-branch"
+    touch    "$CKIPPER_WORKTREES_DIR/myapp/feature/OGD-320-deep-branch/.git"
+
+    _run_worktree "_ckipper_worktree_list_worktrees"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"feature/OGD-320-deep-branch"* ]]
+}
+
+# Regression: `local branch` (no assignment) inside the per-worktree loop
+# behaves like `typeset -p branch` once `branch` carries a value from a
+# prior iteration, leaking literal `branch='…'` lines onto stdout. The fix
+# is `local branch=""`. Two worktrees are needed to trigger iteration N>1
+# on the same loop scope.
+@test "_ckipper_worktree_list_worktrees does not leak local-redeclare echoes" {
+    mkdir -p "$CKIPPER_WORKTREES_DIR/myapp/feature/one"
+    touch    "$CKIPPER_WORKTREES_DIR/myapp/feature/one/.git"
+    mkdir -p "$CKIPPER_WORKTREES_DIR/myapp/feature/two"
+    touch    "$CKIPPER_WORKTREES_DIR/myapp/feature/two/.git"
+
+    _run_worktree "_ckipper_worktree_list_worktrees"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"branch="* ]]
+}
+
 @test "_ckipper_worktree_remove_worktree fails when worktree path does not exist" {
     _run_worktree "_ckipper_worktree_remove_worktree myapp nonexistent-branch"
 
