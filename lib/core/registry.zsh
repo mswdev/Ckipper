@@ -1,11 +1,11 @@
 #!/usr/bin/env zsh
 # Shared registry read/write primitives for managing the ckipper accounts registry.
 
-readonly REGISTRY_FILE_PERMS=600
-readonly LOCK_NOTIFY_THRESHOLD_ATTEMPTS=30
-readonly LOCK_MAX_ATTEMPTS=200
-readonly STALE_LOCK_AGE_THRESHOLD_SECONDS=30
-readonly LOCK_RETRY_INTERVAL_SECONDS=0.05
+readonly _CORE_REGISTRY_FILE_PERMS=600
+readonly _CORE_REGISTRY_LOCK_NOTIFY_THRESHOLD_ATTEMPTS=30
+readonly _CORE_REGISTRY_LOCK_MAX_ATTEMPTS=200
+readonly _CORE_REGISTRY_STALE_LOCK_AGE_THRESHOLD_SECONDS=30
+readonly _CORE_REGISTRY_LOCK_RETRY_INTERVAL_SECONDS=0.05
 
 # Perform an atomic registry update via flock (Linux/GNU systems).
 #
@@ -25,7 +25,7 @@ _core_registry_update_with_flock() {
         local registry_tmpfile; registry_tmpfile=$(mktemp "$CKIPPER_DIR/.registry.tmp.XXXXXX")
         if jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$registry_tmpfile" 2>/dev/null; then
             mv "$registry_tmpfile" "$CKIPPER_REGISTRY"
-            chmod "$REGISTRY_FILE_PERMS" "$CKIPPER_REGISTRY"
+            chmod "$_CORE_REGISTRY_FILE_PERMS" "$CKIPPER_REGISTRY"
             rc=0
         else
             rm -f "$registry_tmpfile"
@@ -68,12 +68,12 @@ _core_registry_recover_stale_lock() {
 #   2 if the lock is live but held too long (caller should abort).
 _core_registry_check_stale_lock() {
     local lockdir="$1" attempts="$2"
-    (( attempts < LOCK_MAX_ATTEMPTS )) && return 1
+    (( attempts < _CORE_REGISTRY_LOCK_MAX_ATTEMPTS )) && return 1
     local current_time_epoch modification_time_epoch lock_age_seconds
     current_time_epoch=$(date +%s)
     modification_time_epoch=$(_core_stat_mtime "$lockdir")
     lock_age_seconds=$(( current_time_epoch - ${modification_time_epoch:-$current_time_epoch} ))
-    if (( lock_age_seconds > STALE_LOCK_AGE_THRESHOLD_SECONDS )); then
+    if (( lock_age_seconds > _CORE_REGISTRY_STALE_LOCK_AGE_THRESHOLD_SECONDS )); then
         _core_registry_recover_stale_lock "$lockdir" "$lock_age_seconds"
         return 0
     fi
@@ -98,7 +98,7 @@ _core_registry_acquire_mkdir_lock() {
     local attempts=0 has_notified="false"
     while ! mkdir "$lockdir" 2>/dev/null; do
         (( attempts++ ))
-        if (( attempts == LOCK_NOTIFY_THRESHOLD_ATTEMPTS )) && [[ "$has_notified" = "false" ]]; then
+        if (( attempts == _CORE_REGISTRY_LOCK_NOTIFY_THRESHOLD_ATTEMPTS )) && [[ "$has_notified" = "false" ]]; then
             echo "Waiting on registry lock..." >&2
             has_notified="true"
         fi
@@ -109,7 +109,7 @@ _core_registry_acquire_mkdir_lock() {
             continue
         fi
         (( stale_rc == 2 )) && return 1
-        sleep "$LOCK_RETRY_INTERVAL_SECONDS"
+        sleep "$_CORE_REGISTRY_LOCK_RETRY_INTERVAL_SECONDS"
     done
 }
 
@@ -136,7 +136,7 @@ _core_registry_update_mkdir_fallback() {
     local registry_tmpfile; registry_tmpfile=$(mktemp "$CKIPPER_DIR/.registry.tmp.XXXXXX")
     if jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$registry_tmpfile" 2>/dev/null; then
         mv "$registry_tmpfile" "$CKIPPER_REGISTRY"
-        chmod "$REGISTRY_FILE_PERMS" "$CKIPPER_REGISTRY"
+        chmod "$_CORE_REGISTRY_FILE_PERMS" "$CKIPPER_REGISTRY"
         return 0
     fi
     rm -f "$registry_tmpfile"
@@ -180,7 +180,7 @@ _core_registry_init() {
         '{"version": $v, "default": null, "accounts": {}}' > "$registry_tmpfile"
     # mv -n (no-clobber): if another writer beat us, leave their file alone.
     mv -n "$registry_tmpfile" "$CKIPPER_REGISTRY" 2>/dev/null || rm -f "$registry_tmpfile"
-    [[ -f "$CKIPPER_REGISTRY" ]] && chmod "$REGISTRY_FILE_PERMS" "$CKIPPER_REGISTRY"
+    [[ -f "$CKIPPER_REGISTRY" ]] && chmod "$_CORE_REGISTRY_FILE_PERMS" "$CKIPPER_REGISTRY"
 }
 
 # Build a JSON object of every account-scope schema key with its default

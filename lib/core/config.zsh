@@ -6,7 +6,7 @@
 # Schema source-of-truth: lib/core/schema.zsh — must be sourced before this.
 # Functions here resolve the schema arrays at call time, never source-time.
 
-readonly _CKIPPER_GLOBAL_PREFIX="CKIPPER_"
+readonly _CORE_CONFIG_GLOBAL_PREFIX="CKIPPER_"
 
 # Translate a schema key to the global file's variable name.
 #
@@ -14,7 +14,7 @@ readonly _CKIPPER_GLOBAL_PREFIX="CKIPPER_"
 # Returns: 0; prints "CKIPPER_NOTIFY_BELL".
 _core_config_global_var() {
     local key="$1"
-    echo "${_CKIPPER_GLOBAL_PREFIX}${(U)key}"
+    echo "${_CORE_CONFIG_GLOBAL_PREFIX}${(U)key}"
 }
 
 # Path to the global config file.

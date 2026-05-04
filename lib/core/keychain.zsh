@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # Shared macOS Keychain and Claude process utilities.
 
-readonly KEYCHAIN_TIMEOUT_SECONDS=10
+readonly _CORE_KEYCHAIN_TIMEOUT_SECONDS=10
 
 # Validate a keychain_service name before passing to `security`.
 # Accepts "Claude Code-credentials" optionally followed by "-<hex>".
@@ -23,9 +23,9 @@ _core_keychain_validate() {
 #   0 always; prints the timeout command prefix to stdout (empty if none found).
 _core_keychain_detect_timeout_cmd() {
     if command -v timeout >/dev/null 2>&1; then
-        printf 'timeout %s' "$KEYCHAIN_TIMEOUT_SECONDS"
+        printf 'timeout %s' "$_CORE_KEYCHAIN_TIMEOUT_SECONDS"
     elif command -v gtimeout >/dev/null 2>&1; then
-        printf 'gtimeout %s' "$KEYCHAIN_TIMEOUT_SECONDS"
+        printf 'gtimeout %s' "$_CORE_KEYCHAIN_TIMEOUT_SECONDS"
     fi
 }
 
