@@ -37,15 +37,6 @@
 # All five functions take their arguments in the same order so the engine
 # can call them through _ckipper_account_sync_strategy_fn uniformly.
 
-# Per-target context shared by apply_target → apply_one and the preview/
-# finalize helpers in dispatcher.zsh. Declared here too because engine.zsh
-# is sourced before dispatcher.zsh, and engine_test.bats sources only the
-# engine. Re-declaration without `=()` is a no-op so dispatcher.zsh's
-# matching declaration doesn't reset state. Keys: src_dir, dst_dir,
-# src_name, dst_name, backup_dir (and from dispatcher: changeset, summaries,
-# items).
-typeset -gA _CKIPPER_SYNC_CTX
-
 # Compute the strategy function name for a (type, verb) pair.
 #
 # Args: $1 — type id (e.g. "mcp", "claude-md"); $2 — verb (enumerate, compare,

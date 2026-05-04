@@ -8,7 +8,8 @@ teardown() { teardown_isolated_env; }
 
 run_in_zsh() {
     run env CKIPPER_DIR="$CKIPPER_DIR" \
-        zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
+        zsh -c "source \"$REPO_ROOT/lib/account/sync/_shared.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/dispatcher.zsh\"; $*"
 }
 

@@ -5,6 +5,16 @@
 # call these without a sibling import. Keep this file dependency-free
 # (no calls into other sync modules) so the load order stays trivial.
 
+# Per-target context shared across the engine, dispatcher, and preview
+# modules. Single canonical declaration here — those three modules must NOT
+# redeclare it (any `=()` in a redeclaration would silently reset state set
+# by an earlier module). Module test files source this file before the
+# module under test for the same reason.
+#
+# Keys: src_dir, dst_dir, src_name, dst_name, backup_dir, changeset,
+# summaries, items.
+typeset -gA _CKIPPER_SYNC_CTX
+
 # Compute sha256 of a file. Uses shasum (macOS- and Linux-friendly).
 #
 # Args: $1 — file path.

@@ -11,10 +11,7 @@ readonly _CKIPPER_SYNC_BADGE_OVERWRITE="[~]"
 readonly _CKIPPER_SYNC_DIVIDER_WIDTH=45
 readonly _CKIPPER_SYNC_DISPLAY_COL_WIDTH=26
 
-# Per-target context (declared here too because preview_test.bats sources
-# only this module). See engine.zsh for the full key list. Re-declaration
-# without `=()` is a no-op so we don't reset state set by earlier modules.
-typeset -gA _CKIPPER_SYNC_CTX
+# _CKIPPER_SYNC_CTX is declared in lib/account/sync/_shared.zsh.
 
 # Print the divider line for the summary table.
 #
