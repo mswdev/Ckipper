@@ -115,6 +115,29 @@ _ckipper_setup_add_account() {
     typeset -A prefs
     _ckipper_setup_collect_account_prefs "$name"
     _ckipper_setup_apply_account "$name" prefs
+    _ckipper_setup_offer_initial_sync "$name"
+}
+
+# After a successful 2nd-or-later account add, offer to sync from an existing
+# account into the freshly-added one. Skips when no other accounts exist.
+#
+# Args: $1 — newly-added account name.
+# Returns: 0 always (cancellation is silent).
+_ckipper_setup_offer_initial_sync() {
+    local new_account="$1"
+    local count
+    count=$(jq -r '.accounts | length' "$CKIPPER_REGISTRY" 2>/dev/null || echo 0)
+    (( count < 2 )) && return 0
+    if ! _core_prompt_confirm "Sync settings from an existing account into '$new_account'?"; then
+        return 0
+    fi
+    local -a others
+    others=( ${(f)"$(_ckipper_account_sync_list_accounts_except "$new_account")"} )
+    (( ${#others} == 0 )) && return 0
+    local source_name
+    source_name=$(_core_prompt_choose "Sync from which account?" "${others[@]}")
+    [[ -z "$source_name" ]] && return 0
+    _ckipper_account_sync_dispatch "$source_name" "$new_account"
 }
 
 # Map a single y/N confirmation to a "true"/"false" entry in the parent-scope

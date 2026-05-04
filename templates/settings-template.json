@@ -1,5 +1,5 @@
 {
-  "_comment": "Per-account settings.json template. Copied verbatim by ckipper account add; hook paths are rewritten to the account dir by ckipper account sync-hooks.",
+  "_comment": "Per-account settings.json template. Copied verbatim by ckipper account add; hook paths are rewritten to the account dir by ckipper account redeploy-hooks.",
   "hooks": {
     "PreToolUse": [
       {

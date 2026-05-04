@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — CLI + onboarding overhaul
 
+### Sync system overhaul
+
+- **New:** `ckipper account sync` is fully interactive by default. Run with no args to pick source, targets, and types via gum pickers; pass positional args to skip the relevant pickers.
+- **New:** 10 syncable types covering every shareable Claude Code config category: MCP servers, settings (top-level + nested keys), CLAUDE.md, agents, commands, output-styles, skills, statusline (with internal/external script detection), user-written hooks (filtered against the install allowlist), and account preferences.
+- **New:** Named bundles `all`, `customizations`, `claude-config`, `preferences` for `--include` / `--exclude`.
+- **New:** Multi-destination support — sync from one account to many in a single invocation.
+- **New:** Summary table preview with `git status`-style status badges (`[+]` / `[~]`) and on-demand drill-down for any per-item diff.
+- **New:** Timestamped backups before any destructive write — `<dst>/.ckipper-sync-backups/<ts>-from-<source>/` — with manifest-driven restore via `ckipper account sync undo <account> [--pick | --list]`.
+- **New:** Hard refusal when any Claude CLI process is running (override with `--force`). macOS does not expose other processes' `CLAUDE_CONFIG_DIR` env var to non-privileged callers, so the refusal cannot be filtered down to "Claude on this destination dir specifically" — it is conservative by design.
+- **New:** Setup wizard offers initial sync after adding a 2nd-or-later account.
+- **Renamed:** `ckipper account sync-hooks` → `ckipper account redeploy-hooks`. The new name reflects that it deploys the ckipper-managed safety hooks from the install dir to every account; it is NOT peer-to-peer sync.
+- **Removed:** Old flag surface (`--mcp [names]`, `--settings <keys>`, `--all`). The new `--include` / `--exclude` model with bundles supersedes these.
+
 ### Added
 - `ckipper setup` — interactive wizard for configuring Ckipper. Re-runnable.
 - `ckipper config get / set / unset / list / edit` — view and modify settings.
@@ -27,10 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - `ckipper account repair-plugins` (folded into `ckipper doctor --fix`).
-- `ckipper account sync-hooks` from public help (still callable; auto-runs after install/setup).
-
-### Notes
-- `lib/account/sync.zsh` is intentionally untouched — full sync overhaul ships in a separate future PR.
 
 ## [0.2.0] — 2026-04-30 — Breaking changes: merge `w` into `ckipper`
 

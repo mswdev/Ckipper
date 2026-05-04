@@ -105,7 +105,7 @@ _ckipper_account_add_fresh_flow() {
     if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then
         cp "$CKIPPER_DIR/settings-template.json" "$dir/settings.json"
     fi
-    _ckipper_account_sync_hooks_for "$name" "$dir"
+    _ckipper_account_redeploy_hooks_for "$name" "$dir"
     local before_snapshot
     before_snapshot=$(_core_keychain_snapshot) || return 1
     _ckipper_account_add_launch_claude "$name" "$dir" || return 1
@@ -256,7 +256,7 @@ _ckipper_account_finalize_registration() {
 _ckipper_account_finalize_announce() {
     local name="$1" mode="$2"
     _ckipper_account_regenerate_aliases
-    _ckipper_account_sync_hooks_for "$name"
+    _ckipper_account_redeploy_hooks_for "$name"
     echo "Registered '$name' (mode: $mode)."
     if _ckipper_account_bare_alias_safe "$name"; then
         echo "Use it via: claude-$name   (or just: $name)"
@@ -538,7 +538,7 @@ _ckipper_account_rename() {
     unset -f "claude-$old" 2>/dev/null
     unset -f "$old" 2>/dev/null
     _ckipper_account_regenerate_aliases
-    _ckipper_account_sync_hooks_for "$new"   # rewrite per-account settings.json hook paths to new dir
+    _ckipper_account_redeploy_hooks_for "$new"   # rewrite per-account settings.json hook paths to new dir
     echo "Renamed '$old' → '$new'."
     echo "Directory:    $old_dir → $new_dir"
     if _ckipper_account_bare_alias_safe "$new"; then

@@ -56,6 +56,7 @@ lint-merge-guards:
 	@! grep -rE '\b_ckipper_setup_' lib/account/ lib/worktree/ lib/config/ lib/run/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: setup-namespace reference outside lib/setup/" >&2 && exit 1)
 	@! grep -rE '\b_ckipper_run_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: run-namespace reference outside lib/run/" >&2 && exit 1)
 	@! grep -rE '\b_ckipper_launcher_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/run/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: launcher-namespace reference outside lib/launcher/" >&2 && exit 1)
+	@! grep -rE '^_core_[a-z_]+\(\)' lib/account/ lib/worktree/ lib/config/ lib/setup/ lib/run/ lib/launcher/ --include='*.zsh' 2>/dev/null || (echo "lint-merge-guards: _core_* function defined outside lib/core/ (see .claude/rules/shell-conventions.md — _core_* is reserved for lib/core/)" >&2 && exit 1)
 
 install:
 	./install.sh
