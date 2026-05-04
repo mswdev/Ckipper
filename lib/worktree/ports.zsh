@@ -38,7 +38,7 @@ _ckipper_worktree_bind_port() {
     done
 
     if [[ "$is_bound" != "true" ]]; then
-        echo "  Port $port: no available host port found ($port-$((port+_CKIPPER_WT_MAX_PORT_FALLBACK_ATTEMPTS-1)) all in use)"
+        echo "  Port $port: no available host port found ($port-$((port+_CKIPPER_WT_MAX_PORT_FALLBACK_ATTEMPTS-1)) all in use)" >&2
     fi
 }
 

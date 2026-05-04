@@ -7,7 +7,7 @@
 _ckipper_worktree_build_image() {
     local docker_dir="${CKIPPER_DIR:-$HOME/.ckipper}/docker"
     if [[ ! -f "$docker_dir/Dockerfile" ]]; then
-        echo "Dockerfile not found: $docker_dir/Dockerfile"
+        echo "Dockerfile not found: $docker_dir/Dockerfile" >&2
         return 1
     fi
     echo "Building ckipper-dev Docker image..."

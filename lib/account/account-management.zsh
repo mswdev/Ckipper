@@ -11,6 +11,12 @@ typeset -gA _CKIPPER_FINALIZE_CTX
 # Fields: old_dir, new_dir
 typeset -gA _CKIPPER_RENAME_CTX
 
+# Module-level context for `ckipper account list`: the default account name,
+# read once by `_ckipper_account_list` and read by `_ckipper_account_list_row`
+# to pick the marker. Lets the row helper stay at 3 positional args (the
+# 3-parameter cap from .claude/rules/code-style.md).
+typeset -g _CKIPPER_ACCOUNT_LIST_DEFAULT=""
+
 # Validate the account name and --adopt flag from `ckipper account add` arguments.
 # Prints error messages to stdout and returns non-zero on failure.
 #
@@ -340,14 +346,13 @@ _ckipper_account_list() {
         return 0
     fi
     _core_registry_check_version || return 1
-    local default
-    default=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
+    _CKIPPER_ACCOUNT_LIST_DEFAULT=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
     _core_style_header "Registered accounts"
     _ckipper_account_list_header
     _core_style_divider
     jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)\t\(.value.keychain_service // "null")"' "$CKIPPER_REGISTRY" | \
         while IFS=$'\t' read -r name dir keychain; do
-            _ckipper_account_list_row "$name" "$dir" "$keychain" "$default"
+            _ckipper_account_list_row "$name" "$dir" "$keychain"
         done
     echo ""
     echo "* = default. Run: ckipper account default <name>"
@@ -371,12 +376,17 @@ _ckipper_account_list_short_dir() {
 #   $1 — account name
 #   $2 — config directory
 #   $3 — keychain service ("null" string when unset)
-#   $4 — default account name
+#
+# Reads `_CKIPPER_ACCOUNT_LIST_DEFAULT` (set by `_ckipper_account_list`) to
+# decide whether to mark this row as the default. Threading default through
+# the registry-stream pipeline as a 4th positional would break the
+# 3-parameter cap.
 #
 # Returns:
 #   0 always.
 _ckipper_account_list_row() {
-    local name="$1" dir="$2" keychain="$3" default="$4"
+    local name="$1" dir="$2" keychain="$3"
+    local default="$_CKIPPER_ACCOUNT_LIST_DEFAULT"
     local short_dir; short_dir=$(_ckipper_account_list_short_dir "$dir")
     local email="-"
     if [[ -f "$dir/.claude.json" ]]; then
