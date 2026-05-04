@@ -219,3 +219,55 @@ run_helper() {
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not registered" ]]
 }
+
+# ── _ckipper_account_add_pick_keychain_entry ─────────────────────────────────
+# Regression: zsh has no working `local -n` / `typeset -n`, so the previous
+# nameref-style implementation silently leaked the picked value to a global
+# named `_picked_ref` and the caller's variable stayed empty. The contract is
+# now stdout-capture: the function echoes the picked service to stdout (or
+# nothing on skip / no candidates).
+
+@test "pick_keychain_entry echoes the picked service to stdout" {
+    run_helper '
+        _core_keychain_snapshot() { printf "Claude Code-credentials\nClaude Code-credentials-personal\n"; }
+        _core_prompt_choose() { echo "Claude Code-credentials-personal"; }
+        _core_keychain_validate() { return 0; }
+        _ckipper_account_add_pick_keychain_entry myaccount
+    '
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "Claude Code-credentials-personal" ]
+}
+
+@test "pick_keychain_entry emits nothing on skip selection" {
+    run_helper '
+        _core_keychain_snapshot() { printf "Claude Code-credentials\n"; }
+        _core_prompt_choose() { echo "$_CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL"; }
+        _ckipper_account_add_pick_keychain_entry myaccount
+    '
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "pick_keychain_entry emits nothing when keychain_snapshot returns no candidates" {
+    run_helper '
+        _core_keychain_snapshot() { :; }
+        _ckipper_account_add_pick_keychain_entry myaccount
+    '
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "pick_keychain_entry returns 1 with stderr error when picked service has bad shape" {
+    run_helper '
+        _core_keychain_snapshot() { echo "bogus-service"; }
+        _core_prompt_choose() { echo "bogus-service"; }
+        _core_keychain_validate() { return 1; }
+        _ckipper_account_add_pick_keychain_entry myaccount
+    '
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Invalid Keychain service shape" ]]
+}

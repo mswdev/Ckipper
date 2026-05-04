@@ -52,7 +52,7 @@ _ckipper_account_add_adopt_flow() {
     fi
     local picked=""
     if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
-        _ckipper_account_add_pick_keychain_entry "$name" picked || return 1
+        picked=$(_ckipper_account_add_pick_keychain_entry "$name") || return 1
     fi
     _CKIPPER_FINALIZE_CTX[name]="$name"
     _CKIPPER_FINALIZE_CTX[dir]="$dir"
@@ -66,18 +66,22 @@ _ckipper_account_add_adopt_flow() {
 readonly _CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL="(skip — register without Keychain entry)"
 
 # Prompt the user to pick a Keychain entry from the available candidates.
-# On return, the nameref variable (arg $2) holds the chosen service (may be empty
-# if the user picked the skip sentinel).
+# Echoes the chosen service name to stdout (or empty string when the user
+# picked the skip sentinel or no candidates exist). zsh has no working
+# `local -n` / `typeset -n`, so the contract is stdout-capture rather than
+# nameref — the caller does `picked=$(_ckipper_account_add_pick_keychain_entry "$name")`.
 #
 # Args:
-#   $1 — account name (for error messages)
-#   $2 — nameref variable to receive the chosen service name
+#   $1 — account name (for the prompt label and error messages)
 #
 # Returns:
 #   0 on success; 1 on keychain error or invalid service shape.
+#
+# Errors (stderr):
+#   "Invalid Keychain service shape: <service>" — when the picked entry has
+#     an unexpected shape (caught by _core_keychain_validate).
 _ckipper_account_add_pick_keychain_entry() {
     local name="$1"
-    local -n _picked_ref="$2"
     local candidates
     candidates=$(_core_keychain_snapshot) || return 1
     [[ -z "$candidates" ]] && return 0
@@ -90,7 +94,7 @@ _ckipper_account_add_pick_keychain_entry() {
         echo "Invalid Keychain service shape: $picked" >&2
         return 1
     fi
-    _picked_ref="$picked"
+    echo "$picked"
 }
 
 # Run the fresh registration flow: create the dir, deploy hooks, launch Claude, detect new keychain.
