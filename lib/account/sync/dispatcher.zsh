@@ -95,13 +95,37 @@ _ckipper_account_sync_run() {
     fi
     if (( ${#_CKIPPER_SYNC_TARGETS} == 0 )); then
         _CKIPPER_SYNC_TARGETS=( ${(f)"$(_ckipper_account_sync_pick_targets "$_CKIPPER_SYNC_FROM")"} )
-        (( ${#_CKIPPER_SYNC_TARGETS} == 0 )) && return 1
+        if (( ${#_CKIPPER_SYNC_TARGETS} == 0 )); then
+            _ckipper_account_sync_empty_select_hint "target accounts"
+            return 1
+        fi
     fi
     _ckipper_account_sync_validate_accounts || return 1
     local -a types
     types=( ${(f)"$(_ckipper_account_sync_resolve_types)"} )
-    (( ${#types} == 0 )) && { echo "No types selected." >&2; return 1; }
+    if (( ${#types} == 0 )); then
+        _ckipper_account_sync_empty_select_hint "sync types"
+        return 1
+    fi
     _ckipper_account_sync_run_targets types
+}
+
+# Print a friendly hint when a multi-select picker returns nothing.
+#
+# `gum choose --no-limit` exits 0 with empty stdout when the user presses
+# ENTER without first toggling items with SPACE — easy to do because the
+# single-select source picker right before it accepts ENTER on its own.
+# Without this hint, the wizard exits silently and users believe the picker
+# is broken (see PR adding this for the reproduction).
+#
+# Args: $1 — what was being selected ("target accounts" | "sync types").
+# Returns: 0 always.
+# Errors (stderr): "No <what> selected." plus a SPACE/ENTER hint.
+_ckipper_account_sync_empty_select_hint() {
+    {
+        echo "No $1 selected."
+        echo "Hint: in the picker, press SPACE to mark items, then ENTER to confirm."
+    } >&2
 }
 
 # Walk every target and apply the resolved type list.
