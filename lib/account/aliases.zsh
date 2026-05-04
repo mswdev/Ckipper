@@ -2,7 +2,7 @@
 # Alias generation and install-hook redeploy subcommands:
 # regenerate_aliases, redeploy_hooks_for, redeploy_hooks.
 
-readonly ALIASES_FILE_PERMS=644
+readonly _CKIPPER_ACCOUNT_ALIASES_FILE_PERMS=644
 
 # Write a single account's launcher function lines to the aliases file being built.
 # Generates a `claude-<name>` function and, if safe, a bare `<name>` shortcut.
@@ -82,7 +82,7 @@ _ckipper_account_regenerate_aliases() {
     } > "$out.tmp"
     # Atomic install — readers in other shells never see a partial file.
     mv "$out.tmp" "$out"
-    chmod "$ALIASES_FILE_PERMS" "$out"
+    chmod "$_CKIPPER_ACCOUNT_ALIASES_FILE_PERMS" "$out"
     # Re-source in the calling shell so newly-registered accounts are usable
     # immediately without the user having to `exec zsh`.
     source "$out"

@@ -63,7 +63,7 @@ _ckipper_account_sync_pick_targets() {
 _ckipper_account_sync_pick_targets_fallback() {
     echo "Available targets: $*" >&2
     local input
-    read -r "input?Enter comma-separated targets: "
+    input=$(_core_prompt_input "Enter comma-separated targets" "")
     local name
     for name in ${(s:,:)input}; do
         echo "$name"
@@ -87,7 +87,7 @@ _ckipper_account_sync_pick_types() {
     fi
     echo "Type tokens: ${(@k)_CKIPPER_SYNC_TYPE_LABEL}" >&2
     local input
-    read -r "input?Enter comma-separated types: "
+    input=$(_core_prompt_input "Enter comma-separated types" "")
     local name
     for name in ${(s:,:)input}; do
         echo "$name"

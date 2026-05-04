@@ -15,9 +15,9 @@ run_in_zsh() {
 @test "parse_args identifies --dry-run flag" {
     run_in_zsh '
         _ckipper_account_sync_parse_args personal work --dry-run
-        echo "from=$_SYNC_FROM"
-        echo "targets=${_SYNC_TARGETS[*]}"
-        echo "dry_run=$_SYNC_DRY_RUN"'
+        echo "from=$_CKIPPER_SYNC_FROM"
+        echo "targets=${_CKIPPER_SYNC_TARGETS[*]}"
+        echo "dry_run=$_CKIPPER_SYNC_DRY_RUN"'
     [[ "$output" == *"from=personal"* ]]
     [[ "$output" == *"targets=work"* ]]
     [[ "$output" == *"dry_run=true"* ]]
@@ -26,29 +26,29 @@ run_in_zsh() {
 @test "parse_args identifies --yes flag" {
     run_in_zsh '
         _ckipper_account_sync_parse_args personal work --yes
-        echo "yes=$_SYNC_YES"'
+        echo "yes=$_CKIPPER_SYNC_YES"'
     [[ "$output" == *"yes=true"* ]]
 }
 
 @test "parse_args identifies multiple targets" {
     run_in_zsh '
         _ckipper_account_sync_parse_args personal work client1 client2
-        echo "targets=${(j:,:)_SYNC_TARGETS}"'
+        echo "targets=${(j:,:)_CKIPPER_SYNC_TARGETS}"'
     [[ "$output" == *"targets=work,client1,client2"* ]]
 }
 
 @test "parse_args identifies --include with comma list" {
     run_in_zsh '
         _ckipper_account_sync_parse_args personal work --include mcp,settings
-        echo "include=$_SYNC_INCLUDE"'
+        echo "include=$_CKIPPER_SYNC_INCLUDE"'
     [[ "$output" == *"include=mcp,settings"* ]]
 }
 
 @test "parse_args identifies --exclude with comma list" {
     run_in_zsh '
         _ckipper_account_sync_parse_args personal work --include all --exclude prefs
-        echo "include=$_SYNC_INCLUDE"
-        echo "exclude=$_SYNC_EXCLUDE"'
+        echo "include=$_CKIPPER_SYNC_INCLUDE"
+        echo "exclude=$_CKIPPER_SYNC_EXCLUDE"'
     [[ "$output" == *"include=all"* ]]
     [[ "$output" == *"exclude=prefs"* ]]
 }
@@ -56,7 +56,7 @@ run_in_zsh() {
 @test "parse_args identifies --force" {
     run_in_zsh '
         _ckipper_account_sync_parse_args personal work --force
-        echo "force=$_SYNC_FORCE"'
+        echo "force=$_CKIPPER_SYNC_FORCE"'
     [[ "$output" == *"force=true"* ]]
 }
 
@@ -68,8 +68,8 @@ run_in_zsh() {
 @test "parse_args allows empty positionals (drop-to-picker)" {
     run_in_zsh '
         _ckipper_account_sync_parse_args
-        echo "from=${_SYNC_FROM:-EMPTY}"
-        echo "n_targets=${#_SYNC_TARGETS[@]}"'
+        echo "from=${_CKIPPER_SYNC_FROM:-EMPTY}"
+        echo "n_targets=${#_CKIPPER_SYNC_TARGETS[@]}"'
     [[ "$output" == *"from=EMPTY"* ]]
     [[ "$output" == *"n_targets=0"* ]]
 }
@@ -148,16 +148,16 @@ run_full() {
     [ "$status" -ne 0 ]
 }
 
-# Bug B: undo_dispatch used to read $_SYNC_FORCE directly, which leaked
+# Bug B: undo_dispatch used to read $_CKIPPER_SYNC_FORCE directly, which leaked
 # state from a prior sync invocation in the same shell. A user who ran
-# `sync ... --force` (setting _SYNC_FORCE=true) and then ran `sync undo`
+# `sync ... --force` (setting _CKIPPER_SYNC_FORCE=true) and then ran `sync undo`
 # without --force would silently bypass the running-Claude refusal because
-# parse_args resets _SYNC_FORCE only on the sync path. Fix: undo uses a
+# parse_args resets _CKIPPER_SYNC_FORCE only on the sync path. Fix: undo uses a
 # local force var, defaulting to false.
 @test "sync undo does NOT inherit --force from a prior sync invocation (Bug B)" {
     setup_two_accounts
     run_full '
-        # Apply a sync first WITH --force so _SYNC_FORCE leaks to module state.
+        # Apply a sync first WITH --force so _CKIPPER_SYNC_FORCE leaks to module state.
         _core_running_claude_processes() { return 0; }
         ckipper account sync src dst --include mcp --yes --force >/dev/null 2>&1
         # Now undo without --force; running Claude should block it again.
@@ -186,10 +186,10 @@ run_full() {
 # choice=$(...) call inside preview_prompt opens a fresh subshell.
 @test "preview_prompt View changes then Apply yields exactly 'apply'" {
     run_in_zsh '
-        _SYNC_FROM=src
+        _CKIPPER_SYNC_FROM=src
         items=$(mktemp); echo "x" > "$items"
-        _SYNC_CTX[dst_name]=dst
-        _SYNC_CTX[items]=$items
+        _CKIPPER_SYNC_CTX[dst_name]=dst
+        _CKIPPER_SYNC_CTX[items]=$items
         export _PROMPT_FLAG=$(mktemp)
         _core_prompt_choose() {
             if [[ -e "$_PROMPT_FLAG" ]]; then
