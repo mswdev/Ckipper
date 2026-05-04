@@ -82,7 +82,11 @@ _core_registry_check_stale_lock() {
 }
 
 # Wait for the mkdir lock to become available, with stale-lock recovery.
-# Sets up the EXIT trap to release the lock on success.
+# The caller is responsible for releasing the lock — DO NOT install an EXIT
+# trap here. In zsh, an EXIT trap set inside a function fires when *that*
+# function returns, which would remove the lockdir before the caller's
+# critical section runs. The trap belongs in the caller (the function whose
+# lifetime spans the critical section).
 #
 # Args:
 #   $1 — lockdir path
@@ -107,7 +111,6 @@ _core_registry_acquire_mkdir_lock() {
         (( stale_rc == 2 )) && return 1
         sleep "$LOCK_RETRY_INTERVAL_SECONDS"
     done
-    trap 'rmdir "$lockdir" 2>/dev/null' EXIT
 }
 
 # Perform an atomic registry update via mkdir lock (macOS fallback — no flock).
@@ -123,6 +126,13 @@ _core_registry_update_mkdir_fallback() {
     setopt local_options local_traps
     local lockdir="$CKIPPER_DIR/.registry.lock.d"
     _core_registry_acquire_mkdir_lock "$lockdir" || return 1
+    # Trap lives in this function (not in acquire) so it fires when the
+    # critical section is done — not when acquire returns mid-critical-section.
+    # Use double-quoted trap text so $lockdir is expanded NOW (at trap-set time);
+    # by the time the trap actually fires (after this function returns), our
+    # local $lockdir is out of scope, so a deferred-expansion form (single quotes)
+    # would expand to the empty string and rmdir would silently no-op.
+    trap "rmdir '$lockdir' 2>/dev/null" EXIT
     local registry_tmpfile; registry_tmpfile=$(mktemp "$CKIPPER_DIR/.registry.tmp.XXXXXX")
     if jq "$@" "$jq_filter" "$CKIPPER_REGISTRY" > "$registry_tmpfile" 2>/dev/null; then
         mv "$registry_tmpfile" "$CKIPPER_REGISTRY"
