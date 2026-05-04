@@ -25,7 +25,11 @@ CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty') || {
 NORMALIZED=$(echo "$CMD" | sed 's/^[[:space:]]*sudo[[:space:]]*//' | tr -s ' ')
 
 # 1. Destructive recursive deletes (allow only build artifacts)
-if echo "$NORMALIZED" | grep -qE 'rm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--recursive|-[a-zA-Z]*f[a-zA-Z]*r)\s'; then
+# Match any short-flag block containing r/R (so `rm -r`, `rm -R`, `rm -rf`,
+# `rm -fr`, `rm -RfX` all match) OR the long form `--recursive`. Earlier
+# revisions required BOTH r AND f, which let plain `rm -r /home/user/foo`
+# bypass the check entirely.
+if echo "$NORMALIZED" | grep -qE 'rm\s+(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\s'; then
     SAFE="node_modules|dist|\.next|build|\.cache|__pycache__|\.turbo|coverage|\.pytest_cache|tmp|\.parcel-cache|out"
     if ! echo "$NORMALIZED" | grep -qE "rm\s+-[^ ]+\s+\.?/?(${SAFE})(/|\s|$)"; then
         echo "Blocked: recursive delete. Only build artifacts (node_modules, dist, .next, etc.) can be rm -rf'd." >&2
@@ -34,7 +38,10 @@ if echo "$NORMALIZED" | grep -qE 'rm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--recursive|-[a-zA
 fi
 
 # 2. Git history destruction
-if echo "$NORMALIZED" | grep -qE 'git\s+push\s+.*--force\b|git\s+push\s+-f\b'; then
+# Anchor `--force` against whitespace-or-end-of-string so the recommended
+# replacement `--force-with-lease` (the `-` is non-whitespace) is not also
+# matched by `--force\b` — `\b` fires at the word/non-word boundary.
+if echo "$NORMALIZED" | grep -qE 'git\s+push\s+.*--force(\s|$)|git\s+push\s+-f(\s|$)'; then
     echo "Blocked: git push --force. Use --force-with-lease instead." >&2
     exit 2
 fi
