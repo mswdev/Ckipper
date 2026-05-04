@@ -30,14 +30,14 @@ _ckipper_worktree_run() {
     _ckipper_worktree_resolve_account || return $?
     _ckipper_worktree_resolve_flags "$CKIPPER_WT_ACTIVE_ACCOUNT"
 
-    if [[ "$CKIPPER_WT_FLAG_FIREWALL" = true && "$CKIPPER_WT_FLAG_DOCKER" = false ]]; then
+    if [[ "$CKIPPER_WT_FLAG_FIREWALL" = "true" && "$CKIPPER_WT_FLAG_DOCKER" = "false" ]]; then
         echo "Error: --firewall requires --docker" >&2
         return 1
     fi
 
     _ckipper_worktree_create_worktree "$CKIPPER_WT_PROJECT" "$CKIPPER_WT_BRANCH" || return $?
 
-    if [[ "$CKIPPER_WT_FLAG_DOCKER" = true ]]; then
+    if [[ "$CKIPPER_WT_FLAG_DOCKER" = "true" ]]; then
         _ckipper_worktree_run_docker_mode
     else
         _ckipper_worktree_run_normal_mode

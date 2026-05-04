@@ -50,7 +50,7 @@ _ckipper_worktree_run_docker_mode() {
     _ckipper_worktree_docker_build_base_args
     _ckipper_worktree_docker_add_optional_args "$claude_creds" "$gh_token"
     _ckipper_worktree_resolve_ports
-    [[ "$CKIPPER_WT_FLAG_FIREWALL" = true ]] && CKIPPER_WT_DOCKER_ARGS+=( --cap-add=NET_ADMIN -e ENABLE_FIREWALL=1 )
+    [[ "$CKIPPER_WT_FLAG_FIREWALL" = "true" ]] && CKIPPER_WT_DOCKER_ARGS+=( --cap-add=NET_ADMIN -e ENABLE_FIREWALL=1 )
 
     CKIPPER_WT_DOCKER_ARGS+=( ckipper-dev )
     _ckipper_worktree_docker_expand_command
@@ -252,7 +252,7 @@ _ckipper_worktree_docker_expand_command() {
 _ckipper_worktree_docker_print_banner() {
     local mode_label="Docker"
     [[ ${#CKIPPER_WT_COMMAND[@]} -gt 0 ]] && mode_label+=": ${CKIPPER_WT_COMMAND[1]}"
-    [[ "$CKIPPER_WT_FLAG_FIREWALL" = true ]] && mode_label+=", firewall"
+    [[ "$CKIPPER_WT_FLAG_FIREWALL" = "true" ]] && mode_label+=", firewall"
     echo "Starting $mode_label..."
     echo "  Worktree: $CKIPPER_WT_PATH"
     echo "  Ports: ${CKIPPER_WT_RESOLVED_PORTS[*]}"
