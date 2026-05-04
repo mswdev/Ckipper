@@ -5,9 +5,15 @@ on:
   push:
     branches: [develop, main]
 
+# Default to read-only permissions for the GITHUB_TOKEN. Individual jobs
+# that need write access (e.g. release publishing) must opt in explicitly.
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
