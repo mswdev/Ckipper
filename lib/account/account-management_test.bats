@@ -308,3 +308,48 @@ JSON
     # Config dir is still present (no rm -rf happened).
     [[ -d "$dir" ]]
 }
+
+# ── _ckipper_account_default / remove registry-write error surfacing ─────────
+# Regression: both functions called _core_registry_update without checking $?,
+# then printed success ("Default account is now …" / "Unregistered …") even
+# when the registry write silently failed. account_remove additionally
+# proceeded to delete the config dir and keychain entry based on a registry
+# state that didn't change.
+
+@test "account default surfaces registry-update failure and does not print success" {
+    cat > "$CKIPPER_REGISTRY" <<'JSON'
+{"version":2,"default":null,"accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":null,"registered_at":"t","preferences":{}}}}
+JSON
+
+    run_helper '
+        _core_registry_update() { return 1; }
+        _ckipper_account_default work
+    '
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Error" ]]
+    [[ ! "$output" =~ "Default account is now" ]]
+}
+
+@test "account remove surfaces registry-update failure and skips destructive cleanup" {
+    local dir="$TMP_HOME/.claude-work"
+    mkdir -p "$dir"
+    cat > "$CKIPPER_REGISTRY" <<JSON
+{"version":2,"default":"work","accounts":{"work":{"config_dir":"$dir","keychain_service":null,"registered_at":"t","preferences":{}}}}
+JSON
+
+    run_helper '
+        _core_registry_update() { return 1; }
+        _ckipper_account_remove work
+    '
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "Error" ]]
+    [[ ! "$output" =~ "Unregistered" ]]
+    # Config dir must NOT have been rm -rf'd because the registry write failed.
+    [[ -d "$dir" ]]
+    # Registry entry must still be present.
+    local accts
+    accts=$(jq -r '.accounts | keys | length' "$CKIPPER_REGISTRY")
+    [ "$accts" = "1" ]
+}

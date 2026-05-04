@@ -410,7 +410,10 @@ _ckipper_account_default() {
         echo "Account '$name' is not registered." >&2
         return 1
     fi
-    _core_registry_update '.default = $n' --arg n "$name"
+    if ! _core_registry_update '.default = $n' --arg n "$name"; then
+        echo "Error: failed to set default account in registry." >&2
+        return 1
+    fi
     echo "Default account is now '$name'."
 }
 
@@ -437,7 +440,10 @@ _ckipper_account_remove() {
     _core_assert_no_running_claude || return 1
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
     local service; service=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
-    _core_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"
+    if ! _core_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"; then
+        echo "Error: failed to unregister '$name' from the registry. Skipping cleanup of '$dir'." >&2
+        return 1
+    fi
     # Drop the now-stale launcher functions from the calling shell.
     unset -f "claude-$name" 2>/dev/null
     unset -f "$name" 2>/dev/null
