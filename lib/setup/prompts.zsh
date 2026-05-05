@@ -30,6 +30,12 @@ readonly _CKIPPER_SETUP_PROMPTS_NO_GUM_SENTINEL="1"
 # Header rendered above the summary table.
 readonly _CKIPPER_SETUP_PROMPTS_HEADER="Detected configuration"
 
+# Header for the multi-select picker. Mentions SPACE explicitly because the
+# preceding y/N "customize?" prompt and the source-account picker are both
+# single-select Enter — without the hint, users press Enter on the first
+# row and silently advance with no overrides.
+readonly _CKIPPER_SETUP_PROMPTS_PICKER_HEADER="Pick keys to customize (SPACE to mark, ENTER to confirm)"
+
 # Pipe-separated row builder for the summary table. Resolves the effective
 # value via _core_config_get and the source marker via _core_config_read_global
 # (empty return ⇒ default; otherwise ⇒ user override).
@@ -69,12 +75,19 @@ _ckipper_setup_prompts_global_keys() {
 # Returns: 0 always.
 _ckipper_setup_prompts_summary() {
     _core_style_header "$_CKIPPER_SETUP_PROMPTS_HEADER"
-    local key
-    {
-        while IFS= read -r key; do
-            _ckipper_setup_prompts_summary_row "$key"
-        done < <(_ckipper_setup_prompts_global_keys)
-    } | _core_style_table SETTING VALUE SOURCE
+    _core_style_table_print_row "SETTING|VALUE|SOURCE"
+    # Per-key block: aligned three-column row + indented description on the
+    # next line. We render this manually rather than feeding a 4-column row
+    # to `_core_style_table` because the schema descriptions can run 90+
+    # characters and the fixed-width column padding (22 chars) would leave
+    # them overflowing across the screen and breaking column alignment for
+    # every other column.
+    local key description
+    while IFS= read -r key; do
+        _core_style_table_print_row "$(_ckipper_setup_prompts_summary_row "$key")"
+        description="${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
+        [[ -n "$description" ]] && echo "  $description"
+    done < <(_ckipper_setup_prompts_global_keys)
     _core_style_divider
 }
 
@@ -106,8 +119,12 @@ _ckipper_setup_prompts_pick_keys_fallback() {
 #   keys, one per line, in schema order.
 _ckipper_setup_prompts_pick_keys() {
     if _ckipper_setup_prompts_use_gum; then
-        _ckipper_setup_prompts_global_keys \
-            | gum choose --no-limit --header "Pick keys to customize"
+        local key
+        while IFS= read -r key; do
+            printf '%s — %s\n' "$key" "${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
+        done < <(_ckipper_setup_prompts_global_keys) \
+            | gum choose --no-limit --header "$_CKIPPER_SETUP_PROMPTS_PICKER_HEADER" \
+            | awk '{print $1}'
         return 0
     fi
     _ckipper_setup_prompts_pick_keys_fallback

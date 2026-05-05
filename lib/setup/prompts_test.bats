@@ -67,6 +67,19 @@ _run_prompts() {
     [[ "$output" != *"ssh_forward"* ]]
 }
 
+# Regression: descriptions used to live in a 4th column, which overflowed
+# the fixed-width table because zsh's `printf '%-22s'` does not truncate.
+# They now render on the line below each row, indented two spaces.
+@test "_ckipper_setup_prompts_summary renders each schema description below its row" {
+    _run_prompts "" "_ckipper_setup_prompts_summary"
+
+    [ "$status" -eq 0 ]
+    # Each schema description should appear verbatim somewhere in the output.
+    [[ "$output" == *"Bool. true = installer auto-adds the per-account aliases source line"* ]]
+    [[ "$output" == *"Path. Base directory containing your git projects."* ]]
+    [[ "$output" == *"Comma-separated int list. Container ports to forward to the host."* ]]
+}
+
 @test "_ckipper_setup_prompts_summary marks set values as (your config) and unset as (default)" {
     echo 'CKIPPER_NOTIFY_BELL="false"' >"$CKIPPER_DIR/docker/ckipper-config.zsh"
 
