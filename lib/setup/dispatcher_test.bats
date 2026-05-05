@@ -117,6 +117,91 @@ JSON
     [[ "$output" == *"STUB-BUILD"* ]]
 }
 
+# Regression: a failed docker build was easy to miss because 5 minutes of
+# streaming output buried the completion message. The wizard now records
+# build outcome (ok / failed / skipped) and the completion summary
+# renders a colored banner that's findable at a glance.
+@test "_ckipper_setup_offer_image_build records ok when build succeeds" {
+    _run_setup $'y\n' '
+        _ckipper_worktree_build_image() { return 0; }
+        _ckipper_setup_offer_image_build
+        echo "status=$_CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS"'
+
+    [[ "$output" == *"status=ok"* ]]
+}
+
+@test "_ckipper_setup_offer_image_build records failed when build returns non-zero" {
+    _run_setup $'y\n' '
+        _ckipper_worktree_build_image() { return 1; }
+        _ckipper_setup_offer_image_build
+        echo "status=$_CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS"'
+
+    [[ "$output" == *"status=failed"* ]]
+}
+
+@test "_ckipper_setup_offer_image_build records skipped when user declines" {
+    _run_setup $'n\n' '
+        _ckipper_worktree_build_image() { echo SHOULD-NOT-RUN; }
+        _ckipper_setup_offer_image_build
+        echo "status=$_CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS"'
+
+    [[ "$output" == *"status=skipped"* ]]
+    [[ "$output" != *"SHOULD-NOT-RUN"* ]]
+}
+
+# Regression: completion summary previously listed only the basics; now
+# it also points at `ckipper worktree rebuild-image` and `ckipper account
+# sync` so users can find them without re-running the full wizard.
+@test "_ckipper_setup_print_completion_summary mentions rebuild-image and sync" {
+    _run_setup "" "_ckipper_setup_print_completion_summary ok"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ckipper worktree rebuild-image"* ]]
+    [[ "$output" == *"ckipper account sync"* ]]
+}
+
+# Regression: a build failure used to be invisible in the completion
+# screen. Now the banner explicitly calls it out and points at the
+# rebuild command.
+@test "_ckipper_setup_print_completion_summary surfaces a failed build banner" {
+    _run_setup "" "_ckipper_setup_print_completion_summary failed"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"FAILED"* ]]
+    [[ "$output" == *"rebuild-image"* ]]
+}
+
+# Regression: setup never offered to wire the per-account aliases source
+# line into ~/.zshrc. Users who installed via install.sh got it appended
+# (line 158-160 of install.sh); users who only ever ran `ckipper setup`
+# missed it and `claude-<account>` launchers silently didn't work.
+@test "_ckipper_setup_offer_aliases_source skips when ~/.zshrc already sources it" {
+    echo 'source ~/.ckipper/aliases.zsh' > "$TMP_HOME/.zshrc"
+
+    _run_setup "" "_ckipper_setup_offer_aliases_source 2>&1"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Add per-account launchers"* ]]
+}
+
+@test "_ckipper_setup_offer_aliases_source appends source line on accept" {
+    : > "$TMP_HOME/.zshrc"
+
+    _run_setup $'y\n' "_ckipper_setup_offer_aliases_source 2>&1"
+
+    [ "$status" -eq 0 ]
+    grep -q 'ckipper/aliases\.zsh' "$TMP_HOME/.zshrc"
+}
+
+@test "_ckipper_setup_offer_aliases_source declines do not write to ~/.zshrc" {
+    : > "$TMP_HOME/.zshrc"
+
+    _run_setup $'n\n' "_ckipper_setup_offer_aliases_source 2>&1"
+
+    [ "$status" -eq 0 ]
+    ! grep -q 'ckipper/aliases\.zsh' "$TMP_HOME/.zshrc"
+}
+
 # Regression: setup previously offered cross-account sync only after the
 # user added a NEW account in the wizard. A user with 2+ existing accounts
 # who declined "Add another?" never saw the sync feature surfaced. The

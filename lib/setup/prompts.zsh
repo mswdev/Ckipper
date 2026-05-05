@@ -36,15 +36,20 @@ readonly _CKIPPER_SETUP_PROMPTS_HEADER="Detected configuration"
 # row and silently advance with no overrides.
 readonly _CKIPPER_SETUP_PROMPTS_PICKER_HEADER="Pick keys to customize (SPACE to mark, ENTER to confirm)"
 
-# Pipe-separated row builder for the summary table. Resolves the effective
-# value via _core_config_get and the source marker via _core_config_read_global
-# (empty return ⇒ default; otherwise ⇒ user override).
+# Width of the SETTING column in the card-style summary. 22 chars covers
+# every key in the current schema (longest is `aliases_auto_source` at 19)
+# with a 3-char gutter before the value.
+readonly _CKIPPER_SETUP_PROMPTS_KEY_WIDTH=22
+
+# Render one schema key as a two-line "card": `<key padded> <value> <source>`
+# on line 1 and the dim-colored description indented on line 2. Account
+# keys are filtered out by the caller, so we don't have to handle scope here.
 #
 # Args: $1 — schema key.
-# Returns: 0 always; prints "<key>|<value>|<source>" to stdout.
-_ckipper_setup_prompts_summary_row() {
+# Returns: 0 always; writes two lines (no trailing blank) to stdout.
+_ckipper_setup_prompts_summary_card() {
     local key="$1"
-    local value source raw
+    local value source raw description display_value
     value=$(_core_config_get "$key")
     raw=$(_core_config_read_global "$key")
     if [[ -z "$raw" ]]; then
@@ -52,7 +57,14 @@ _ckipper_setup_prompts_summary_row() {
     else
         source="$_CKIPPER_SETUP_PROMPTS_SOURCE_USER"
     fi
-    printf '%s|%s|%s\n' "$key" "$value" "$source"
+    # Empty values render as a discoverable placeholder rather than blank
+    # space, which otherwise reads like "the field is broken."
+    display_value="$value"
+    [[ -z "$display_value" ]] && display_value="(empty)"
+    description="${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
+    printf '%-*s %s  %s\n' \
+        "$_CKIPPER_SETUP_PROMPTS_KEY_WIDTH" "$key" "$display_value" "$source"
+    [[ -n "$description" ]] && _core_style_color dim "  $description"
 }
 
 # Print every global-scoped key one per line in lexical order. Used by the
@@ -67,26 +79,22 @@ _ckipper_setup_prompts_global_keys() {
     done
 }
 
-# Render the "detected configuration" summary table. Emits a styled header,
-# followed by a SETTING | VALUE | SOURCE row per global-scoped key. Account
-# keys are skipped because their effective value depends on which account the
-# wizard is about to configure.
+# Render the "detected configuration" summary as a stack of cards: each
+# global key gets a `<key> <value> <source>` line followed by a dim
+# description, separated by blank lines. Replaces an earlier table-based
+# rendering whose alternating wide-row + indented-description rhythm read
+# as visually noisy and where long values overflowed the column padding.
+# Account-scoped keys are intentionally skipped — their effective value
+# depends on which account the wizard is about to configure.
 #
 # Returns: 0 always.
 _ckipper_setup_prompts_summary() {
     _core_style_header "$_CKIPPER_SETUP_PROMPTS_HEADER"
-    _core_style_table_print_row "SETTING|VALUE|SOURCE"
-    # Per-key block: aligned three-column row + indented description on the
-    # next line. We render this manually rather than feeding a 4-column row
-    # to `_core_style_table` because the schema descriptions can run 90+
-    # characters and the fixed-width column padding (22 chars) would leave
-    # them overflowing across the screen and breaking column alignment for
-    # every other column.
-    local key description
+    local key first=1
     while IFS= read -r key; do
-        _core_style_table_print_row "$(_ckipper_setup_prompts_summary_row "$key")"
-        description="${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
-        [[ -n "$description" ]] && echo "  $description"
+        (( first )) || echo
+        first=0
+        _ckipper_setup_prompts_summary_card "$key"
     done < <(_ckipper_setup_prompts_global_keys)
     _core_style_divider
 }

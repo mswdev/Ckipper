@@ -37,8 +37,10 @@ _ckipper_setup() {
     fi
     _ckipper_setup_offer_account
     _ckipper_setup_offer_existing_sync
+    _ckipper_setup_offer_aliases_source
     _ckipper_setup_offer_image_build
-    _ckipper_setup_print_completion_summary
+    _ckipper_setup_print_completion_summary "$_CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS"
+    _ckipper_setup_wait_for_acknowledgement
 }
 
 # Offer a between-accounts sync when the user has 2+ accounts already and
@@ -57,24 +59,56 @@ _ckipper_setup_offer_existing_sync() {
     _ckipper_account_sync_dispatch
 }
 
-# Print the post-setup hint block: review-settings command, two ways to launch
-# Claude (per-account aliases or `ckipper run`), and the bare-`ck` menu.
-# Extracted so `_ckipper_setup` stays under the 25-line cap.
+# Print the post-setup hint block: build-status banner, review/diagnose
+# commands, two ways to launch Claude (per-account aliases or `ckipper
+# run`), and the bare-`ck` menu. The build-status arg lets the user spot
+# a failed image build at a glance — it's easy to miss otherwise because
+# 5 minutes of streaming docker output buries the completion message.
 #
+# Args: $1 — image build status: `ok` | `failed` | `skipped`.
 # Returns: 0 always.
 _ckipper_setup_print_completion_summary() {
+    local image_status="$1"
     _core_style_header "Setup complete"
-    echo "Review settings:        ckipper config list"
-    echo "Diagnose installation:  ckipper doctor"
+    _ckipper_setup_render_image_status "$image_status"
+    echo "Getting started:"
+    echo "  ckipper run <project> <branch>     Bundle worktree + Claude in one step"
+    echo "  ck                                 Interactive menu"
+    echo "  claude-<account>                   Per-account launcher (e.g. claude-personal)"
     echo ""
-    echo "Launch Claude in a worktree (host or Docker):"
-    echo "  ckipper run <project> <branch>     # bundles worktree + Claude in one step"
+    echo "Maintenance:"
+    echo "  ckipper config list                Review every setting"
+    echo "  ckipper doctor                     Diagnose installation issues"
+    echo "  ckipper worktree rebuild-image     Rebuild ckipper-dev Docker image"
+    echo "  ckipper account sync               Copy settings between accounts"
     echo ""
-    echo "Launch Claude directly with an account context:"
-    echo "  claude-<account>                   # auto-generated launcher"
-    echo "  <account>                          # bare-name shortcut, when free"
+}
+
+# Render a single banner line about the docker image build outcome. Helps
+# the user notice a build failure that would otherwise scroll past with
+# the rest of `docker build` output.
+#
+# Args: $1 — `ok` | `failed` | `skipped`.
+# Returns: 0 always.
+_ckipper_setup_render_image_status() {
+    case "$1" in
+        ok)      _core_style_color green "Docker image: built successfully." ;;
+        failed)  _core_style_color red   "Docker image: build FAILED — re-run with: ckipper worktree rebuild-image" ;;
+        skipped) _core_style_color dim   "Docker image: skipped — build later with: ckipper worktree rebuild-image" ;;
+    esac
     echo ""
-    echo "Or just run 'ck' for the interactive menu."
+}
+
+# Pause until the user presses Enter, so the "Setup complete" banner does
+# not disappear off-screen behind the next shell prompt — particularly
+# important when the docker build output preceded it. Skipped on
+# non-interactive stdin (CI, piped installers).
+#
+# Returns: 0 always.
+_ckipper_setup_wait_for_acknowledgement() {
+    [[ -t 0 ]] || return 0
+    local _ack=""
+    read -r "_ack?Press ENTER to finish setup. "
 }
 
 # Print top-level setup help.
@@ -90,7 +124,10 @@ _ckipper_setup_help() {
         "  1. Verifies prereqs (gum, jq, docker) and offers to brew-install missing." \
         "  2. Shows your current global config and lets you customize any subset." \
         "  3. Offers to register a Claude account and configure its preferences." \
-        "  4. Offers to build the ckipper-dev Docker image." \
+        "  4. Offers to sync settings between two existing accounts (≥ 2 accounts)." \
+        "  5. Offers to wire per-account launchers (claude-<account>) into ~/.zshrc." \
+        "  6. Offers to build the ckipper-dev Docker image." \
+        "  7. Prints a Setup Complete summary; press ENTER to finish." \
         "" \
         "Usage:" \
         "  ckipper setup            Run the wizard." \
@@ -213,16 +250,46 @@ _ckipper_setup_collect_account_prefs() {
         "Forward host ~/.ssh into '$account' containers?"
 }
 
-# Offer to build/rebuild the ckipper-dev Docker image now.
+# Offer to build/rebuild the ckipper-dev Docker image now. Records the
+# outcome in _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS so the completion
+# summary can render a banner — without that signal, a failed build is
+# easy to miss in the 5+ minutes of streaming docker output and the user
+# would only discover it later when `--docker` runs hit "image not found."
 #
-# We invoke the build helper directly rather than wrapping it in a spinner.
-# `gum spin -- <fn>` execs its argv as a binary, so passing a shell function
-# fails with "executable file not found in $PATH". The build also streams
-# its own progress over ~5 min, which the user wants to see.
+# Sets _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS to one of: ok, failed, skipped.
+# Returns: 0 always (failures are surfaced via the status global, not rc,
+#   so the wizard always finishes the post-build flow).
+_ckipper_setup_offer_image_build() {
+    typeset -g _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS="skipped"
+    if ! _core_prompt_confirm "Build the Docker image now? (slow; ~5 min)"; then
+        return 0
+    fi
+    if _ckipper_worktree_build_image; then
+        _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS="ok"
+    else
+        _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS="failed"
+    fi
+}
+
+# Offer to add the per-account aliases source line to ~/.zshrc. The
+# launchers (`claude-<account>`, bare `<account>`) only exist when the
+# user's shell sources `~/.ckipper/aliases.zsh`. install.sh prints the
+# suggestion but never appends it; setup-only re-runs (post-install)
+# never see the suggestion at all. This step closes that loop, with an
+# idempotency check so re-runs don't duplicate the line.
 #
 # Returns: 0 always.
-_ckipper_setup_offer_image_build() {
-    if _core_prompt_confirm "Build the Docker image now? (slow; ~5 min)"; then
-        _ckipper_worktree_build_image
+_ckipper_setup_offer_aliases_source() {
+    local zshrc="$HOME/.zshrc"
+    [[ -f "$zshrc" ]] || return 0
+    grep -q 'ckipper/aliases\.zsh' "$zshrc" 2>/dev/null && return 0
+    if ! _core_prompt_confirm "Add per-account launchers (claude-<account>) to ~/.zshrc?"; then
+        return 0
     fi
+    {
+        echo ""
+        echo "# Ckipper — per-account launchers (claude-<account>, bare <account>)"
+        echo '[[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh'
+    } >> "$zshrc"
+    echo "Added the source line. Open a new shell (or run 'source ~/.zshrc')."
 }

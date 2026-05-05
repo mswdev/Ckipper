@@ -63,7 +63,10 @@ _ckipper_account_sync_pick_targets() {
 _ckipper_account_sync_pick_targets_fallback() {
     echo "Available targets: $*" >&2
     local input
-    input=$(_core_prompt_input "Enter comma-separated targets" "")
+    # Propagate cancel (Esc/Ctrl-C/EOF) so the caller's empty-array check
+    # sees no targets and prints the SPACE/ENTER hint, instead of treating
+    # whatever shell garbage `$input` happens to contain as the list.
+    input=$(_core_prompt_input "Enter comma-separated targets" "") || return $?
     local name
     for name in ${(s:,:)input}; do
         echo "$name"
@@ -87,7 +90,8 @@ _ckipper_account_sync_pick_types() {
     fi
     echo "Type tokens: ${(@k)_CKIPPER_SYNC_TYPE_LABEL}" >&2
     local input
-    input=$(_core_prompt_input "Enter comma-separated types" "")
+    # Propagate cancel; same reasoning as pick_targets_fallback above.
+    input=$(_core_prompt_input "Enter comma-separated types" "") || return $?
     local name
     for name in ${(s:,:)input}; do
         echo "$name"

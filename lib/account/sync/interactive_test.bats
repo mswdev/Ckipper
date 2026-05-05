@@ -34,3 +34,32 @@ run_in_zsh() {
     [[ "$output" == *"client1,work,"* ]]
     [[ "$output" != *"personal"* ]]
 }
+
+# Regression: cancel from the comma-separated input prompt used to pass
+# through as a 0-rc empty-output result, which the dispatcher then split
+# into an empty array — masking cancel as "user submitted no targets".
+# Now propagates the prompt's non-zero rc so callers can distinguish.
+@test "_pick_targets_fallback returns non-zero on EOF (cancel)" {
+    run env HOME="$HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        CKIPPER_NO_GUM=1 TMP_HOME="$TMP_HOME" PATH="$PATH" \
+        zsh -c "source \"$REPO_ROOT/lib/core/registry.zsh\"; \
+                source \"$REPO_ROOT/lib/core/prompt.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/interactive.zsh\"; \
+                _ckipper_account_sync_pick_targets_fallback work 2>/dev/null" </dev/null
+
+    [ "$status" -ne 0 ]
+    [ -z "$output" ]
+}
+
+@test "_pick_types fallback returns non-zero on EOF (cancel)" {
+    run env HOME="$HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        CKIPPER_NO_GUM=1 TMP_HOME="$TMP_HOME" PATH="$PATH" \
+        zsh -c "source \"$REPO_ROOT/lib/core/registry.zsh\"; \
+                source \"$REPO_ROOT/lib/core/prompt.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; \
+                source \"$REPO_ROOT/lib/account/sync/interactive.zsh\"; \
+                _ckipper_account_sync_pick_types 2>/dev/null" </dev/null
+
+    [ "$status" -ne 0 ]
+    [ -z "$output" ]
+}
