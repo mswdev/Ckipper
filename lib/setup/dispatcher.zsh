@@ -59,15 +59,82 @@ _ckipper_setup_offer_existing_sync() {
     _ckipper_account_sync_dispatch
 }
 
-# Print the post-setup hint block: build-status banner, review/diagnose
-# commands, two ways to launch Claude (per-account aliases or `ckipper
-# run`), and the bare-`ck` menu. The build-status arg lets the user spot
-# a failed image build at a glance — it's easy to miss otherwise because
-# 5 minutes of streaming docker output buries the completion message.
+# Print the post-setup completion screen: bordered gum-styled card with a
+# build-status line and two columns of commands (getting-started and
+# maintenance). The whole thing is one `gum style` block so it visually
+# belongs to the same wizard as the gum-rendered prompts above it. A
+# build failure is easy to miss after 5 minutes of streaming docker
+# output; the colored status line is the primary signal.
+#
+# Falls back to plain ANSI rendering when CKIPPER_NO_GUM is set.
 #
 # Args: $1 — image build status: `ok` | `failed` | `skipped`.
 # Returns: 0 always.
 _ckipper_setup_print_completion_summary() {
+    local image_status="$1"
+    if _ckipper_setup_completion_use_gum; then
+        _ckipper_setup_render_completion_gum "$image_status"
+    else
+        _ckipper_setup_render_completion_plain "$image_status"
+    fi
+}
+
+# Mirror of `_core_prompt_use_gum` — kept private so the completion path
+# does not pull `_core_prompt_*` into its dependency surface.
+#
+# Returns: 0 if gum should drive rendering; 1 for the plain fallback.
+_ckipper_setup_completion_use_gum() {
+    [[ "$CKIPPER_NO_GUM" == "1" ]] && return 1
+    command -v gum >/dev/null 2>&1
+}
+
+# Render the completion screen via `gum style`. Pre-builds the inner
+# content as a multi-line string so the border wraps the whole block.
+#
+# Args: $1 — image status (`ok` | `failed` | `skipped`).
+# Returns: 0 always.
+_ckipper_setup_render_completion_gum() {
+    local image_status="$1"
+    local content
+    content=$(_ckipper_setup_completion_inner "$image_status")
+    gum style \
+        --border rounded \
+        --padding "1 2" \
+        --border-foreground "$_CKIPPER_SETUP_PROMPTS_BORDER_FG" \
+        "$content"
+}
+
+# Build the multi-line text content that goes inside the bordered card.
+# The image-status line uses gum's foreground colors directly so the
+# border block stays a single styled call. Sections are separated by
+# blank lines for visual rhythm inside the card.
+#
+# Args: $1 — image status.
+# Returns: 0 always; prints the multi-line content to stdout.
+_ckipper_setup_completion_inner() {
+    local image_status="$1"
+    gum style --bold --foreground "$_CKIPPER_SETUP_PROMPTS_BORDER_FG" "Setup complete"
+    echo
+    _ckipper_setup_render_image_status_gum "$image_status"
+    echo
+    gum style --bold "Getting started:"
+    echo "  ckipper run <project> <branch>     Bundle worktree + Claude"
+    echo "  ck                                 Interactive menu"
+    echo "  claude-<account>                   Per-account launcher (e.g. claude-personal)"
+    echo
+    gum style --bold "Maintenance:"
+    echo "  ckipper config list                Review every setting"
+    echo "  ckipper doctor                     Diagnose installation issues"
+    echo "  ckipper worktree rebuild-image     Rebuild ckipper-dev Docker image"
+    echo "  ckipper account sync               Copy settings between accounts"
+}
+
+# Plain-text completion screen for non-gum environments (CI, tests). Same
+# information, no border or color.
+#
+# Args: $1 — image status.
+# Returns: 0 always.
+_ckipper_setup_render_completion_plain() {
     local image_status="$1"
     _core_style_header "Setup complete"
     _ckipper_setup_render_image_status "$image_status"
@@ -84,9 +151,24 @@ _ckipper_setup_print_completion_summary() {
     echo ""
 }
 
-# Render a single banner line about the docker image build outcome. Helps
-# the user notice a build failure that would otherwise scroll past with
-# the rest of `docker build` output.
+# Render the docker-build-status line for the gum path using gum's
+# foreground color codes (gum-color 46 = bright green, 196 = red, 244 =
+# dim gray) so it nests cleanly inside the surrounding `gum style` block.
+#
+# Args: $1 — `ok` | `failed` | `skipped`.
+# Returns: 0 always.
+_ckipper_setup_render_image_status_gum() {
+    case "$1" in
+        ok)      gum style --foreground 46  "✓ Docker image: built successfully." ;;
+        failed)  gum style --foreground 196 "✗ Docker image: build FAILED — re-run: ckipper worktree rebuild-image" ;;
+        skipped) gum style --foreground 244 "○ Docker image: skipped — build later: ckipper worktree rebuild-image" ;;
+    esac
+}
+
+# Plain-text image-status line (no gum). Uses the existing _core_style
+# color palette so terminals that support ANSI still get a coloured
+# banner; the no-color path falls through to plain text via
+# _core_style_color's enablement check.
 #
 # Args: $1 — `ok` | `failed` | `skipped`.
 # Returns: 0 always.
