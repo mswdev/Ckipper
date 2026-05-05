@@ -37,8 +37,10 @@ _ckipper_setup() {
     fi
     _ckipper_setup_offer_account
     _ckipper_setup_offer_existing_sync
+    _ckipper_setup_offer_aliases_source
     _ckipper_setup_offer_image_build
-    _ckipper_setup_print_completion_summary
+    _ckipper_setup_print_completion_summary "$_CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS"
+    _ckipper_setup_wait_for_acknowledgement
 }
 
 # Offer a between-accounts sync when the user has 2+ accounts already and
@@ -57,24 +59,138 @@ _ckipper_setup_offer_existing_sync() {
     _ckipper_account_sync_dispatch
 }
 
-# Print the post-setup hint block: review-settings command, two ways to launch
-# Claude (per-account aliases or `ckipper run`), and the bare-`ck` menu.
-# Extracted so `_ckipper_setup` stays under the 25-line cap.
+# Print the post-setup completion screen: bordered gum-styled card with a
+# build-status line and two columns of commands (getting-started and
+# maintenance). The whole thing is one `gum style` block so it visually
+# belongs to the same wizard as the gum-rendered prompts above it. A
+# build failure is easy to miss after 5 minutes of streaming docker
+# output; the colored status line is the primary signal.
 #
+# Falls back to plain ANSI rendering when CKIPPER_NO_GUM is set.
+#
+# Args: $1 — image build status: `ok` | `failed` | `skipped`.
 # Returns: 0 always.
 _ckipper_setup_print_completion_summary() {
+    local image_status="$1"
+    if _ckipper_setup_completion_use_gum; then
+        _ckipper_setup_render_completion_gum "$image_status"
+    else
+        _ckipper_setup_render_completion_plain "$image_status"
+    fi
+}
+
+# Mirror of `_core_prompt_use_gum` — kept private so the completion path
+# does not pull `_core_prompt_*` into its dependency surface.
+#
+# Returns: 0 if gum should drive rendering; 1 for the plain fallback.
+_ckipper_setup_completion_use_gum() {
+    [[ "$CKIPPER_NO_GUM" == "1" ]] && return 1
+    command -v gum >/dev/null 2>&1
+}
+
+# Render the completion screen via `gum style`. Pre-builds the inner
+# content as a multi-line string so the border wraps the whole block.
+#
+# Args: $1 — image status (`ok` | `failed` | `skipped`).
+# Returns: 0 always.
+_ckipper_setup_render_completion_gum() {
+    local image_status="$1"
+    local content
+    content=$(_ckipper_setup_completion_inner "$image_status")
+    gum style \
+        --border rounded \
+        --padding "1 2" \
+        --border-foreground "$_CKIPPER_SETUP_PROMPTS_BORDER_FG" \
+        "$content"
+}
+
+# Build the multi-line text content that goes inside the bordered card.
+# The image-status line uses gum's foreground colors directly so the
+# border block stays a single styled call. Sections are separated by
+# blank lines for visual rhythm inside the card.
+#
+# Args: $1 — image status.
+# Returns: 0 always; prints the multi-line content to stdout.
+_ckipper_setup_completion_inner() {
+    local image_status="$1"
+    gum style --bold --foreground "$_CKIPPER_SETUP_PROMPTS_BORDER_FG" "Setup complete"
+    echo
+    _ckipper_setup_render_image_status_gum "$image_status"
+    echo
+    gum style --bold "Getting started:"
+    echo "  ckipper run <project> <branch>     Bundle worktree + Claude"
+    echo "  ck                                 Interactive menu"
+    echo "  claude-<account>                   Per-account launcher (e.g. claude-personal)"
+    echo
+    gum style --bold "Maintenance:"
+    echo "  ckipper config list                Review every setting"
+    echo "  ckipper doctor                     Diagnose installation issues"
+    echo "  ckipper worktree rebuild-image     Rebuild ckipper-dev Docker image"
+    echo "  ckipper account sync               Copy settings between accounts"
+}
+
+# Plain-text completion screen for non-gum environments (CI, tests). Same
+# information, no border or color.
+#
+# Args: $1 — image status.
+# Returns: 0 always.
+_ckipper_setup_render_completion_plain() {
+    local image_status="$1"
     _core_style_header "Setup complete"
-    echo "Review settings:        ckipper config list"
-    echo "Diagnose installation:  ckipper doctor"
+    _ckipper_setup_render_image_status "$image_status"
+    echo "Getting started:"
+    echo "  ckipper run <project> <branch>     Bundle worktree + Claude in one step"
+    echo "  ck                                 Interactive menu"
+    echo "  claude-<account>                   Per-account launcher (e.g. claude-personal)"
     echo ""
-    echo "Launch Claude in a worktree (host or Docker):"
-    echo "  ckipper run <project> <branch>     # bundles worktree + Claude in one step"
+    echo "Maintenance:"
+    echo "  ckipper config list                Review every setting"
+    echo "  ckipper doctor                     Diagnose installation issues"
+    echo "  ckipper worktree rebuild-image     Rebuild ckipper-dev Docker image"
+    echo "  ckipper account sync               Copy settings between accounts"
     echo ""
-    echo "Launch Claude directly with an account context:"
-    echo "  claude-<account>                   # auto-generated launcher"
-    echo "  <account>                          # bare-name shortcut, when free"
+}
+
+# Render the docker-build-status line for the gum path using gum's
+# foreground color codes (gum-color 46 = bright green, 196 = red, 244 =
+# dim gray) so it nests cleanly inside the surrounding `gum style` block.
+#
+# Args: $1 — `ok` | `failed` | `skipped`.
+# Returns: 0 always.
+_ckipper_setup_render_image_status_gum() {
+    case "$1" in
+        ok)      gum style --foreground 46  "✓ Docker image: built successfully." ;;
+        failed)  gum style --foreground 196 "✗ Docker image: build FAILED — re-run: ckipper worktree rebuild-image" ;;
+        skipped) gum style --foreground 244 "○ Docker image: skipped — build later: ckipper worktree rebuild-image" ;;
+    esac
+}
+
+# Plain-text image-status line (no gum). Uses the existing _core_style
+# color palette so terminals that support ANSI still get a coloured
+# banner; the no-color path falls through to plain text via
+# _core_style_color's enablement check.
+#
+# Args: $1 — `ok` | `failed` | `skipped`.
+# Returns: 0 always.
+_ckipper_setup_render_image_status() {
+    case "$1" in
+        ok)      _core_style_color green "Docker image: built successfully." ;;
+        failed)  _core_style_color red   "Docker image: build FAILED — re-run with: ckipper worktree rebuild-image" ;;
+        skipped) _core_style_color dim   "Docker image: skipped — build later with: ckipper worktree rebuild-image" ;;
+    esac
     echo ""
-    echo "Or just run 'ck' for the interactive menu."
+}
+
+# Pause until the user presses Enter, so the "Setup complete" banner does
+# not disappear off-screen behind the next shell prompt — particularly
+# important when the docker build output preceded it. Skipped on
+# non-interactive stdin (CI, piped installers).
+#
+# Returns: 0 always.
+_ckipper_setup_wait_for_acknowledgement() {
+    [[ -t 0 ]] || return 0
+    local _ack=""
+    read -r "_ack?Press ENTER to finish setup. "
 }
 
 # Print top-level setup help.
@@ -90,7 +206,10 @@ _ckipper_setup_help() {
         "  1. Verifies prereqs (gum, jq, docker) and offers to brew-install missing." \
         "  2. Shows your current global config and lets you customize any subset." \
         "  3. Offers to register a Claude account and configure its preferences." \
-        "  4. Offers to build the ckipper-dev Docker image." \
+        "  4. Offers to sync settings between two existing accounts (≥ 2 accounts)." \
+        "  5. Offers to wire per-account launchers (claude-<account>) into ~/.zshrc." \
+        "  6. Offers to build the ckipper-dev Docker image." \
+        "  7. Prints a Setup Complete summary; press ENTER to finish." \
         "" \
         "Usage:" \
         "  ckipper setup            Run the wizard." \
@@ -213,16 +332,46 @@ _ckipper_setup_collect_account_prefs() {
         "Forward host ~/.ssh into '$account' containers?"
 }
 
-# Offer to build/rebuild the ckipper-dev Docker image now.
+# Offer to build/rebuild the ckipper-dev Docker image now. Records the
+# outcome in _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS so the completion
+# summary can render a banner — without that signal, a failed build is
+# easy to miss in the 5+ minutes of streaming docker output and the user
+# would only discover it later when `--docker` runs hit "image not found."
 #
-# We invoke the build helper directly rather than wrapping it in a spinner.
-# `gum spin -- <fn>` execs its argv as a binary, so passing a shell function
-# fails with "executable file not found in $PATH". The build also streams
-# its own progress over ~5 min, which the user wants to see.
+# Sets _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS to one of: ok, failed, skipped.
+# Returns: 0 always (failures are surfaced via the status global, not rc,
+#   so the wizard always finishes the post-build flow).
+_ckipper_setup_offer_image_build() {
+    typeset -g _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS="skipped"
+    if ! _core_prompt_confirm "Build the Docker image now? (slow; ~5 min)"; then
+        return 0
+    fi
+    if _ckipper_worktree_build_image; then
+        _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS="ok"
+    else
+        _CKIPPER_SETUP_LAST_IMAGE_BUILD_STATUS="failed"
+    fi
+}
+
+# Offer to add the per-account aliases source line to ~/.zshrc. The
+# launchers (`claude-<account>`, bare `<account>`) only exist when the
+# user's shell sources `~/.ckipper/aliases.zsh`. install.sh prints the
+# suggestion but never appends it; setup-only re-runs (post-install)
+# never see the suggestion at all. This step closes that loop, with an
+# idempotency check so re-runs don't duplicate the line.
 #
 # Returns: 0 always.
-_ckipper_setup_offer_image_build() {
-    if _core_prompt_confirm "Build the Docker image now? (slow; ~5 min)"; then
-        _ckipper_worktree_build_image
+_ckipper_setup_offer_aliases_source() {
+    local zshrc="$HOME/.zshrc"
+    [[ -f "$zshrc" ]] || return 0
+    grep -q 'ckipper/aliases\.zsh' "$zshrc" 2>/dev/null && return 0
+    if ! _core_prompt_confirm "Add per-account launchers (claude-<account>) to ~/.zshrc?"; then
+        return 0
     fi
+    {
+        echo ""
+        echo "# Ckipper — per-account launchers (claude-<account>, bare <account>)"
+        echo '[[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh'
+    } >> "$zshrc"
+    echo "Added the source line. Open a new shell (or run 'source ~/.zshrc')."
 }
