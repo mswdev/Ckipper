@@ -78,6 +78,42 @@ _run_config_dispatch() {
     [ "$status" -ne 0 ]
 }
 
+# Regression: when `ckipper config set <key>` is invoked WITHOUT a value,
+# the handler prompts via _core_prompt_input. Cancellation (Esc/Ctrl-C on
+# gum, EOF on the read fallback) must abort the write rather than commit
+# an empty value — otherwise the user's only out is to silently blank the
+# key. _core_prompt_input now returns non-zero on cancel; this test pins
+# the abort-on-cancel behavior in `_ckipper_config_set`.
+@test "config set aborts the write when the value prompt is cancelled" {
+    run env HOME="$TMP_HOME" \
+            CKIPPER_DIR="$CKIPPER_DIR" \
+            CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+            CKIPPER_REGISTRY_VERSION="${CKIPPER_REGISTRY_VERSION:-2}" \
+            CKIPPER_NO_GUM=1 \
+            PATH="$PATH" \
+        zsh -c "
+            source \"$REPO_ROOT/lib/core/schema.zsh\"
+            source \"$REPO_ROOT/lib/core/config.zsh\"
+            source \"$REPO_ROOT/lib/core/registry.zsh\"
+            source \"$REPO_ROOT/lib/core/fuzzy.zsh\"
+            source \"$REPO_ROOT/lib/core/style.zsh\"
+            source \"$REPO_ROOT/lib/core/help.zsh\"
+            source \"$REPO_ROOT/lib/core/prompt.zsh\"
+            source \"$REPO_ROOT/lib/config/set.zsh\"
+            source \"$REPO_ROOT/lib/config/get.zsh\"
+            _ckipper_config_set default_branch 2>/dev/null
+            echo \"set_rc=\$?\"
+            _ckipper_config_get default_branch
+        " </dev/null
+
+    [[ "$output" == *"set_rc=1"* ]]
+    # default_branch's schema default is empty; the get must still resolve to
+    # that, not to whatever empty value a missed cancel would have committed
+    # (an empty override would also resolve to ""; the more telling signal is
+    # that the prompt itself returned non-zero so the writer was bypassed).
+    [[ "$output" != *"set_rc=0"* ]]
+}
+
 @test "dispatcher unknown subcommand suggests help pointer" {
     _run_config_dispatch "_ckipper_config_dispatch nope"
 

@@ -37,17 +37,14 @@ readonly _CKIPPER_SETUP_PROMPTS_HEADER="Detected configuration"
 readonly _CKIPPER_SETUP_PROMPTS_PICKER_HEADER="Pick keys to customize (SPACE to mark, ENTER to confirm)"
 
 # Pipe-separated row builder for the summary table. Resolves the effective
-# value via _core_config_get, the source marker via _core_config_read_global
-# (empty return ⇒ default; otherwise ⇒ user override), and the description
-# from the schema. Including the description here so the user can scan the
-# table and know what each key does without having to drill into a picker
-# for it (e.g. `aliases_auto_source` is opaque without context).
+# value via _core_config_get and the source marker via _core_config_read_global
+# (empty return ⇒ default; otherwise ⇒ user override).
 #
 # Args: $1 — schema key.
-# Returns: 0 always; prints "<key>|<value>|<source>|<description>" to stdout.
+# Returns: 0 always; prints "<key>|<value>|<source>" to stdout.
 _ckipper_setup_prompts_summary_row() {
     local key="$1"
-    local value source raw description
+    local value source raw
     value=$(_core_config_get "$key")
     raw=$(_core_config_read_global "$key")
     if [[ -z "$raw" ]]; then
@@ -55,8 +52,7 @@ _ckipper_setup_prompts_summary_row() {
     else
         source="$_CKIPPER_SETUP_PROMPTS_SOURCE_USER"
     fi
-    description="${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
-    printf '%s|%s|%s|%s\n' "$key" "$value" "$source" "$description"
+    printf '%s|%s|%s\n' "$key" "$value" "$source"
 }
 
 # Print every global-scoped key one per line in lexical order. Used by the
@@ -79,12 +75,19 @@ _ckipper_setup_prompts_global_keys() {
 # Returns: 0 always.
 _ckipper_setup_prompts_summary() {
     _core_style_header "$_CKIPPER_SETUP_PROMPTS_HEADER"
-    local key
-    {
-        while IFS= read -r key; do
-            _ckipper_setup_prompts_summary_row "$key"
-        done < <(_ckipper_setup_prompts_global_keys)
-    } | _core_style_table SETTING VALUE SOURCE DESCRIPTION
+    _core_style_table_print_row "SETTING|VALUE|SOURCE"
+    # Per-key block: aligned three-column row + indented description on the
+    # next line. We render this manually rather than feeding a 4-column row
+    # to `_core_style_table` because the schema descriptions can run 90+
+    # characters and the fixed-width column padding (22 chars) would leave
+    # them overflowing across the screen and breaking column alignment for
+    # every other column.
+    local key description
+    while IFS= read -r key; do
+        _core_style_table_print_row "$(_ckipper_setup_prompts_summary_row "$key")"
+        description="${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
+        [[ -n "$description" ]] && echo "  $description"
+    done < <(_ckipper_setup_prompts_global_keys)
     _core_style_divider
 }
 
@@ -116,8 +119,12 @@ _ckipper_setup_prompts_pick_keys_fallback() {
 #   keys, one per line, in schema order.
 _ckipper_setup_prompts_pick_keys() {
     if _ckipper_setup_prompts_use_gum; then
-        _ckipper_setup_prompts_global_keys \
-            | gum choose --no-limit --header "$_CKIPPER_SETUP_PROMPTS_PICKER_HEADER"
+        local key
+        while IFS= read -r key; do
+            printf '%s — %s\n' "$key" "${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
+        done < <(_ckipper_setup_prompts_global_keys) \
+            | gum choose --no-limit --header "$_CKIPPER_SETUP_PROMPTS_PICKER_HEADER" \
+            | awk '{print $1}'
         return 0
     fi
     _ckipper_setup_prompts_pick_keys_fallback

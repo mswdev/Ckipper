@@ -107,7 +107,12 @@ _ckipper_config_set() {
     [[ -n "$account" ]] && { _core_account_dir "$account" >/dev/null || return 1; }
     if [[ "$_CKIPPER_CONFIG_SET_HAS_VALUE" != "true" ]]; then
         local prompt_label="Value for $key (${_CKIPPER_SCHEMA_TYPE[$key]})"
-        value=$(_core_prompt_input "$prompt_label" "")
+        # Cancellation must abort the write, not commit an empty value.
+        # _core_prompt_input returns non-zero on Esc/Ctrl-C; without this
+        # check the user pressing cancel would silently blank the key.
+        if ! value=$(_core_prompt_input "$prompt_label" ""); then
+            return 1
+        fi
     fi
     _core_config_set "$key" "$value" "$account"
 }

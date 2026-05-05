@@ -101,20 +101,3 @@ _core_prompt_choose() {
     (( choice >= 1 && choice <= $# )) || return 1
     echo "${@[choice]}"
 }
-
-# Run a command with a spinner indicator. Forwards the command's exit status.
-#
-# Args: $1 — label shown alongside the spinner; $2..$N — command and args to
-#   execute. The label is consumed by this function and never reaches the
-#   wrapped command.
-# Returns: the exit status of the wrapped command.
-_core_prompt_spin() {
-    local label="$1"
-    shift
-    if _core_prompt_use_gum; then
-        gum spin --spinner dot --title "$label" -- "$@"
-        return $?
-    fi
-    echo "$label..." >&2
-    "$@"
-}

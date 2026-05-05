@@ -121,15 +121,3 @@ _run_prompt() {
 
     [ "$status" -eq 1 ]
 }
-
-@test "_core_prompt_spin runs the command and forwards exit status 0" {
-    _run_prompt "" '_core_prompt_spin "Working" true'
-
-    [ "$status" -eq 0 ]
-}
-
-@test "_core_prompt_spin forwards non-zero exit status" {
-    _run_prompt "" '_core_prompt_spin "Working" false'
-
-    [ "$status" -eq 1 ]
-}
