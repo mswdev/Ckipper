@@ -25,18 +25,27 @@ _core_prompt_use_gum() {
 # Prompt for a free-form string. Returns the entered value, or the supplied
 # default when input is empty.
 #
+# Distinguishes "user submitted empty" (rc=0, value=default) from "user
+# cancelled" (rc != 0, no stdout). `gum input` exits non-zero on Esc/Ctrl-C,
+# and we propagate that so callers can distinguish cancellation. Previously
+# we collapsed both into "echo default", which meant a cancelled launcher
+# branch prompt silently created a worktree on the default branch name.
+#
 # Args: $1 — label shown to the user; $2 — default value used on empty input.
-# Returns: 0 always; prints the resolved value to stdout.
+# Returns: 0 on submit (including empty submit); non-zero on cancellation.
+#   Prints the resolved value to stdout on success; nothing on cancel.
 _core_prompt_input() {
     local label="$1" default="$2"
     if _core_prompt_use_gum; then
-        local out
+        local out rc
         out=$(gum input --placeholder "$default" --prompt "$label > ")
+        rc=$?
+        (( rc != 0 )) && return $rc
         echo "${out:-$default}"
         return 0
     fi
     local val=""
-    read -r "val?$label [$default]: "
+    read -r "val?$label [$default]: " || return $?
     echo "${val:-$default}"
 }
 

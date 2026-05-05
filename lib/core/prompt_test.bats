@@ -46,6 +46,20 @@ _run_prompt() {
     [ "$output" = "thedefault" ]
 }
 
+# Regression: previously cancellation (EOF / Ctrl-C / Esc on the gum form)
+# was indistinguishable from "user submitted empty" because both echoed
+# the default. The launcher's branch prompt then created a worktree on
+# `feature/dev` even when the user pressed Ctrl-X to back out. The fix
+# propagates rc from gum / read so callers can distinguish cancel via rc.
+@test "_core_prompt_input returns non-zero with no stdout when read sees EOF" {
+    run env CKIPPER_NO_GUM=1 PATH="$PATH" \
+        zsh -c "source \"$REPO_ROOT/lib/core/prompt.zsh\"; \
+                _core_prompt_input \"Q\" \"thedefault\" 2>/dev/null" </dev/null
+
+    [ "$status" -ne 0 ]
+    [ -z "$output" ]
+}
+
 @test "_core_prompt_confirm returns 0 on y" {
     _run_prompt "y" '_core_prompt_confirm "Proceed?"'
 

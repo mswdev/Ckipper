@@ -4,8 +4,7 @@
 #
 # Depends on:
 #   - lib/core/style.zsh    (`_core_style_header`)
-#   - lib/core/prompt.zsh   (`_core_prompt_confirm`, `_core_prompt_input`,
-#                             `_core_prompt_spin`)
+#   - lib/core/prompt.zsh   (`_core_prompt_confirm`, `_core_prompt_input`)
 #   - lib/setup/prereqs.zsh (`_ckipper_setup_prereqs`)
 #   - lib/setup/prompts.zsh (`_ckipper_setup_prompts_*`)
 #   - lib/setup/apply.zsh   (`_ckipper_setup_apply_global`,
@@ -37,8 +36,25 @@ _ckipper_setup() {
         echo "Using current values."
     fi
     _ckipper_setup_offer_account
+    _ckipper_setup_offer_existing_sync
     _ckipper_setup_offer_image_build
     _ckipper_setup_print_completion_summary
+}
+
+# Offer a between-accounts sync when the user has 2+ accounts already and
+# the wizard's add-account step did not just run one (the post-add path
+# already offers the sync inline). Without this, a re-run of `ckipper setup`
+# on an established multi-account install never surfaces the sync feature.
+#
+# Returns: 0 always.
+_ckipper_setup_offer_existing_sync() {
+    local count
+    count=$(jq -r '.accounts | length' "$CKIPPER_REGISTRY" 2>/dev/null || echo 0)
+    (( count < 2 )) && return 0
+    if ! _core_prompt_confirm "Sync settings between two existing accounts?"; then
+        return 0
+    fi
+    _ckipper_account_sync_dispatch
 }
 
 # Print the post-setup hint block: review-settings command, two ways to launch
@@ -89,10 +105,16 @@ _ckipper_setup_run_customize_loop() {
     local -a picked
     picked=( ${(f)"$(_ckipper_setup_prompts_pick_keys)"} )
     typeset -A updates
-    local key
+    local key value
     for key in "${picked[@]}"; do
         [[ -z "$key" ]] && continue
-        updates[$key]=$(_ckipper_setup_prompts_one_key "$key")
+        # If the per-key prompt returns non-zero the user cancelled it
+        # (Esc/Ctrl-C on gum). Skip the key rather than writing an empty
+        # override, which would silently blank out the value.
+        if ! value=$(_ckipper_setup_prompts_one_key "$key"); then
+            continue
+        fi
+        updates[$key]="$value"
     done
     _ckipper_setup_apply_global updates
 }
@@ -128,7 +150,9 @@ _ckipper_setup_offer_account() {
 # Returns: 0 always (per-step failures are surfaced via the underlying calls).
 _ckipper_setup_add_account() {
     local name
-    name=$(_core_prompt_input "Account name" "$_CKIPPER_SETUP_DEFAULT_ACCOUNT_NAME")
+    if ! name=$(_core_prompt_input "Account name" "$_CKIPPER_SETUP_DEFAULT_ACCOUNT_NAME"); then
+        return 0
+    fi
     _ckipper_account_add "$name" || return 0
     typeset -A prefs
     _ckipper_setup_collect_account_prefs "$name"
@@ -189,13 +213,16 @@ _ckipper_setup_collect_account_prefs() {
         "Forward host ~/.ssh into '$account' containers?"
 }
 
-# Offer to build/rebuild the ckipper-dev Docker image now. Wraps the build in
-# a gum spinner when available; the underlying helper streams docker output
-# directly when running without gum.
+# Offer to build/rebuild the ckipper-dev Docker image now.
+#
+# We invoke the build helper directly rather than wrapping it in a spinner.
+# `gum spin -- <fn>` execs its argv as a binary, so passing a shell function
+# fails with "executable file not found in $PATH". The build also streams
+# its own progress over ~5 min, which the user wants to see.
 #
 # Returns: 0 always.
 _ckipper_setup_offer_image_build() {
     if _core_prompt_confirm "Build the Docker image now? (slow; ~5 min)"; then
-        _core_prompt_spin "Building ckipper-dev image" _ckipper_worktree_build_image
+        _ckipper_worktree_build_image
     fi
 }

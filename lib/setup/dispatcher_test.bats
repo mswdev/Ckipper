@@ -116,3 +116,54 @@ JSON
     [ "$status" -eq 0 ]
     [[ "$output" == *"STUB-BUILD"* ]]
 }
+
+# Regression: setup previously offered cross-account sync only after the
+# user added a NEW account in the wizard. A user with 2+ existing accounts
+# who declined "Add another?" never saw the sync feature surfaced. The
+# behavioral signal we can assert (prompts written by zsh's `read "ans?…"`
+# are suppressed when stdin is non-TTY, so we can't grep the label) is that
+# the dispatch helper IS invoked on accept and SKIPPED otherwise.
+@test "_ckipper_setup_offer_existing_sync skips when fewer than 2 accounts" {
+    cat >"$CKIPPER_REGISTRY" <<'JSON'
+{"version":2,"default":"a","accounts":{"a":{"config_dir":"/x","keychain_service":null,"registered_at":"t","preferences":{}}}}
+JSON
+
+    _run_setup $'y\n' '
+        _ckipper_account_sync_dispatch() { echo "STUB-SYNC"; }
+        _ckipper_setup_offer_existing_sync'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"STUB-SYNC"* ]]
+}
+
+@test "_ckipper_setup_offer_existing_sync invokes sync_dispatch on yes" {
+    cat >"$CKIPPER_REGISTRY" <<'JSON'
+{"version":2,"default":"a","accounts":{
+  "a":{"config_dir":"/x","keychain_service":null,"registered_at":"t","preferences":{}},
+  "b":{"config_dir":"/y","keychain_service":null,"registered_at":"t","preferences":{}}
+}}
+JSON
+
+    _run_setup $'y\n' '
+        _ckipper_account_sync_dispatch() { echo "STUB-SYNC"; }
+        _ckipper_setup_offer_existing_sync'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"STUB-SYNC"* ]]
+}
+
+@test "_ckipper_setup_offer_existing_sync skips sync_dispatch on no" {
+    cat >"$CKIPPER_REGISTRY" <<'JSON'
+{"version":2,"default":"a","accounts":{
+  "a":{"config_dir":"/x","keychain_service":null,"registered_at":"t","preferences":{}},
+  "b":{"config_dir":"/y","keychain_service":null,"registered_at":"t","preferences":{}}
+}}
+JSON
+
+    _run_setup $'n\n' '
+        _ckipper_account_sync_dispatch() { echo "STUB-SYNC"; }
+        _ckipper_setup_offer_existing_sync'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"STUB-SYNC"* ]]
+}

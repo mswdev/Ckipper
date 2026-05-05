@@ -30,15 +30,24 @@ readonly _CKIPPER_SETUP_PROMPTS_NO_GUM_SENTINEL="1"
 # Header rendered above the summary table.
 readonly _CKIPPER_SETUP_PROMPTS_HEADER="Detected configuration"
 
+# Header for the multi-select picker. Mentions SPACE explicitly because the
+# preceding y/N "customize?" prompt and the source-account picker are both
+# single-select Enter — without the hint, users press Enter on the first
+# row and silently advance with no overrides.
+readonly _CKIPPER_SETUP_PROMPTS_PICKER_HEADER="Pick keys to customize (SPACE to mark, ENTER to confirm)"
+
 # Pipe-separated row builder for the summary table. Resolves the effective
-# value via _core_config_get and the source marker via _core_config_read_global
-# (empty return ⇒ default; otherwise ⇒ user override).
+# value via _core_config_get, the source marker via _core_config_read_global
+# (empty return ⇒ default; otherwise ⇒ user override), and the description
+# from the schema. Including the description here so the user can scan the
+# table and know what each key does without having to drill into a picker
+# for it (e.g. `aliases_auto_source` is opaque without context).
 #
 # Args: $1 — schema key.
-# Returns: 0 always; prints "<key>|<value>|<source>" to stdout.
+# Returns: 0 always; prints "<key>|<value>|<source>|<description>" to stdout.
 _ckipper_setup_prompts_summary_row() {
     local key="$1"
-    local value source raw
+    local value source raw description
     value=$(_core_config_get "$key")
     raw=$(_core_config_read_global "$key")
     if [[ -z "$raw" ]]; then
@@ -46,7 +55,8 @@ _ckipper_setup_prompts_summary_row() {
     else
         source="$_CKIPPER_SETUP_PROMPTS_SOURCE_USER"
     fi
-    printf '%s|%s|%s\n' "$key" "$value" "$source"
+    description="${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
+    printf '%s|%s|%s|%s\n' "$key" "$value" "$source" "$description"
 }
 
 # Print every global-scoped key one per line in lexical order. Used by the
@@ -74,7 +84,7 @@ _ckipper_setup_prompts_summary() {
         while IFS= read -r key; do
             _ckipper_setup_prompts_summary_row "$key"
         done < <(_ckipper_setup_prompts_global_keys)
-    } | _core_style_table SETTING VALUE SOURCE
+    } | _core_style_table SETTING VALUE SOURCE DESCRIPTION
     _core_style_divider
 }
 
@@ -107,7 +117,7 @@ _ckipper_setup_prompts_pick_keys_fallback() {
 _ckipper_setup_prompts_pick_keys() {
     if _ckipper_setup_prompts_use_gum; then
         _ckipper_setup_prompts_global_keys \
-            | gum choose --no-limit --header "Pick keys to customize"
+            | gum choose --no-limit --header "$_CKIPPER_SETUP_PROMPTS_PICKER_HEADER"
         return 0
     fi
     _ckipper_setup_prompts_pick_keys_fallback

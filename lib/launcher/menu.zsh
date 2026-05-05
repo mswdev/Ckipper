@@ -31,10 +31,12 @@ typeset -gra _CKIPPER_LAUNCHER_OPTIONS=(
     "Quit"
 )
 
-# `find -maxdepth` value for project discovery. Three levels covers the common
-# layouts (`~/Developer/<repo>`, `~/Developer/<org>/<repo>`,
-# `~/Developer/<group>/<org>/<repo>`) without scanning entire user homedirs.
-readonly _CKIPPER_LAUNCHER_PROJECTS_MAXDEPTH=3
+# `find -maxdepth` value for project discovery. The repository's `.git`
+# directory sits one level below the repo root, so to surface
+# `<projects_dir>/<group>/<org>/<repo>/.git` we need depth 4. Anything
+# deeper than that is almost always a vendored sub-repo or a demo project,
+# so depth 4 is the sweet spot between coverage and scan time.
+readonly _CKIPPER_LAUNCHER_PROJECTS_MAXDEPTH=4
 
 # Print the launcher banner: a styled "Ckipper" header, the product tagline,
 # and a trailing blank line that separates the banner from whatever prompt or
