@@ -40,15 +40,13 @@ _CKIPPER_DESKTOP_LAUNCHER_MODE=755
 # Returns: 0 on success; non-zero if the bundle could not be written.
 _ckipper_desktop_bundle_write() {
     local name="$1" bundle="$2" data_dir="$3"
-    local display
-    display="$(_ckipper_desktop_bundle_title_case "$name")"
     mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" || return 1
     _ckipper_desktop_bundle_write_launcher "$bundle" "$data_dir" || return 1
     local icon_copied=false
     if _ckipper_desktop_bundle_copy_icon "$bundle"; then
         icon_copied=true
     fi
-    _ckipper_desktop_bundle_write_plist "$bundle" "$name" "Claude-$display" "$icon_copied" || return 1
+    _ckipper_desktop_bundle_write_plist "$bundle" "$name" "$icon_copied" || return 1
     _ckipper_desktop_bundle_lsregister "$bundle"
     return 0
 }
@@ -98,17 +96,19 @@ EOF
 # Write Contents/Info.plist with the standard CFBundle keys.
 #
 # CFBundleIconFile is included ONLY when the caller signals an icon was
-# copied — otherwise macOS would render a broken-icon glyph.
+# copied — otherwise macOS would render a broken-icon glyph. CFBundleName
+# is derived inside this function via _title_case so the orchestrator
+# stays at the 3-parameter cap.
 #
 # Args:
 #   $1 — bundle path
-#   $2 — canonical lowercase name (for CFBundleIdentifier suffix)
-#   $3 — display name (e.g. "Claude-Work") for CFBundleName
-#   $4 — "true" if an icon was copied; "false" otherwise
+#   $2 — canonical lowercase name (for CFBundleIdentifier suffix + display)
+#   $3 — "true" if an icon was copied; "false" otherwise
 #
 # Returns: 0 on success; non-zero if the plist could not be written.
 _ckipper_desktop_bundle_write_plist() {
-    local bundle="$1" name="$2" display="$3" icon_copied="$4"
+    local bundle="$1" name="$2" icon_copied="$3"
+    local display="Claude-$(_ckipper_desktop_bundle_title_case "$name")"
     local icon_block=""
     [[ "$icon_copied" = "true" ]] && \
         icon_block=$'    <key>CFBundleIconFile</key>\n    <string>AppIcon</string>\n'
