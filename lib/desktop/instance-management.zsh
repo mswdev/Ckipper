@@ -369,6 +369,135 @@ _ckipper_desktop_remove_prompt_bundle() {
     echo "Kept $bundle. To delete later: rm -rf '$bundle'"
 }
 
+# Validate `ckipper desktop rename <old> <new>` arguments before any I/O.
+#
+# Args: $1 — old name; $2 — new name.
+# Returns: 0 on valid input; 1 on any check failure.
+# Errors (stderr): usage hint, regex hint, collision message, etc.
+_ckipper_desktop_rename_validate() {
+    local old="$1" new="$2"
+    if [[ -z "$old" || -z "$new" ]]; then
+        echo "Usage: ckipper desktop rename <old> <new>" >&2
+        return 1
+    fi
+    if [[ ! "$new" =~ $_CKIPPER_DESKTOP_NAME_REGEX ]]; then
+        echo "New name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)." >&2
+        return 1
+    fi
+    if [[ "$old" == "$new" ]]; then
+        echo "Old and new name are the same. Nothing to do." >&2
+        return 1
+    fi
+    if ! jq -e --arg n "$old" '.instances[$n]' "$CKIPPER_DESKTOP_REGISTRY" >/dev/null 2>&1; then
+        echo "Desktop instance '$old' is not registered." >&2
+        return 1
+    fi
+    if jq -e --arg n "$new" '.instances[$n]' "$CKIPPER_DESKTOP_REGISTRY" >/dev/null 2>&1; then
+        echo "Desktop instance '$new' is already registered." >&2
+        return 1
+    fi
+}
+
+# Atomically update the registry: insert the new entry (copied from the old
+# but with refreshed user_data_dir + app_bundle_path) and delete the old
+# entry — all in a single jq filter so a concurrent reader can never observe
+# both or neither.
+#
+# Args: $1 — old name; $2 — new name.
+# Returns: 0 on success; 1 on registry write failure.
+_ckipper_desktop_rename_swap_registry() {
+    local old="$1" new="$2"
+    local new_data_dir new_bundle
+    new_data_dir=$(_ckipper_desktop_data_dir_for "$new")
+    new_bundle=$(_ckipper_desktop_bundle_path_for "$new")
+    CKIPPER_REGISTRY_VERSION="$CKIPPER_DESKTOP_REGISTRY_VERSION" \
+        _core_registry_update_at "$CKIPPER_DESKTOP_REGISTRY" '
+            .instances[$new] = (
+                .instances[$old]
+                | .user_data_dir = $newdir
+                | .app_bundle_path = $newbundle
+            )
+            | del(.instances[$old])
+        ' --arg old "$old" --arg new "$new" \
+          --arg newdir "$new_data_dir" --arg newbundle "$new_bundle"
+}
+
+# Perform the on-disk side of a rename: move the user-data dir to its new
+# path, then regenerate the .app bundle under the new name. Rolls back the
+# dir move + new bundle if any step fails. Old bundle is removed only after
+# the new bundle is written so a mid-rename crash always leaves at least
+# one bundle usable.
+#
+# Args: $1 — old name; $2 — new name.
+# Returns: 0 on success; 1 on any filesystem step failure.
+_ckipper_desktop_rename_perform_fs() {
+    local old="$1" new="$2"
+    local old_dir new_dir old_bundle new_bundle
+    old_dir=$(_ckipper_desktop_data_dir_for "$old")
+    new_dir=$(_ckipper_desktop_data_dir_for "$new")
+    old_bundle=$(_ckipper_desktop_bundle_of "$old")
+    new_bundle=$(_ckipper_desktop_bundle_path_for "$new")
+    if [[ -e "$new_dir" || -e "$new_bundle" ]]; then
+        echo "Error: destination path already exists ($new_dir or $new_bundle)." >&2
+        return 1
+    fi
+    [[ -d "$old_dir" ]] && { mv "$old_dir" "$new_dir" || return 1; }
+    if ! _ckipper_desktop_bundle_write "$new" "$new_bundle" "$new_dir"; then
+        [[ -d "$new_dir" ]] && mv "$new_dir" "$old_dir" 2>/dev/null
+        return 1
+    fi
+    [[ -d "$old_bundle" ]] && rm -rf "$old_bundle"
+}
+
+# Roll back a partial rename when the registry write fails after the
+# filesystem moves succeeded. Restores both the data dir and the original
+# bundle (regenerated from the old name) so the registry/disk pair stays
+# in sync.
+#
+# Args: $1 — old name; $2 — new name.
+# Returns: 0 always (best-effort rollback).
+_ckipper_desktop_rename_rollback_fs() {
+    local old="$1" new="$2"
+    local old_dir new_dir old_bundle new_bundle
+    old_dir=$(_ckipper_desktop_data_dir_for "$old")
+    new_dir=$(_ckipper_desktop_data_dir_for "$new")
+    old_bundle=$(_ckipper_desktop_bundle_path_for "$old")
+    new_bundle=$(_ckipper_desktop_bundle_path_for "$new")
+    [[ -d "$new_dir" ]] && mv "$new_dir" "$old_dir" 2>/dev/null
+    [[ -d "$new_bundle" ]] && rm -rf "$new_bundle"
+    _ckipper_desktop_bundle_write "$old" "$old_bundle" "$old_dir" 2>/dev/null
+    return 0
+}
+
+# Rename a registered Desktop instance: move the user-data dir, regenerate
+# the .app bundle under the new name, and update the registry. Refuses if
+# the instance is running or if the destination name is taken. Rolls back
+# the filesystem changes if the registry write fails.
+#
+# Args: $1 — old name; $2 — new name.
+# Returns: 0 on success; 1 on any failure.
+_ckipper_desktop_rename() {
+    local old="$1" new="$2"
+    [[ -f "$CKIPPER_DESKTOP_REGISTRY" ]] || {
+        echo "Desktop instance '$old' is not registered." >&2; return 1
+    }
+    _ckipper_desktop_rename_validate "$old" "$new" || return 1
+    local old_dir
+    old_dir=$(_ckipper_desktop_data_dir_for "$old")
+    _ckipper_desktop_assert_not_running "$old_dir" || return 1
+    _ckipper_desktop_rename_perform_fs "$old" "$new" || {
+        echo "Error: filesystem rename failed; left in place." >&2; return 1
+    }
+    if ! _ckipper_desktop_rename_swap_registry "$old" "$new"; then
+        _ckipper_desktop_rename_rollback_fs "$old" "$new"
+        echo "Error: registry update failed; reverted filesystem rename." >&2
+        return 1
+    fi
+    echo "Renamed Desktop instance '$old' → '$new'."
+    echo "Data dir: $old_dir → $(_ckipper_desktop_data_dir_for "$new")"
+    echo "Bundle:   $(_ckipper_desktop_bundle_path_for "$new")"
+}
+
 # Unregister a Desktop instance from the registry, then interactively prompt
 # to delete the user-data dir (default N — preserves user data) and the
 # .app bundle (regeneratable). Refuses if the instance is currently running.

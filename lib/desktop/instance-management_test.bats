@@ -217,3 +217,80 @@ _run_remove_with_answers() {
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not registered" ]]
 }
+
+# ── desktop rename ───────────────────────────────────────────────────────
+
+@test "desktop rename moves data dir, regenerates bundle, updates registry" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    run_ckipper desktop rename work prod
+
+    [ "$status" -eq 0 ]
+    [ -d "$HOME/.claude-desktop-prod" ]
+    [ ! -d "$HOME/.claude-desktop-work" ]
+    [ -d "$HOME/Applications/Claude-Prod.app" ]
+    [ ! -d "$HOME/Applications/Claude-Work.app" ]
+    jq -e '.instances.prod' "$CKIPPER_DIR/desktop.json" >/dev/null
+    ! jq -e '.instances.work' "$CKIPPER_DIR/desktop.json" >/dev/null 2>&1
+    local recorded_dir
+    recorded_dir=$(jq -r '.instances.prod.user_data_dir' "$CKIPPER_DIR/desktop.json")
+    [ "$recorded_dir" = "$HOME/.claude-desktop-prod" ]
+}
+
+@test "desktop rename refuses collision with another registered instance" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+    run_ckipper desktop add personal
+
+    run_ckipper desktop rename work personal
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "already registered" ]]
+    # Both originals must survive the refusal.
+    jq -e '.instances.work' "$CKIPPER_DIR/desktop.json" >/dev/null
+    jq -e '.instances.personal' "$CKIPPER_DIR/desktop.json" >/dev/null
+}
+
+@test "desktop rename refuses if source is running" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    PGREP_STUB_MATCH=1 run_ckipper desktop rename work prod
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "running" ]]
+    # Source must survive the refusal.
+    jq -e '.instances.work' "$CKIPPER_DIR/desktop.json" >/dev/null
+    [ -d "$HOME/.claude-desktop-work" ]
+}
+
+@test "desktop rename refuses if source is not registered" {
+    _install_fake_claude_app
+    run_ckipper desktop add other
+
+    run_ckipper desktop rename ghost prod
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "not registered" ]]
+}
+
+@test "desktop rename refuses identical old/new names" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    run_ckipper desktop rename work work
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ [Nn]othing\ to\ do ]]
+}
+
+@test "desktop rename refuses invalid new name" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    run_ckipper desktop rename work "Bad Name"
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "must match" ]]
+}
