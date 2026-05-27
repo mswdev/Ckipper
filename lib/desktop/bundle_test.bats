@@ -30,7 +30,7 @@ _run_bundle() {
     [ "$status" -eq 0 ]
     [ -x "$bundle/Contents/MacOS/launcher" ]
     head -1 "$bundle/Contents/MacOS/launcher" | grep -q '^#!/bin/zsh'
-    grep -q -- "--user-data-dir=\"$data_dir\"" "$bundle/Contents/MacOS/launcher"
+    grep -q -- "--user-data-dir='$data_dir'" "$bundle/Contents/MacOS/launcher"
 }
 
 @test "bundle_write creates Info.plist with required CFBundle keys" {
