@@ -24,6 +24,11 @@ _CKIPPER_DESKTOP_SYSTEM_APP=${_CKIPPER_DESKTOP_SYSTEM_APP:-/Applications/Claude.
 # appended (e.g. work → dev.ckipper.claude.desktop.work).
 _CKIPPER_DESKTOP_BUNDLE_ID_PREFIX=dev.ckipper.claude.desktop
 
+# Version stamped into the generated Info.plist (CFBundleVersion +
+# CFBundleShortVersionString). Bump only when the bundle layout changes in a
+# way users would notice — e.g. a new key set or a launcher rewrite.
+_CKIPPER_DESKTOP_BUNDLE_VERSION="1.0"
+
 # Mode bits for the generated launcher script (rwxr-xr-x).
 _CKIPPER_DESKTOP_LAUNCHER_MODE=755
 
@@ -141,9 +146,9 @@ _ckipper_desktop_bundle_plist_body() {
     <key>CFBundleName</key>
     <string>${display}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${_CKIPPER_DESKTOP_BUNDLE_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>${_CKIPPER_DESKTOP_BUNDLE_VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>NSHighResolutionCapable</key>

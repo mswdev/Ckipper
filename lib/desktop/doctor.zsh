@@ -10,11 +10,6 @@
 # _core_style_badge and _core_style_header). It does NOT reach into the
 # account-namespace doctor helpers; counters are tracked locally.
 
-# Minimum instance count that triggers the deep-link routing reminder. Two
-# or more registered Desktop instances means `claude://` OAuth callbacks may
-# land in the wrong window — `ckipper desktop login` mitigates it.
-readonly _CKIPPER_DESKTOP_DOCTOR_DEEP_LINK_THRESHOLD=2
-
 # Module-level counters consumed by the orchestrator's exit-code decision.
 # Kept local to the desktop namespace — no shared state with lib/account.
 typeset -g _CKIPPER_DESKTOP_DOCTOR_FAIL=0
@@ -39,18 +34,6 @@ _ckipper_desktop_doctor_render() {
     printf '  %s %s\n' "$badge" "$msg"
 }
 
-# Count registered desktop instances without depending on instance-management.
-# Reads the registry directly via jq so feature-dir isolation holds (we don't
-# call _ckipper_desktop_instance_count, even though it would behave the same —
-# isolating the dependency surface keeps the doctor self-contained).
-#
-# Returns: 0 always. Prints the instance count on stdout (0 if registry absent
-#          or unreadable).
-_ckipper_desktop_doctor_instance_count() {
-    [[ -f "$CKIPPER_DESKTOP_REGISTRY" ]] || { echo 0; return 0; }
-    jq -r '.instances // {} | length' "$CKIPPER_DESKTOP_REGISTRY" 2>/dev/null || echo 0
-}
-
 # Check that the system Claude.app exists at $_CKIPPER_DESKTOP_SYSTEM_APP.
 #
 # On a CLI-only host with no registered instances the missing .app is
@@ -65,7 +48,7 @@ _ckipper_desktop_doctor_claude_app_check() {
         return 0
     fi
     local count
-    count=$(_ckipper_desktop_doctor_instance_count)
+    count=$(_ckipper_desktop_instance_count)
     if (( count >= 1 )); then
         _ckipper_desktop_doctor_render FAIL \
             "Claude.app missing at $_CKIPPER_DESKTOP_SYSTEM_APP — $count instance(s) registered but wrapper launchers cannot open it."
@@ -156,7 +139,7 @@ _ckipper_desktop_doctor_check_plist_parse() {
 _ckipper_desktop_doctor_per_instance_check() {
     [[ -f "$CKIPPER_DESKTOP_REGISTRY" ]] || return 0
     local count
-    count=$(_ckipper_desktop_doctor_instance_count)
+    count=$(_ckipper_desktop_instance_count)
     (( count == 0 )) && return 0
     local rows
     rows=$(jq -r '.instances // {} | to_entries[] | "\(.key)\t\(.value.user_data_dir)\t\(.value.app_bundle_path)"' \
@@ -176,8 +159,8 @@ _ckipper_desktop_doctor_per_instance_check() {
 # Returns: 0 always.
 _ckipper_desktop_doctor_deep_link_warn() {
     local count
-    count=$(_ckipper_desktop_doctor_instance_count)
-    (( count < _CKIPPER_DESKTOP_DOCTOR_DEEP_LINK_THRESHOLD )) && return 0
+    count=$(_ckipper_desktop_instance_count)
+    (( count < _CKIPPER_DESKTOP_DEEP_LINK_TIP_THRESHOLD )) && return 0
     _ckipper_desktop_doctor_render WARN \
         "2+ desktop instances registered — run 'ckipper desktop login <name>' before completing /login flows (claude:// deep-links route to the most-recently-active app)."
 }

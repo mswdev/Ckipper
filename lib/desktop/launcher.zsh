@@ -49,25 +49,24 @@ _ckipper_desktop_assert_not_running() {
 }
 
 # Look up an instance's bundle path. Fails if the instance is not registered.
-# Mirrors the registry-existence check pattern at
-# instance-management.zsh::_ckipper_desktop_data_dir_of — kept local to the
-# launcher namespace because feature dirs MUST NOT call into each other
-# beyond public, namespaced entry points; instance-management.zsh's
-# _ckipper_desktop_data_dir_of returns a different field (data_dir, not
-# bundle) so we don't reuse it.
 #
 # Args: $1 — instance name.
 # Returns: 0 with bundle path on stdout; 1 with error on stderr.
 # Errors (stderr): "Desktop instance '<name>' is not registered."
 _ckipper_desktop_lookup_bundle() {
     local name="$1"
-    if [[ ! -f "$CKIPPER_DESKTOP_REGISTRY" ]] \
-        || ! jq -e --arg n "$name" '.instances[$n]' \
-            "$CKIPPER_DESKTOP_REGISTRY" >/dev/null 2>&1; then
+    [[ -f "$CKIPPER_DESKTOP_REGISTRY" ]] || {
         echo "Desktop instance '$name' is not registered." >&2
         return 1
-    fi
-    jq -r --arg n "$name" '.instances[$n].app_bundle_path' "$CKIPPER_DESKTOP_REGISTRY"
+    }
+    local bundle
+    bundle=$(jq -er --arg n "$name" \
+        '.instances[$n].app_bundle_path // error("Desktop instance \($n) is not registered.")' \
+        "$CKIPPER_DESKTOP_REGISTRY" 2>&1) || {
+        echo "Desktop instance '$name' is not registered." >&2
+        return 1
+    }
+    printf '%s\n' "$bundle"
 }
 
 # Poll until every PID in $1 (newline-separated) has exited, escalating to

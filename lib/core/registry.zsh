@@ -306,7 +306,7 @@ _core_registry_migrate_v1_to_v2_at() {
 #   or corrupt schema.
 #
 # Errors (stderr):
-#   "Migrating accounts.json v1 → v2..." — informational notice during auto-migration.
+#   "Migrating <basename> v1 → v2..." — informational notice during auto-migration.
 #   "Error: registry version..." — on version mismatch.
 #   "Error: ... is corrupt..." — on bad schema.
 _core_registry_check_version() {
@@ -328,7 +328,7 @@ _core_registry_check_version() {
 #   0 if registry is absent or valid; 1 on version mismatch or migration failure.
 #
 # Errors (stderr):
-#   "Migrating accounts.json v1 → v2..." — informational notice during auto-migration.
+#   "Migrating <basename> v1 → v2..." — informational notice during auto-migration.
 #   "Error: registry version..." — on version mismatch.
 _core_registry_check_version_at() {
     local registry_file="$1"
@@ -336,7 +336,7 @@ _core_registry_check_version_at() {
     local cur
     cur=$(jq -r '.version // 0' "$registry_file" 2>/dev/null)
     if [[ "$cur" == "1" ]] && (( CKIPPER_REGISTRY_VERSION >= 2 )); then
-        echo "Migrating accounts.json v1 → v2..." >&2
+        echo "Migrating ${registry_file:t} v1 → v2..." >&2
         _core_registry_migrate_v1_to_v2_at "$registry_file" || return 1
     fi
     local v
