@@ -53,15 +53,17 @@ _run_dispatch() {
     _run_dispatch add --help
 
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "ckipper desktop add" ]]
+    # "Prerequisite:" appears only in add-specific help, not the overview —
+    # tightens the test so a silent fall-through to the overview would fail.
+    [[ "$output" =~ "Prerequisite:" ]]
 }
 
 @test "dispatch short-circuits 'login -h' to per-subcommand help" {
     _run_dispatch login -h
 
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "ckipper desktop login" ]]
-    [[ "$output" =~ "claude://" ]]
+    # "Why this exists:" appears only in login-specific help, not the overview.
+    [[ "$output" =~ "Why this exists:" ]]
 }
 
 @test "dispatch with no args prints overview help" {
