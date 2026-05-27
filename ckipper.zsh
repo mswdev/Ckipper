@@ -239,7 +239,7 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs
 # regenerate the cached completion file. The version is embedded as a literal
 # comment in the generated file and matched here.
-CKIPPER_COMPLETION_VERSION=8
+CKIPPER_COMPLETION_VERSION=9
 if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
     # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
@@ -249,12 +249,12 @@ if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     # a completion file, not maintained shell logic).
     cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
 #compdef ckipper ck
-# ckipper-completion-version=8
+# ckipper-completion-version=9
 
 _ckipper() {
     local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
     local worktrees_dir="${CKIPPER_WORKTREES_DIR:-$projects_dir/.worktrees}"
-    local -a top_commands account_subs worktree_subs config_subs
+    local -a top_commands account_subs worktree_subs config_subs desktop_subs
 
     top_commands=(
         'account:Manage Claude accounts'
@@ -263,6 +263,8 @@ _ckipper() {
         'wt:Short alias for worktree'
         'run:Shortcut for worktree run'
         'config:View and modify Ckipper settings'
+        'desktop:Manage Claude Desktop instances'
+        'dt:Short alias for desktop'
         'setup:Run / re-run the setup wizard'
         'doctor:Diagnostic check of accounts and tooling'
         'help:Show top-level help'
@@ -292,6 +294,15 @@ _ckipper() {
         'edit:Open the config file in $EDITOR'
         'help:Show config-namespace help'
     )
+    desktop_subs=(
+        'add:Register a new Desktop instance'
+        'list:Show registered instances'
+        'remove:Unregister a Desktop instance'
+        'rename:Rename a Desktop instance in place'
+        'login:Quit all Claude.app, launch only this one'
+        'launch:Open a registered instance'
+        'help:Show desktop-namespace help'
+    )
 
     _arguments -C \
         '1: :->cmd' \
@@ -315,6 +326,9 @@ _ckipper() {
                     ;;
                 config)
                     _describe -t subcommands 'config subcommand' config_subs && return 0
+                    ;;
+                desktop|dt)
+                    _describe -t subcommands 'desktop subcommand' desktop_subs && return 0
                     ;;
                 run)
                     local -a projects
@@ -351,6 +365,14 @@ _ckipper() {
                     local -a config_keys
                     config_keys=( "${(@k)_CKIPPER_SCHEMA_TYPE}" )
                     _describe -t keys 'config key' config_keys && return 0
+                    ;;
+                desktop/remove|dt/remove|desktop/rename|dt/rename|desktop/login|dt/login|desktop/launch|dt/launch)
+                    local -a desktop_instances
+                    local desktop_registry="${CKIPPER_DESKTOP_REGISTRY:-$HOME/.ckipper/desktop.json}"
+                    if [[ -f "$desktop_registry" ]]; then
+                        desktop_instances=( $(jq -r '.instances | keys[]' "$desktop_registry" 2>/dev/null) )
+                    fi
+                    _describe -t instances 'desktop instance name' desktop_instances && return 0
                     ;;
             esac
             case "${words[2]}" in
