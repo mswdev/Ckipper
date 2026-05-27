@@ -222,8 +222,8 @@ _ckipper_desktop_list_header() {
 }
 
 # Shorten an absolute path under $HOME to a `~/`-prefixed form for display.
-# Mirrors lib/account/account-management.zsh::_ckipper_account_list_short_dir;
-# extracted again here because the account namespace is off-limits to siblings.
+# Mirrors the equivalent helper in lib/account/account-management.zsh
+# (extracted again here because the account namespace is off-limits to siblings).
 #
 # Args: $1 — absolute path.
 # Returns: 0 always; prints the (possibly shortened) path.
