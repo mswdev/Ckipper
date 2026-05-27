@@ -282,7 +282,7 @@ _run_remove_with_answers() {
     run_ckipper desktop rename work work
 
     [ "$status" -ne 0 ]
-    [[ "$output" =~ [Nn]othing\ to\ do ]]
+    [[ "$output" =~ "Nothing to do" ]]
 }
 
 @test "desktop rename refuses invalid new name" {

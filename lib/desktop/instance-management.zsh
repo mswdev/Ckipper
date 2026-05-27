@@ -18,6 +18,13 @@
 # Mirrors lib/account/account-management.zsh's name regex for consistency.
 readonly _CKIPPER_DESKTOP_NAME_REGEX='^[a-z0-9_-]+$'
 
+# Minimum number of registered instances that triggers the post-`desktop add`
+# deep-link routing tip. With only one instance the `claude://` OAuth callback
+# always lands in the right place; two or more brings the routing pitfall
+# that `ckipper desktop login` is designed to solve, so we nudge the user
+# toward it the moment they cross the threshold.
+readonly _CKIPPER_DESKTOP_DEEP_LINK_TIP_THRESHOLD=2
+
 # Compute the user-data dir for a given instance name. HOME is read at call
 # time so per-test overrides work; do NOT cache this in a module-level const.
 #
@@ -158,7 +165,7 @@ _ckipper_desktop_add_announce() {
     echo "Data dir:  $(_ckipper_desktop_data_dir_for "$name")"
     local count
     count=$(_ckipper_desktop_instance_count)
-    if (( count >= 2 )); then
+    if (( count >= _CKIPPER_DESKTOP_DEEP_LINK_TIP_THRESHOLD )); then
         echo ""
         echo "Tip: with two or more Desktop instances installed, use \`ckipper desktop login <name>\`"
         echo "before running /login so the OAuth deep-link lands in the right window."
