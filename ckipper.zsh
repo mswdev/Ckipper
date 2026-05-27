@@ -72,6 +72,7 @@ source "$CKIPPER_REPO_DIR/lib/desktop/help.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/bundle.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/instance-management.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/launcher.zsh"
+source "$CKIPPER_REPO_DIR/lib/desktop/doctor.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/dispatcher.zsh"
 
 # Setup-namespace modules
@@ -149,7 +150,10 @@ ckipper() {
                 _ckipper_help_text_doctor
                 return 0
             fi
-            _ckipper_doctor "$@"
+            local _rc=0
+            _ckipper_doctor "$@" || _rc=1
+            _ckipper_desktop_doctor || _rc=1
+            return $_rc
             ;;
         "")               _ckipper_launcher_menu ;;
         help|-h|--help)   _ckipper_help ;;
@@ -219,6 +223,7 @@ _ckipper_help_text_doctor() {
         "  - Keychain entries reachable on macOS" \
         "  - ~/.zshrc sources ckipper.zsh" \
         "  - Stub ~/.claude state is absent" \
+        "  - Per-desktop-instance: data dir present, .app bundle valid (macOS only)" \
         "" \
         "Exits 0 if every check passes (or only INFOs/WARNs); exits 1 if any FAIL."
 }
