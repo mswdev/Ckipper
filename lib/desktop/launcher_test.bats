@@ -148,3 +148,39 @@ teardown() {
     [ "$status" -eq 0 ]
     grep -q "open -n -a" "$mock_log"
 }
+
+# ── desktop launch (Task 11) ───────────────────────────────────────────────
+
+@test "launch opens the registered bundle without quitting other instances" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    local mock_log="$TMP_HOME/mock.log"
+    : >"$mock_log"
+    run env HOME="$TMP_HOME" CKIPPER_DIR="$CKIPPER_DIR" \
+        _CKIPPER_TEST_OSTYPE="darwin19.0" \
+        _CKIPPER_DESKTOP_SYSTEM_APP="$_CKIPPER_DESKTOP_SYSTEM_APP" \
+        PATH="$PATH" MOCK_LOG="$mock_log" \
+        zsh -c '
+            source "'"$REPO_ROOT"'/ckipper.zsh"
+            # pgrep would trigger the quit dance if launch (mistakenly) called
+            # _ckipper_desktop_quit_all_claude_processes. It must NOT.
+            pgrep() { echo 1001; }
+            kill()  { echo "UNEXPECTED kill $*" >> "$MOCK_LOG"; }
+            open()  { echo "open $*" >> "$MOCK_LOG"; }
+            ckipper desktop launch work
+        '
+
+    [ "$status" -eq 0 ]
+    grep -q "open -n -a $HOME/Applications/Claude-Work.app" "$mock_log"
+    ! grep -q "UNEXPECTED kill" "$mock_log"
+}
+
+@test "launch fails when instance is not registered" {
+    _install_fake_claude_app
+
+    run_ckipper desktop launch ghost
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "not registered" ]]
+}

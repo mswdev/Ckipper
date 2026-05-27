@@ -64,9 +64,3 @@ _ckipper_desktop_unknown() {
         "Run 'ckipper desktop help' for available commands." \
         "${_CKIPPER_DESKTOP_SUBCOMMANDS[@]}"
 }
-
-# --- TEMPORARY STUBS (deleted as Tasks 5..11 land the real implementations) ---
-# Each stub returns 1 so users typing them get a "not yet implemented" signal.
-# The task number is embedded in each message for grep-ability when wiring up
-# the real handlers.
-_ckipper_desktop_launch() { echo "ckipper desktop launch: not yet implemented (Task 11)" >&2; return 1; }

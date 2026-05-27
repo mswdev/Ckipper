@@ -2,7 +2,7 @@
 # Launch / login / process helpers for Claude Desktop instances.
 #
 # Three public entry points:
-#   _ckipper_desktop_launch  — open -n -a <bundle> (no quit dance) [Task 11]
+#   _ckipper_desktop_launch  — open -n -a <bundle> (no quit dance)
 #   _ckipper_desktop_login   — quit ALL Claude.app processes, then launch <bundle>
 #   _ckipper_desktop_assert_not_running — refuse if a Claude process owns
 #                                          this user-data-dir
@@ -125,5 +125,18 @@ _ckipper_desktop_login() {
     local bundle
     bundle=$(_ckipper_desktop_lookup_bundle "$name") || return 1
     _ckipper_desktop_quit_all_claude_processes
+    open -n -a "$bundle"
+}
+
+# Open a registered Desktop instance without disturbing others.
+# This is the simple, non-auth path — use `ckipper desktop login <name>`
+# instead when completing a /login flow that involves deep-link callbacks.
+#
+# Args: $1 — instance name.
+# Returns: 0 on success; 1 if the instance is not registered.
+_ckipper_desktop_launch() {
+    local name="$1"
+    local bundle
+    bundle=$(_ckipper_desktop_lookup_bundle "$name") || return 1
     open -n -a "$bundle"
 }
