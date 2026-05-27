@@ -121,6 +121,7 @@ _ckipper_setup_completion_inner() {
     echo "  ckipper run <project> <branch>     Bundle worktree + Claude"
     echo "  ck                                 Interactive menu"
     echo "  claude-<account>                   Per-account launcher (e.g. claude-personal)"
+    echo "  ckipper desktop add <name>         Register a Claude Desktop instance"
     echo
     gum style --bold "Maintenance:"
     echo "  ckipper config list                Review every setting"
@@ -142,6 +143,7 @@ _ckipper_setup_render_completion_plain() {
     echo "  ckipper run <project> <branch>     Bundle worktree + Claude in one step"
     echo "  ck                                 Interactive menu"
     echo "  claude-<account>                   Per-account launcher (e.g. claude-personal)"
+    echo "  ckipper desktop add <name>         Register a Claude Desktop instance"
     echo ""
     echo "Maintenance:"
     echo "  ckipper config list                Review every setting"

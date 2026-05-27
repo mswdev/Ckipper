@@ -140,6 +140,45 @@ Two terminals running the **same** account simultaneously will hit a known OAuth
 
 If you want concurrent runs of the *same* account, register it twice under two names (`personal-a`, `personal-b`) — though this means re-`/login` for each.
 
+## Claude Desktop instances
+
+Ckipper also manages multiple isolated Claude **Desktop** (Electron app) instances on macOS via the `--user-data-dir` flag. Each instance is a fully isolated sandbox — separate auth, MCP servers, projects, conversation history, Cowork VM — and shows up in Spotlight and the Dock as `Claude-<Name>.app`.
+
+CLI accounts (`ckipper account *`) and Desktop instances (`ckipper desktop *`) are independent and configured separately. An account named `work` and a Desktop instance named `work` share nothing but the name.
+
+### Add an instance
+
+```bash
+ckipper desktop add work
+```
+
+Creates `~/.claude-desktop-work/` (user-data dir) and `~/Applications/Claude-Work.app` (wrapper bundle whose launcher exec's `open -n -a /Applications/Claude.app --args --user-data-dir=…`). Requires `/Applications/Claude.app` to be installed.
+
+### Use an instance
+
+```bash
+ckipper desktop launch work           # open the instance (also works from Spotlight / Dock)
+ckipper desktop list                  # see registered instances + running status
+ckipper desktop rename work prod      # rename in place
+ckipper desktop remove work           # interactively prompt to delete user-data dir + bundle
+```
+
+> **Note: claude:// deep-link auth gotcha.** macOS routes `claude://` URLs (the OAuth callback used by `/login`) to whichever Claude app was most recently active. With two or more Desktop instances running, the callback can land in the wrong window. `ckipper desktop login <name>` works around this by quitting *every* running Claude process and launching only the target — complete `/login` there, then re-open the others as needed. This is a one-time-per-instance setup cost; once authenticated, instances run side by side indefinitely.
+
+```bash
+ckipper desktop login work            # quit all, launch only 'work' — safe for /login flows
+```
+
+### How instances are stored
+
+- Per-instance data lives in `~/.claude-desktop-<name>/` (Electron `userData` dir).
+- Generated `.app` wrappers live in `~/Applications/Claude-<Name>.app` (per-user, no admin required). The launcher script bakes `--user-data-dir` in at generation time — no runtime path-walking.
+- The registry mapping instance names to dirs and bundles lives at `~/.ckipper/desktop.json` (separate file from `accounts.json`, separate schema version).
+
+### Diagnostics
+
+`ckipper doctor` runs Desktop checks alongside the account checks: `/Applications/Claude.app` is installed (if any instances are registered), `desktop.json` is well-formed, each instance's data dir + `.app` bundle exist and parse, and a warning fires when two or more instances are registered (the deep-link reminder).
+
 ## Sync state between accounts
 
 `ckipper account sync` copies state between registered accounts — MCP servers, settings, agents, commands, skills, user hooks, etc. — interactively by default, with one source and one or more destinations.

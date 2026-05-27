@@ -130,7 +130,7 @@ _run_registry() {
     echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
     chmod 600 "$CKIPPER_REGISTRY"
 
-    _run_registry '_core_registry_update_mkdir_fallback ".default = \"alice\""'
+    _run_registry '_core_registry_update_mkdir_fallback "$CKIPPER_REGISTRY" ".default = \"alice\""'
 
     [ "$status" -eq 0 ]
     [[ ! -d "$CKIPPER_DIR/.registry.lock.d" ]]
@@ -143,8 +143,60 @@ _run_registry() {
     echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
     chmod 600 "$CKIPPER_REGISTRY"
 
-    _run_registry '_core_registry_update_mkdir_fallback "this is not a valid jq filter @@@"'
+    _run_registry '_core_registry_update_mkdir_fallback "$CKIPPER_REGISTRY" "this is not a valid jq filter @@@"'
 
     [ "$status" -ne 0 ]
     [[ ! -d "$CKIPPER_DIR/.registry.lock.d" ]]
+}
+
+@test "_core_registry_update_at writes to an alternate file" {
+    local alt="$BATS_TEST_TMPDIR/alt.json"
+    echo '{"version":1,"items":{}}' > "$alt"
+    _run_registry "_core_registry_update_at \"$alt\" '.items.x = \"hi\"'"
+
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.items.x' "$alt")" = "hi" ]
+}
+
+@test "_core_registry_update_at uses lock paths derived from the file path" {
+    local alt="$BATS_TEST_TMPDIR/alt.json"
+    echo '{"version":1,"items":{}}' > "$alt"
+    _run_registry "_core_registry_update_at \"$alt\" '.items.x = \"y\"'"
+
+    [ "$status" -eq 0 ]
+    # Default registry untouched.
+    [ ! -f "$CKIPPER_REGISTRY" ] || ! jq -e '.items' "$CKIPPER_REGISTRY" >/dev/null 2>&1
+}
+
+@test "_core_registry_init_at initializes an alternate file" {
+    local alt="$BATS_TEST_TMPDIR/alt.json"
+    _run_registry "_core_registry_init_at \"$alt\""
+
+    [ "$status" -eq 0 ]
+    [ -f "$alt" ]
+    [ "$(jq -r '.version' "$alt")" = "1" ]
+}
+
+@test "_core_registry_check_version_at accepts an alternate file" {
+    local alt="$BATS_TEST_TMPDIR/alt.json"
+    echo '{"version":1,"items":{}}' > "$alt"
+    _run_registry "_core_registry_check_version_at \"$alt\""
+
+    [ "$status" -eq 0 ]
+}
+
+@test "_core_registry_check_version_at fails on version mismatch in alternate file" {
+    local alt="$BATS_TEST_TMPDIR/alt.json"
+    echo '{"version":99,"items":{}}' > "$alt"
+    _run_registry "_core_registry_check_version_at \"$alt\""
+
+    [ "$status" -ne 0 ]
+}
+
+@test "_core_registry_update zero-arg wrapper still works (regression)" {
+    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    _run_registry '_core_registry_update ".default = \"bob\""'
+
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.default' "$CKIPPER_REGISTRY")" = "bob" ]
 }

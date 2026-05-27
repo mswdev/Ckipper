@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — CLI + onboarding overhaul
 
+### Claude Desktop multi-instance support
+
+- **New:** `ckipper desktop` namespace (alias `dt`) for managing isolated Claude Desktop (Electron app) instances on macOS, alongside the existing CLI multi-account support. Each instance gets its own user-data dir (`~/.claude-desktop-<name>/`) and a generated `.app` wrapper bundle (`~/Applications/Claude-<Name>.app`) that shows up in Spotlight and the Dock.
+- **New:** Subcommands `add`, `list`, `remove`, `rename`, `launch`, `login`.
+- **New:** `ckipper desktop login <name>` quits every running Claude.app process via `SIGTERM` (with `SIGKILL` fallback after 5 s), then launches only the target — working around the `claude://` deep-link auth-callback routing gotcha where macOS sends OAuth callbacks to whichever Claude app was most recently active.
+- **New:** `ckipper doctor` now includes Desktop checks (registry shape, per-instance data dir + `.app` bundle existence, `/Applications/Claude.app` presence, deep-link warning when 2+ instances exist).
+- **New:** Registry at `~/.ckipper/desktop.json` (schema v1) — separate file from `accounts.json` with its own lock and atomic-write machinery.
+- **Changed:** `lib/core/registry.zsh` primitives parametrized on file path (`_core_registry_update_at`, `_init_at`, `_check_version_at`) so the new desktop registry reuses the same locking + atomic-write code as accounts.json.
+- **Changed:** Tab completion bumped to version 9 — added `desktop` / `dt` completion and per-instance-name completion read from `desktop.json`.
+
 ### Sync system overhaul
 
 - **New:** `ckipper account sync` is fully interactive by default. Run with no args to pick source, targets, and types via gum pickers; pass positional args to skip the relevant pickers.

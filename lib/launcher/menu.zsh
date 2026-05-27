@@ -14,17 +14,21 @@
 #   - lib/worktree/dispatcher.zsh      (`_ckipper_worktree_dispatch`)
 #   - lib/account/dispatcher.zsh       (`_ckipper_account_dispatch`)
 #   - lib/config/dispatcher.zsh        (`_ckipper_config_dispatch`)
+#   - lib/desktop/dispatcher.zsh       (`_ckipper_desktop_dispatch`)
 #   - lib/setup/dispatcher.zsh         (`_ckipper_setup`)
 #   - lib/account/doctor.zsh           (`_ckipper_doctor`)
 
 # Menu options shown by `_ckipper_launcher_menu`. The order is load-bearing:
 # `_ckipper_launcher_route` matches on the human-readable label, and tests
-# rely on "Quit" being the 8th (and last) entry.
+# rely on "Quit" being the 11th (and last) entry.
 typeset -gra _CKIPPER_LAUNCHER_OPTIONS=(
     "Run Claude on a worktree"
     "List worktrees"
     "List accounts"
     "Add an account"
+    "Launch a Desktop instance"
+    "List Desktop instances"
+    "Add a Desktop instance"
     "Run setup wizard"
     "Edit config"
     "Run doctor"
@@ -74,15 +78,18 @@ _ckipper_launcher_menu() {
 _ckipper_launcher_route() {
     local choice="$1"
     case "$choice" in
-        "Run Claude on a worktree") _ckipper_launcher_route_run ;;
-        "List worktrees")           _ckipper_worktree_dispatch list ;;
-        "List accounts")            _ckipper_account_dispatch list ;;
-        "Add an account")           _ckipper_account_dispatch add ;;
-        "Run setup wizard")         _ckipper_setup ;;
-        "Edit config")              _ckipper_config_dispatch edit ;;
-        "Run doctor")               _ckipper_doctor ;;
-        "Quit")                     return 0 ;;
-        *)                          return 1 ;;
+        "Run Claude on a worktree")   _ckipper_launcher_route_run ;;
+        "List worktrees")             _ckipper_worktree_dispatch list ;;
+        "List accounts")              _ckipper_account_dispatch list ;;
+        "Add an account")             _ckipper_account_dispatch add ;;
+        "Launch a Desktop instance")  _ckipper_launcher_route_desktop_launch ;;
+        "List Desktop instances")     _ckipper_desktop_dispatch list ;;
+        "Add a Desktop instance")     _ckipper_desktop_dispatch add ;;
+        "Run setup wizard")           _ckipper_setup ;;
+        "Edit config")                _ckipper_config_dispatch edit ;;
+        "Run doctor")                 _ckipper_doctor ;;
+        "Quit")                       return 0 ;;
+        *)                            return 1 ;;
     esac
 }
 
@@ -123,4 +130,26 @@ _ckipper_launcher_route_run() {
     branch=$(_core_prompt_input "Branch name" "feature/dev")
     [[ -z "$branch" ]] && return 1
     _ckipper_run "$project" "$branch"
+}
+
+# Pick a registered Desktop instance and dispatch `desktop launch`.
+# When no instances exist, abort with a hint rather than an empty prompt.
+#
+# Returns: 0 on success; 1 if no instances are registered or the user
+#   cancels the choose prompt.
+_ckipper_launcher_route_desktop_launch() {
+    local registry="${CKIPPER_DESKTOP_REGISTRY:-$HOME/.ckipper/desktop.json}"
+    if [[ ! -f "$registry" ]]; then
+        echo "No Desktop instances registered. Run: ckipper desktop add <name>" >&2
+        return 1
+    fi
+    local -a instances
+    instances=( ${(f)"$(jq -r '.instances | keys[]' "$registry" 2>/dev/null)"} )
+    if (( ${#instances} == 0 )); then
+        echo "No Desktop instances registered. Run: ckipper desktop add <name>" >&2
+        return 1
+    fi
+    local name; name=$(_core_prompt_choose "Pick a Desktop instance" "${instances[@]}")
+    [[ -z "$name" ]] && return 1
+    _ckipper_desktop_dispatch launch "$name"
 }

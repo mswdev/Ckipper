@@ -50,13 +50,14 @@ lint-py:
 lint-merge-guards:
 	@! grep -rE '\b_w_[a-z]' lib/ ckipper.zsh 2>/dev/null || (echo "lint-merge-guards: leftover _w_* function references in lib/ or ckipper.zsh" >&2 && exit 1)
 	@! grep -rE --exclude=doctor.zsh '\bW_[A-Z]' lib/ ckipper.zsh templates/ 2>/dev/null || (echo "lint-merge-guards: leftover W_* globals in lib/, ckipper.zsh, or templates/" >&2 && exit 1)
-	@! grep -rE '\b_ckipper_account_' lib/worktree/ lib/config/ 2>/dev/null || (echo "lint-merge-guards: feature dir contains account-namespace references (sibling features must not import; see shell-conventions.md)" >&2 && exit 1)
-	@! grep -rE '\b_ckipper_worktree_' lib/account/ lib/config/ 2>/dev/null || (echo "lint-merge-guards: feature dir contains worktree-namespace references (sibling features must not import; see shell-conventions.md)" >&2 && exit 1)
-	@! grep -rE '\b_ckipper_config_' lib/account/ lib/worktree/ lib/setup/ lib/run/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: config-namespace reference outside lib/config/ (siblings + lower layers cannot reach in)" >&2 && exit 1)
-	@! grep -rE '\b_ckipper_setup_' lib/account/ lib/worktree/ lib/config/ lib/run/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: setup-namespace reference outside lib/setup/" >&2 && exit 1)
-	@! grep -rE '\b_ckipper_run_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: run-namespace reference outside lib/run/" >&2 && exit 1)
-	@! grep -rE '\b_ckipper_launcher_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/run/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: launcher-namespace reference outside lib/launcher/" >&2 && exit 1)
-	@! grep -rE '^_core_[a-z_]+\(\)' lib/account/ lib/worktree/ lib/config/ lib/setup/ lib/run/ lib/launcher/ --include='*.zsh' 2>/dev/null || (echo "lint-merge-guards: _core_* function defined outside lib/core/ (see .claude/rules/shell-conventions.md — _core_* is reserved for lib/core/)" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_account_' lib/worktree/ lib/config/ lib/desktop/ 2>/dev/null || (echo "lint-merge-guards: feature dir contains account-namespace references (sibling features must not import; see shell-conventions.md)" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_worktree_' lib/account/ lib/config/ lib/desktop/ 2>/dev/null || (echo "lint-merge-guards: feature dir contains worktree-namespace references (sibling features must not import; see shell-conventions.md)" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_config_' lib/account/ lib/worktree/ lib/setup/ lib/run/ lib/core/ lib/desktop/ 2>/dev/null || (echo "lint-merge-guards: config-namespace reference outside lib/config/ (siblings + lower layers cannot reach in)" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_setup_' lib/account/ lib/worktree/ lib/config/ lib/run/ lib/core/ lib/desktop/ 2>/dev/null || (echo "lint-merge-guards: setup-namespace reference outside lib/setup/" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_run_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/core/ lib/desktop/ 2>/dev/null || (echo "lint-merge-guards: run-namespace reference outside lib/run/" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_launcher_' lib/account/ lib/worktree/ lib/setup/ lib/config/ lib/run/ lib/core/ lib/desktop/ 2>/dev/null || (echo "lint-merge-guards: launcher-namespace reference outside lib/launcher/" >&2 && exit 1)
+	@! grep -rE '\b_ckipper_desktop_' lib/account/ lib/worktree/ lib/config/ lib/core/ 2>/dev/null || (echo "lint-merge-guards: desktop-namespace reference outside lib/desktop/ (sibling features must not import; orchestration dirs may)" >&2 && exit 1)
+	@! grep -rE '^_core_[a-z_]+\(\)' lib/account/ lib/worktree/ lib/config/ lib/setup/ lib/run/ lib/launcher/ lib/desktop/ --include='*.zsh' 2>/dev/null || (echo "lint-merge-guards: _core_* function defined outside lib/core/ (see .claude/rules/shell-conventions.md — _core_* is reserved for lib/core/)" >&2 && exit 1)
 
 install:
 	./install.sh
