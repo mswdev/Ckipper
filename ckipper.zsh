@@ -71,6 +71,7 @@ source "$CKIPPER_REPO_DIR/lib/config/dispatcher.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/help.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/bundle.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/instance-management.zsh"
+source "$CKIPPER_REPO_DIR/lib/desktop/launcher.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/dispatcher.zsh"
 
 # Setup-namespace modules

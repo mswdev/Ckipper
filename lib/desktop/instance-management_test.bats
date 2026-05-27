@@ -12,18 +12,6 @@ teardown() {
     teardown_isolated_env
 }
 
-# Install a fake /Applications/Claude.app under the per-test $TMP_HOME and
-# point the desktop module at it via the documented env override. Required
-# before any `desktop add` test because the real add flow refuses when the
-# system Claude.app is missing.
-_install_fake_claude_app() {
-    export _CKIPPER_TEST_OSTYPE="darwin19.0"
-    export _CKIPPER_DESKTOP_SYSTEM_APP="$TMP_HOME/FakeClaude.app"
-    export _CKIPPER_TEST_CLAUDE_APP="$TMP_HOME/FakeClaude.app"
-    mkdir -p "$_CKIPPER_DESKTOP_SYSTEM_APP/Contents/MacOS"
-    mkdir -p "$_CKIPPER_DESKTOP_SYSTEM_APP/Contents/Resources"
-}
-
 # ── desktop add ──────────────────────────────────────────────────────────
 
 @test "desktop add registers a new instance and writes registry entry" {

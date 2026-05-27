@@ -300,25 +300,6 @@ _ckipper_desktop_list_print_rows() {
         done
 }
 
-# Refuse if a Claude Desktop process is currently running against the given
-# user-data dir. Used by `desktop remove` and `desktop rename` to block
-# destructive ops on a live instance.
-#
-# TODO(Task 9): replace with _ckipper_desktop_assert_not_running once that
-# helper lands. Inlined here because remove/rename need the check before
-# the launcher module exists.
-#
-# Args: $1 — user-data dir to probe.
-# Returns: 0 if no matching process; 1 otherwise.
-# Errors (stderr): "Refusing: ..." when a matching process is found.
-_ckipper_desktop_assert_not_running() {
-    local data_dir="$1"
-    pgrep -f -- "--user-data-dir=$data_dir" >/dev/null 2>&1 || return 0
-    echo "Refusing: a Claude Desktop instance is running for $data_dir." >&2
-    echo "Quit it first, then re-run." >&2
-    return 1
-}
-
 # Look up the user-data dir for a registered instance.
 #
 # Args: $1 — instance name.
