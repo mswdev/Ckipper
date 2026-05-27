@@ -67,6 +67,10 @@ source "$CKIPPER_REPO_DIR/lib/config/list.zsh"
 source "$CKIPPER_REPO_DIR/lib/config/edit.zsh"
 source "$CKIPPER_REPO_DIR/lib/config/dispatcher.zsh"
 
+# Desktop-namespace modules
+source "$CKIPPER_REPO_DIR/lib/desktop/help.zsh"
+source "$CKIPPER_REPO_DIR/lib/desktop/dispatcher.zsh"
+
 # Setup-namespace modules
 source "$CKIPPER_REPO_DIR/lib/setup/prereqs.zsh"
 source "$CKIPPER_REPO_DIR/lib/setup/prompts.zsh"
@@ -92,7 +96,7 @@ CKIPPER_WORKTREES_DIR="${CKIPPER_WORKTREES_DIR:-$CKIPPER_PROJECTS_DIR/.worktrees
 (( ${#CKIPPER_EXTRA_ENV[@]} == 0 )) && CKIPPER_EXTRA_ENV=()
 
 # Top-level commands. Used both for routing and for fuzzy-suggest.
-_CKIPPER_COMMANDS=(account worktree run config setup doctor help)
+_CKIPPER_COMMANDS=(account worktree run config desktop setup doctor help)
 
 # Pre-merge top-level commands → their post-merge namespaced replacement.
 # Used by _ckipper_unknown so a user typing the old form (e.g. `ckipper add`)
@@ -128,12 +132,14 @@ ckipper() {
     case "$cmd" in
         acct) cmd="account" ;;
         wt)   cmd="worktree" ;;
+        dt)   cmd="desktop" ;;
     esac
     case "$cmd" in
         account)  _ckipper_account_dispatch "$@" ;;
         worktree) _ckipper_worktree_dispatch "$@" ;;
         run)      _ckipper_run "$@" ;;
         config)   _ckipper_config_dispatch "$@" ;;
+        desktop)  _ckipper_desktop_dispatch "$@" ;;
         setup)    _ckipper_setup "$@" ;;
         doctor)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
@@ -181,6 +187,7 @@ _ckipper_help() {
         "  ckipper worktree <subcommand>  Manage git worktrees (alias: wt)" \
         "  ckipper run <project> <branch> Shortcut for \`ckipper worktree run\`" \
         "  ckipper config <subcommand>    View and modify Ckipper settings" \
+        "  ckipper desktop <subcommand>   Manage Claude Desktop instances (alias: dt)" \
         "  ckipper setup                  Run / re-run the interactive setup wizard" \
         "  ckipper doctor                 Diagnostic check of accounts and tooling" \
         "  ckipper help                   Show this overview" \
