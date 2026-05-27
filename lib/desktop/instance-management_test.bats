@@ -100,3 +100,49 @@ _install_fake_claude_app() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "ckipper desktop login" ]]
 }
+
+# ── desktop list ─────────────────────────────────────────────────────────
+
+@test "desktop list shows hint when no instances are registered" {
+    _install_fake_claude_app
+
+    run_ckipper desktop list
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "No Desktop instances" ]]
+    [[ "$output" =~ "ckipper desktop add" ]]
+}
+
+@test "desktop list prints registered instances" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+    run_ckipper desktop add personal
+
+    run_ckipper desktop list
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "work" ]]
+    [[ "$output" =~ "personal" ]]
+    [[ "$output" =~ "Claude-Work" ]]
+    [[ "$output" =~ "Claude-Personal" ]]
+}
+
+@test "desktop list shows running status via pgrep" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    PGREP_STUB_MATCH=1 run_ckipper desktop list
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "running" ]]
+}
+
+@test "desktop list shows stopped status when pgrep finds nothing" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    run_ckipper desktop list
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "stopped" ]]
+}

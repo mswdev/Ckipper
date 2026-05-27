@@ -194,3 +194,125 @@ _ckipper_desktop_add() {
     fi
     _ckipper_desktop_add_announce "$name" "$bundle"
 }
+
+# Column widths (chars) used when rendering `ckipper desktop list` rows.
+# Matched against the header printed by _ckipper_desktop_list_header.
+readonly _CKIPPER_DESKTOP_LIST_COL_NAME=14
+readonly _CKIPPER_DESKTOP_LIST_COL_DATA_DIR=30
+readonly _CKIPPER_DESKTOP_LIST_COL_BUNDLE=36
+readonly _CKIPPER_DESKTOP_LIST_COL_REGISTERED=22
+
+# Print the column-header row for `ckipper desktop list`.
+#
+# Returns: 0 always.
+_ckipper_desktop_list_header() {
+    printf '%-*s%-*s%-*s%-*s%s\n' \
+        "$_CKIPPER_DESKTOP_LIST_COL_NAME" "NAME" \
+        "$_CKIPPER_DESKTOP_LIST_COL_DATA_DIR" "DATA-DIR" \
+        "$_CKIPPER_DESKTOP_LIST_COL_BUNDLE" "BUNDLE" \
+        "$_CKIPPER_DESKTOP_LIST_COL_REGISTERED" "REGISTERED" \
+        "STATUS"
+}
+
+# Shorten an absolute path under $HOME to a `~/`-prefixed form for display.
+# Mirrors lib/account/account-management.zsh::_ckipper_account_list_short_dir;
+# extracted again here because the account namespace is off-limits to siblings.
+#
+# Args: $1 — absolute path.
+# Returns: 0 always; prints the (possibly shortened) path.
+_ckipper_desktop_list_short_path() {
+    local path="$1"
+    [[ "$path" == "$HOME"* ]] && printf '~%s' "${path#$HOME}" || printf '%s' "$path"
+}
+
+# Decide running status for a desktop instance by checking whether any
+# process has the instance's --user-data-dir on its command line. This is
+# the same probe used by `desktop remove` / `desktop rename` to refuse
+# destructive ops on a live instance.
+#
+# Args: $1 — user-data dir to probe.
+# Returns: 0 always. Prints "running" or "stopped" to stdout.
+_ckipper_desktop_list_status() {
+    local data_dir="$1"
+    if pgrep -f -- "--user-data-dir=$data_dir" >/dev/null 2>&1; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
+}
+
+# Print a single instance row for `ckipper desktop list`.
+#
+# Args:
+#   $1 — instance name
+#   $2 — user-data dir
+#   $3 — app bundle path
+#
+# Reads `_CKIPPER_DESKTOP_LIST_REGISTERED_AT` (set by `_ckipper_desktop_list`
+# before invoking) so this helper stays at the 3-parameter cap. The list
+# loop pipes name/dir/bundle/registered_at as 4 tab-separated columns; we
+# stash the timestamp in a module global to avoid a 4th positional.
+_ckipper_desktop_list_row() {
+    local name="$1" data_dir="$2" bundle="$3"
+    local registered="$_CKIPPER_DESKTOP_LIST_REGISTERED_AT"
+    # NB: zsh's $status is a read-only special, so this var is `run_status`.
+    local short_data short_bundle run_status
+    short_data=$(_ckipper_desktop_list_short_path "$data_dir")
+    short_bundle=$(_ckipper_desktop_list_short_path "$bundle")
+    run_status=$(_ckipper_desktop_list_status "$data_dir")
+    printf '%-*s%-*s%-*s%-*s%s\n' \
+        "$_CKIPPER_DESKTOP_LIST_COL_NAME" "$name" \
+        "$_CKIPPER_DESKTOP_LIST_COL_DATA_DIR" "$short_data" \
+        "$_CKIPPER_DESKTOP_LIST_COL_BUNDLE" "$short_bundle" \
+        "$_CKIPPER_DESKTOP_LIST_COL_REGISTERED" "$registered" \
+        "$run_status"
+}
+
+# Module-level scratchpad for the in-progress list row. See
+# _ckipper_desktop_list_row's doc-header for why this is global.
+typeset -g _CKIPPER_DESKTOP_LIST_REGISTERED_AT=""
+
+# Print the empty-registry hint message when no instances are registered.
+#
+# Returns: 0 always.
+_ckipper_desktop_list_empty_hint() {
+    echo "No Desktop instances registered. Run: ckipper desktop add <name>"
+}
+
+# Iterate the registry's .instances object and print one row per instance.
+# Extracted from `_ckipper_desktop_list` so the orchestrator stays under
+# the 25-line cap.
+#
+# Returns: 0 always.
+_ckipper_desktop_list_print_rows() {
+    jq -r '.instances // {} | to_entries[] | "\(.key)\t\(.value.user_data_dir)\t\(.value.app_bundle_path)\t\(.value.registered_at // "-")"' \
+        "$CKIPPER_DESKTOP_REGISTRY" | \
+        while IFS=$'\t' read -r name data_dir bundle registered; do
+            _CKIPPER_DESKTOP_LIST_REGISTERED_AT="$registered"
+            _ckipper_desktop_list_row "$name" "$data_dir" "$bundle"
+        done
+}
+
+# Print registered Desktop instances in a column layout: name, data dir,
+# bundle path, registered_at, running/stopped status. Running detection is
+# best-effort and uses pgrep against the cmdline --user-data-dir argument.
+#
+# Returns: 0 always.
+_ckipper_desktop_list() {
+    if [[ ! -f "$CKIPPER_DESKTOP_REGISTRY" ]]; then
+        _ckipper_desktop_list_empty_hint
+        return 0
+    fi
+    CKIPPER_REGISTRY_VERSION="$CKIPPER_DESKTOP_REGISTRY_VERSION" \
+        _core_registry_check_version_at "$CKIPPER_DESKTOP_REGISTRY" || return 1
+    local count
+    count=$(_ckipper_desktop_instance_count)
+    if (( count == 0 )); then
+        _ckipper_desktop_list_empty_hint
+        return 0
+    fi
+    _core_style_header "Registered Desktop instances"
+    _ckipper_desktop_list_header
+    _core_style_divider
+    _ckipper_desktop_list_print_rows
+}
