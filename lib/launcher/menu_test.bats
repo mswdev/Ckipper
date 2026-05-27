@@ -54,8 +54,8 @@ _run_launcher() {
 }
 
 @test "_ckipper_launcher_menu Quit selection returns 0" {
-    # "Quit" is the 8th option in _CKIPPER_LAUNCHER_OPTIONS.
-    _run_launcher "8" "_ckipper_launcher_menu"
+    # "Quit" is the 11th option in _CKIPPER_LAUNCHER_OPTIONS.
+    _run_launcher "11" "_ckipper_launcher_menu"
 
     [ "$status" -eq 0 ]
 }
