@@ -69,6 +69,7 @@ source "$CKIPPER_REPO_DIR/lib/config/dispatcher.zsh"
 
 # Desktop-namespace modules
 source "$CKIPPER_REPO_DIR/lib/desktop/help.zsh"
+source "$CKIPPER_REPO_DIR/lib/desktop/bundle.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/dispatcher.zsh"
 
 # Setup-namespace modules
