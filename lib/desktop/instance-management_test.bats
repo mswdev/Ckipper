@@ -146,3 +146,74 @@ _install_fake_claude_app() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "stopped" ]]
 }
+
+# ── desktop remove ───────────────────────────────────────────────────────
+
+# Run `ckipper desktop remove <name>` with stdin prefilled for the two
+# y/N prompts. Mirrors run_ckipper but pipes the answers INTO the ckipper
+# command (not into the source) — that ordering matters because zsh's `|`
+# binds tighter than `;`. Saves repeating the same env-list per test.
+_run_remove_with_answers() {
+    local answers="$1" name="$2"
+    run env HOME="$TMP_HOME" \
+        CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" CKIPPER_FORCE="${CKIPPER_FORCE:-1}" CKIPPER_NO_GUM=1 \
+        _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-darwin19.0}" \
+        _CKIPPER_DESKTOP_SYSTEM_APP="${_CKIPPER_DESKTOP_SYSTEM_APP:-}" \
+        _CKIPPER_TEST_CLAUDE_APP="${_CKIPPER_TEST_CLAUDE_APP:-}" \
+        PGREP_STUB_MATCH="${PGREP_STUB_MATCH:-0}" \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; printf '$answers' | ckipper desktop remove $name"
+}
+
+@test "desktop remove unregisters and keeps dirs when prompts are declined" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    _run_remove_with_answers 'n\nn\n' work
+
+    [ "$status" -eq 0 ]
+    [ -d "$HOME/.claude-desktop-work" ]
+    [ -d "$HOME/Applications/Claude-Work.app" ]
+    ! jq -e '.instances.work' "$CKIPPER_DIR/desktop.json" >/dev/null 2>&1
+}
+
+@test "desktop remove deletes dirs when both prompts accepted" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    _run_remove_with_answers 'y\ny\n' work
+
+    [ "$status" -eq 0 ]
+    [ ! -d "$HOME/.claude-desktop-work" ]
+    [ ! -d "$HOME/Applications/Claude-Work.app" ]
+}
+
+@test "desktop remove refuses if instance is running" {
+    _install_fake_claude_app
+    run_ckipper desktop add work
+
+    PGREP_STUB_MATCH=1 _run_remove_with_answers '' work
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "running" ]]
+    # Registry entry MUST be preserved when the refusal fires.
+    jq -e '.instances.work' "$CKIPPER_DIR/desktop.json" >/dev/null
+}
+
+@test "desktop remove fails clearly when instance not registered" {
+    _install_fake_claude_app
+
+    run_ckipper desktop remove ghost
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "not registered" ]]
+}
+
+@test "desktop remove fails clearly when no registry exists yet" {
+    _install_fake_claude_app
+
+    run_ckipper desktop remove ghost
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "not registered" ]]
+}

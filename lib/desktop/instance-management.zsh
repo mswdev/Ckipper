@@ -293,6 +293,110 @@ _ckipper_desktop_list_print_rows() {
         done
 }
 
+# Refuse if a Claude Desktop process is currently running against the given
+# user-data dir. Used by `desktop remove` and `desktop rename` to block
+# destructive ops on a live instance.
+#
+# TODO(Task 9): replace with _ckipper_desktop_assert_not_running once that
+# helper lands. Inlined here because remove/rename need the check before
+# the launcher module exists.
+#
+# Args: $1 — user-data dir to probe.
+# Returns: 0 if no matching process; 1 otherwise.
+# Errors (stderr): "Refusing: ..." when a matching process is found.
+_ckipper_desktop_assert_not_running() {
+    local data_dir="$1"
+    pgrep -f -- "--user-data-dir=$data_dir" >/dev/null 2>&1 || return 0
+    echo "Refusing: a Claude Desktop instance is running for $data_dir." >&2
+    echo "Quit it first, then re-run." >&2
+    return 1
+}
+
+# Look up the user-data dir for a registered instance.
+#
+# Args: $1 — instance name.
+# Returns: 0 if registered; 1 if not.
+# Errors (stderr): "Desktop instance '<name>' is not registered."
+_ckipper_desktop_data_dir_of() {
+    local name="$1"
+    if ! jq -e --arg n "$name" '.instances[$n]' "$CKIPPER_DESKTOP_REGISTRY" >/dev/null 2>&1; then
+        echo "Desktop instance '$name' is not registered." >&2
+        return 1
+    fi
+    jq -r --arg n "$name" '.instances[$n].user_data_dir' "$CKIPPER_DESKTOP_REGISTRY"
+}
+
+# Look up the app bundle path for a registered instance. Assumes the caller
+# has already verified registration via _ckipper_desktop_data_dir_of.
+#
+# Args: $1 — instance name.
+# Returns: 0 always. Prints the bundle path to stdout.
+_ckipper_desktop_bundle_of() {
+    local name="$1"
+    jq -r --arg n "$name" '.instances[$n].app_bundle_path' "$CKIPPER_DESKTOP_REGISTRY"
+}
+
+# Prompt the user to delete the user-data dir for a removed instance.
+# Default is N — preserves user data (chats, settings, OAuth tokens).
+#
+# Args: $1 — instance name (label only); $2 — user-data dir path.
+# Returns: 0 always.
+_ckipper_desktop_remove_prompt_data_dir() {
+    local name="$1" data_dir="$2"
+    [[ -d "$data_dir" ]] || return 0
+    if _core_prompt_confirm "Delete data dir $data_dir? (chats, settings, OAuth tokens)"; then
+        rm -rf "$data_dir"
+        echo "Deleted $data_dir."
+        return 0
+    fi
+    echo "Kept $data_dir. To delete later: rm -rf '$data_dir'"
+}
+
+# Prompt the user to delete the .app bundle for a removed instance.
+# Default is N (gum confirm defaults to no) — but the bundle is regeneratable
+# via `ckipper desktop add <same-name>`, so the prompt text steers toward yes.
+#
+# Args: $1 — instance name (label only); $2 — bundle path.
+# Returns: 0 always.
+_ckipper_desktop_remove_prompt_bundle() {
+    local name="$1" bundle="$2"
+    [[ -d "$bundle" ]] || return 0
+    if _core_prompt_confirm "Delete app bundle $bundle? (regeneratable via desktop add)"; then
+        rm -rf "$bundle"
+        echo "Deleted $bundle."
+        return 0
+    fi
+    echo "Kept $bundle. To delete later: rm -rf '$bundle'"
+}
+
+# Unregister a Desktop instance from the registry, then interactively prompt
+# to delete the user-data dir (default N — preserves user data) and the
+# .app bundle (regeneratable). Refuses if the instance is currently running.
+#
+# Args: $1 — instance name.
+# Returns: 0 on success; 1 if not registered, running, or registry write fails.
+_ckipper_desktop_remove() {
+    local name="$1"
+    if [[ -z "$name" ]]; then
+        echo "Usage: ckipper desktop remove <name>" >&2
+        return 1
+    fi
+    [[ -f "$CKIPPER_DESKTOP_REGISTRY" ]] || { echo "Desktop instance '$name' is not registered." >&2; return 1; }
+    local data_dir bundle
+    data_dir=$(_ckipper_desktop_data_dir_of "$name") || return 1
+    bundle=$(_ckipper_desktop_bundle_of "$name")
+    _ckipper_desktop_assert_not_running "$data_dir" || return 1
+    if ! CKIPPER_REGISTRY_VERSION="$CKIPPER_DESKTOP_REGISTRY_VERSION" \
+        _core_registry_update_at "$CKIPPER_DESKTOP_REGISTRY" \
+        'del(.instances[$n])' --arg n "$name"; then
+        echo "Error: failed to unregister '$name' from the desktop registry." >&2
+        return 1
+    fi
+    echo "Unregistered Desktop instance '$name'."
+    _ckipper_desktop_remove_prompt_data_dir "$name" "$data_dir"
+    _ckipper_desktop_remove_prompt_bundle "$name" "$bundle"
+}
+
 # Print registered Desktop instances in a column layout: name, data dir,
 # bundle path, registered_at, running/stopped status. Running detection is
 # best-effort and uses pgrep against the cmdline --user-data-dir argument.
