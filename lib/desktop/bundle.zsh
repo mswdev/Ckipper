@@ -15,8 +15,10 @@
 _CKIPPER_DESKTOP_LSREGISTER_PATH=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
 # Canonical install path for Claude Desktop on macOS. Source of the icon and
-# the executable our launcher exec's via `open -n -a`.
-_CKIPPER_DESKTOP_SYSTEM_APP=/Applications/Claude.app
+# the executable our launcher exec's via `open -n -a`. Honors an env-supplied
+# override so tests (and the `desktop add` Claude.app-presence assertion) can
+# point this at a fake bundle without monkey-patching the file.
+_CKIPPER_DESKTOP_SYSTEM_APP=${_CKIPPER_DESKTOP_SYSTEM_APP:-/Applications/Claude.app}
 
 # Reverse-DNS prefix for wrapper bundle identifiers. The instance name is
 # appended (e.g. work → dev.ckipper.claude.desktop.work).

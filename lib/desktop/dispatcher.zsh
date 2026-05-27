@@ -69,7 +69,6 @@ _ckipper_desktop_unknown() {
 # Each stub returns 1 so users typing them get a "not yet implemented" signal.
 # The task number is embedded in each message for grep-ability when wiring up
 # the real handlers.
-_ckipper_desktop_add()    { echo "ckipper desktop add: not yet implemented (Task 5)"    >&2; return 1; }
 _ckipper_desktop_list()   { echo "ckipper desktop list: not yet implemented (Task 6)"   >&2; return 1; }
 _ckipper_desktop_remove() { echo "ckipper desktop remove: not yet implemented (Task 7)" >&2; return 1; }
 _ckipper_desktop_rename() { echo "ckipper desktop rename: not yet implemented (Task 8)" >&2; return 1; }
