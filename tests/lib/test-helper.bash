@@ -51,6 +51,10 @@ run_ckipper() {
         _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-linux}" \
         CKIPPER_FORCE="${CKIPPER_FORCE:-1}" \
         CKIPPER_NO_GUM="${CKIPPER_NO_GUM:-1}" \
+        _CKIPPER_DESKTOP_SYSTEM_APP="${_CKIPPER_DESKTOP_SYSTEM_APP:-}" \
+        _CKIPPER_TEST_CLAUDE_APP="${_CKIPPER_TEST_CLAUDE_APP:-}" \
+        _CKIPPER_TEST_LSREGISTER="${_CKIPPER_TEST_LSREGISTER:-}" \
+        PGREP_STUB_MATCH="${PGREP_STUB_MATCH:-0}" \
         zsh -c "$zsh_cmd"
 }
 
@@ -61,6 +65,23 @@ run_ckipper() {
 source_ckipper_file() {
     local rel_path="$1"
     source "$REPO_ROOT/$rel_path"
+}
+
+# Install a fake /Applications/Claude.app under the per-test $TMP_HOME and
+# point the desktop module at it via the documented env override. Required
+# before any `desktop add`/`login`/`launch` test because the real flows
+# refuse when the system Claude.app is missing.
+#
+# Sets _CKIPPER_TEST_OSTYPE so the desktop dispatcher macOS-guard passes
+# and _CKIPPER_DESKTOP_SYSTEM_APP / _CKIPPER_TEST_CLAUDE_APP to point at
+# the fake bundle. Both vars are exported so child zsh subprocesses (the
+# ones run_ckipper spawns) inherit them.
+_install_fake_claude_app() {
+    export _CKIPPER_TEST_OSTYPE="darwin19.0"
+    export _CKIPPER_DESKTOP_SYSTEM_APP="$TMP_HOME/FakeClaude.app"
+    export _CKIPPER_TEST_CLAUDE_APP="$TMP_HOME/FakeClaude.app"
+    mkdir -p "$_CKIPPER_DESKTOP_SYSTEM_APP/Contents/MacOS"
+    mkdir -p "$_CKIPPER_DESKTOP_SYSTEM_APP/Contents/Resources"
 }
 
 # Assert a file exists.

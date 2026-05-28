@@ -67,6 +67,27 @@ _run_prompts() {
     [[ "$output" != *"ssh_forward"* ]]
 }
 
+# Regression: descriptions intentionally do NOT appear in the summary
+# anymore — they live in the pick-keys-to-customize picker labels (added
+# in PR #43) so the user sees them at the moment they decide what to
+# change. The summary stays compact and renders cleanly through gum's
+# styled table. This test pins the new contract: descriptions in picker,
+# not summary.
+@test "_ckipper_setup_prompts_summary does not embed descriptions inline" {
+    _run_prompts "" "_ckipper_setup_prompts_summary"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Bool. true = installer auto-adds the per-account aliases source line"* ]]
+    [[ "$output" != *"Comma-separated int list. Container ports to forward to the host."* ]]
+}
+
+@test "_ckipper_setup_prompts_summary points at the picker for descriptions" {
+    _run_prompts "" "_ckipper_setup_prompts_summary"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"description"* ]] || [[ "$output" == *"Tip:"* ]]
+}
+
 @test "_ckipper_setup_prompts_summary marks set values as (your config) and unset as (default)" {
     echo 'CKIPPER_NOTIFY_BELL="false"' >"$CKIPPER_DIR/docker/ckipper-config.zsh"
 

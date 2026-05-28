@@ -180,6 +180,29 @@ run_full() {
     [ "$status" -eq 0 ]
 }
 
+# Regression: with no positional targets and an empty multi-select reply,
+# the wizard previously returned 1 silently — users perceived the picker
+# as broken. Both pickers now print a SPACE/ENTER hint before exiting.
+@test "interactive sync prints a SPACE/ENTER hint when no targets are picked" {
+    setup_two_accounts
+    # Pipe enough blank lines to satisfy every prompt the fallback path asks
+    # for (source = "1", targets = "", types = ""). The empty targets line
+    # is what we're exercising.
+    run_full 'printf "1\n\n\n" | ckipper account sync'
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"No target accounts selected"* ]]
+    [[ "$output" == *"press SPACE to mark items"* ]]
+}
+
+@test "interactive sync prints a SPACE/ENTER hint when no types are picked" {
+    setup_two_accounts
+    # Source = "1", targets = "dst", types = "" (empty -> hint).
+    run_full 'printf "1\ndst\n\n" | ckipper account sync'
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"No sync types selected"* ]]
+    [[ "$output" == *"press SPACE to mark items"* ]]
+}
+
 # Regression: when the user picks "View changes" then "Apply", the diff
 # output written by drill_down_loop must NOT pollute the captured action,
 # else the [[ "$action" == "apply" ]] check downstream silently skips apply.

@@ -52,16 +52,18 @@ typeset -gA _CKIPPER_SCHEMA_SCOPE=(
     [ssh_forward]="account"
 )
 
-# One-line description shown by `ckipper config list` and the wizard.
+# One-line description shown by `ckipper config list` and the wizard. For bool
+# keys the description states what `true` does (the active behavior), so the
+# user can read it and decide; `false` is just the inverse.
 typeset -gA _CKIPPER_SCHEMA_DESCRIPTION=(
-    [projects_dir]="Base directory containing your git projects."
-    [worktrees_dir]="Where worktrees are created (default: \$projects_dir/.worktrees)."
-    [ports]="Comma-separated ports to forward from container to host."
-    [default_branch]="Fallback base branch when origin/HEAD is unset."
-    [dep_install_cmd]="Command run after worktree creation. Empty = skip."
-    [notify_bell]="Install notify-bell hook into account dirs."
-    [aliases_auto_source]="install.sh auto-adds aliases.zsh source line to .zshrc."
-    [always_docker]="Default --docker on for this account."
-    [always_firewall]="Default --firewall on for this account."
-    [ssh_forward]="Forward host ~/.ssh into containers run with this account."
+    [projects_dir]="Path. Base directory containing your git projects."
+    [worktrees_dir]="Path. Where worktrees live. Empty = \$projects_dir/.worktrees."
+    [ports]="Comma-separated int list. Container ports to forward to the host."
+    [default_branch]="String. Fallback base branch when origin/HEAD is unset (e.g. main, develop)."
+    [dep_install_cmd]="String. Command run after worktree creation. Empty = skip dep install."
+    [notify_bell]="Bool. true = play a terminal bell on Stop / Notification hooks."
+    [aliases_auto_source]="Bool. true = installer auto-adds the per-account aliases source line to ~/.zshrc."
+    [always_docker]="Bool. true = run Claude in Docker by default for this account (override with --no-docker)."
+    [always_firewall]="Bool. true = enable the egress firewall by default for this account (override with --no-firewall)."
+    [ssh_forward]="Bool. true = mount host ~/.ssh into containers launched for this account."
 )

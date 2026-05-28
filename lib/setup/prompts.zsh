@@ -30,23 +30,56 @@ readonly _CKIPPER_SETUP_PROMPTS_NO_GUM_SENTINEL="1"
 # Header rendered above the summary table.
 readonly _CKIPPER_SETUP_PROMPTS_HEADER="Detected configuration"
 
-# Pipe-separated row builder for the summary table. Resolves the effective
-# value via _core_config_get and the source marker via _core_config_read_global
-# (empty return ⇒ default; otherwise ⇒ user override).
+# Header for the multi-select picker. Mentions SPACE explicitly because the
+# preceding y/N "customize?" prompt and the source-account picker are both
+# single-select Enter — without the hint, users press Enter on the first
+# row and silently advance with no overrides.
+readonly _CKIPPER_SETUP_PROMPTS_PICKER_HEADER="Pick keys to customize (SPACE to mark, ENTER to confirm)"
+
+# Border-foreground color for gum-styled summary blocks. 212 is gum's
+# default pink — matches the prompt accent (Yes/No buttons) so the
+# detected-config block visually belongs to the same wizard.
+readonly _CKIPPER_SETUP_PROMPTS_BORDER_FG=212
+
+# SETTING column width for the no-gum fallback summary. 22 chars covers
+# every key in the current schema (longest is `aliases_auto_source` at 19)
+# with a 3-char gutter before the value.
+readonly _CKIPPER_SETUP_PROMPTS_KEY_WIDTH=22
+
+# Maximum width of the VALUE cell before truncation. Caps the table width
+# so it stays readable in narrow terminals and during shared-screen demos
+# without hiding the at-a-glance setting/source signal — the full value
+# is one `ckipper config get <key>` away.
+readonly _CKIPPER_SETUP_PROMPTS_VALUE_MAX_WIDTH=40
+
+# Build the pipe-separated row data for the summary table — one header
+# row plus one row per global-scoped key. Emits to stdout for callers to
+# pipe into `gum table -p` or to consume directly in fallback rendering.
 #
-# Args: $1 — schema key.
-# Returns: 0 always; prints "<key>|<value>|<source>" to stdout.
-_ckipper_setup_prompts_summary_row() {
-    local key="$1"
-    local value source raw
-    value=$(_core_config_get "$key")
-    raw=$(_core_config_read_global "$key")
-    if [[ -z "$raw" ]]; then
-        source="$_CKIPPER_SETUP_PROMPTS_SOURCE_DEFAULT"
-    else
-        source="$_CKIPPER_SETUP_PROMPTS_SOURCE_USER"
-    fi
-    printf '%s|%s|%s\n' "$key" "$value" "$source"
+# Returns: 0 always; prints `<key>|<value>|<source>` rows (header first).
+_ckipper_setup_prompts_summary_rows() {
+    printf 'SETTING|VALUE|SOURCE\n'
+    # Hoist loop locals — see fallback rendering for the reason.
+    local key="" value="" source="" raw="" display_value=""
+    while IFS= read -r key; do
+        value=$(_core_config_get "$key")
+        raw=$(_core_config_read_global "$key")
+        if [[ -z "$raw" ]]; then
+            source="$_CKIPPER_SETUP_PROMPTS_SOURCE_DEFAULT"
+        else
+            source="$_CKIPPER_SETUP_PROMPTS_SOURCE_USER"
+        fi
+        # Empty values render as a discoverable placeholder rather than
+        # blank space, which otherwise reads like "the field is broken."
+        display_value="$value"
+        [[ -z "$display_value" ]] && display_value="(empty)"
+        # Truncate over-long values so the table doesn't blow past
+        # narrow terminals. Trailing `…` signals truncation.
+        if (( ${#display_value} > _CKIPPER_SETUP_PROMPTS_VALUE_MAX_WIDTH )); then
+            display_value="${display_value[1,_CKIPPER_SETUP_PROMPTS_VALUE_MAX_WIDTH-1]}…"
+        fi
+        printf '%s|%s|%s\n' "$key" "$display_value" "$source"
+    done < <(_ckipper_setup_prompts_global_keys)
 }
 
 # Print every global-scoped key one per line in lexical order. Used by the
@@ -61,21 +94,48 @@ _ckipper_setup_prompts_global_keys() {
     done
 }
 
-# Render the "detected configuration" summary table. Emits a styled header,
-# followed by a SETTING | VALUE | SOURCE row per global-scoped key. Account
-# keys are skipped because their effective value depends on which account the
-# wizard is about to configure.
+# Render the detected-configuration summary as a `gum table -p` styled
+# table — auto-sizes columns to the longest value in each column and
+# adapts to the terminal width. Schema descriptions are intentionally
+# omitted from the summary (they were a 4th-column overflow problem in
+# both prior layouts); descriptions surface as labels in the
+# pick-keys-to-customize picker (`<key> — <description>`), so the user
+# sees them at the moment they're deciding what to change.
+#
+# Falls back to a plain-text two-column layout under CKIPPER_NO_GUM (tests,
+# non-TTY callers, and runners without gum installed).
 #
 # Returns: 0 always.
 _ckipper_setup_prompts_summary() {
     _core_style_header "$_CKIPPER_SETUP_PROMPTS_HEADER"
-    local key
-    {
-        while IFS= read -r key; do
-            _ckipper_setup_prompts_summary_row "$key"
-        done < <(_ckipper_setup_prompts_global_keys)
-    } | _core_style_table SETTING VALUE SOURCE
-    _core_style_divider
+    if _ckipper_setup_prompts_use_gum; then
+        _ckipper_setup_prompts_summary_rows \
+            | gum table -p -s '|' --border rounded \
+                --border.foreground "$_CKIPPER_SETUP_PROMPTS_BORDER_FG"
+    else
+        _ckipper_setup_prompts_summary_fallback
+    fi
+    _core_style_color dim \
+        "Tip: pick a setting below to see its description and edit it."
+}
+
+# Plain-text fallback when gum is unavailable. Renders the same data as
+# `<key>  <value>  <source>` — no borders, no colors, but parsable for
+# tests and non-TTY callers.
+#
+# Returns: 0 always.
+_ckipper_setup_prompts_summary_fallback() {
+    # Hoist loop locals outside the body — re-declaring `local var` (no
+    # =value) on iteration N>1 makes zsh print `var='prior_value'` since
+    # the variable carries a value from the previous iteration. Same idiom
+    # used in lib/worktree/worktree.zsh's list helper for the same reason.
+    local row="" key="" value="" source="" first=1
+    while IFS= read -r row; do
+        (( first )) && { first=0; continue; }   # skip header row
+        IFS='|' read -r key value source <<<"$row"
+        printf '%-*s  %-28s  %s\n' \
+            "$_CKIPPER_SETUP_PROMPTS_KEY_WIDTH" "$key" "$value" "$source"
+    done < <(_ckipper_setup_prompts_summary_rows)
 }
 
 # Decide whether to use gum for the picker. Mirrors `_core_prompt_use_gum` but
@@ -106,8 +166,12 @@ _ckipper_setup_prompts_pick_keys_fallback() {
 #   keys, one per line, in schema order.
 _ckipper_setup_prompts_pick_keys() {
     if _ckipper_setup_prompts_use_gum; then
-        _ckipper_setup_prompts_global_keys \
-            | gum choose --no-limit --header "Pick keys to customize"
+        local key
+        while IFS= read -r key; do
+            printf '%s — %s\n' "$key" "${_CKIPPER_SCHEMA_DESCRIPTION[$key]}"
+        done < <(_ckipper_setup_prompts_global_keys) \
+            | gum choose --no-limit --header "$_CKIPPER_SETUP_PROMPTS_PICKER_HEADER" \
+            | awk '{print $1}'
         return 0
     fi
     _ckipper_setup_prompts_pick_keys_fallback
