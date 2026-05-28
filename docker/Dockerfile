@@ -37,8 +37,8 @@ ENV CHROMIUM_FLAGS="--no-sandbox"
 ENV PUPPETEER_CHROMIUM_ARGS="--no-sandbox"
 
 # Install uv/uvx (Python package runner — needed for Python-based MCP servers)
-# SHA256 fetched 2026-04-30 from https://astral.sh/uv/install.sh
-ARG UV_INSTALLER_SHA256=facbed3a7e2750df3aef698537c6d50869b025a58bdd13154cfdcc2f30354ca2
+# SHA256 fetched 2026-05-28 from https://astral.sh/uv/install.sh
+ARG UV_INSTALLER_SHA256=d79d834572b5b5cdd521289c055adcdbacd43bfe9e6b896445f351075dac4113
 RUN curl -LsSf https://astral.sh/uv/install.sh -o /tmp/install.sh && \
     echo "${UV_INSTALLER_SHA256}  /tmp/install.sh" | sha256sum -c - && \
     sh /tmp/install.sh && \
@@ -47,15 +47,20 @@ RUN curl -LsSf https://astral.sh/uv/install.sh -o /tmp/install.sh && \
     && cp /root/.local/bin/uvx /usr/local/bin/uvx \
     && chmod +x /usr/local/bin/uv /usr/local/bin/uvx
 
-# Install Claude Code via native installer
-# SHA256 fetched 2026-04-30 from https://claude.ai/install.sh
-# Note: this is a bootstrap installer that fetches the actual binary from
-# downloads.claude.ai. The bootstrap script itself changes infrequently, but
-# refresh this hash if a Claude Code release ships an updated installer.
-ARG CLAUDE_INSTALLER_SHA256=b315b46925a9bfb9422f2503dd5aa649f680832f4c076b22d87c39d578c3d830
+# Install Claude Code via native installer — `@latest` channel.
+# SHA256 fetched 2026-05-28 from https://claude.ai/install.sh
+#
+# The bootstrap script accepts a positional arg (`stable` | `latest` | a
+# specific semver) that gets forwarded to `claude install <target>`. Passing
+# `latest` selects Anthropic's @latest release channel (the same one the
+# Homebrew `claude-code@latest` cask tracks) instead of the default stable
+# channel — which lags @latest by ~a week. Refresh the SHA whenever the
+# bootstrap script itself changes upstream (not just when a Claude Code
+# release ships).
+ARG CLAUDE_INSTALLER_SHA256=005ec1a937f32dfbb74f9e810287bcb12cba2d5cae4c9277aa8c6364adbf1787
 RUN curl -fsSL https://claude.ai/install.sh -o /tmp/install.sh && \
     echo "${CLAUDE_INSTALLER_SHA256}  /tmp/install.sh" | sha256sum -c - && \
-    bash /tmp/install.sh && \
+    bash /tmp/install.sh latest && \
     rm /tmp/install.sh \
     && cp /root/.local/bin/claude /usr/local/bin/claude \
     && chmod +x /usr/local/bin/claude
