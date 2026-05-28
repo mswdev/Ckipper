@@ -4,13 +4,15 @@
 
 > **Platform:** macOS only — uses macOS Keychain, Docker Desktop, and host SSH agent forwarding.
 
-A lightweight CLI for managing Claude Code accounts, worktrees, and Docker sandboxes.
+A lightweight CLI for managing Claude Code accounts, git worktrees, Docker sandboxes, and Claude Desktop multi-instance setups.
 
-Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, an egress firewall, safety hooks, macOS Keychain auth, and per-account isolation across credentials, settings, MCP, plugins, and projects.
+Inspired by [incident.io's worktree workflow](https://incident.io/blog/shipping-faster-with-claude-code-and-git-worktrees) and [Rory Bain's gist](https://gist.github.com/rorydbain/e20e6ab0c7cc027fc1599bd2e430117d), extended with Docker containerization, an egress firewall, safety hooks, macOS Keychain auth, and per-account isolation across credentials, settings, MCP, plugins, and projects. The Claude Desktop multi-instance approach (generated `.app` wrappers + Electron `--user-data-dir`) was inspired by [Philipp Stracker's gist](https://gist.github.com/stracker-phil/9f84927a556632c7f9cc06663b534f14).
 
 ## The Problem
 
 `--dangerously-skip-permissions` lets Claude work autonomously without clicking Allow for every action — but on your actual machine it has full access to your filesystem, credentials, and network. Running it inside a container is the whole point.
+
+Separately: Claude Desktop is single-instance by default — sign in with one account, lose the other. Running personal and work side-by-side needs an isolated user-data dir per instance and a Spotlight/Dock entry that actually opens the right one.
 
 ## The Solution
 
@@ -19,6 +21,12 @@ ck run myorg/myapp my-feature
 ```
 
 Creates a git worktree, optionally spins up a Docker container, and runs Claude inside it. Claude thinks it has full permissions but can only see the worktree. Your other projects, system files, and credentials are inaccessible.
+
+```bash
+ck desktop add work
+```
+
+Generates `~/Applications/Claude-Work.app` — a wrapper bundle that launches the system Claude Desktop against an isolated user-data dir. Spotlight, Dock, and Cmd-Tab treat it like any other app. Run it alongside your existing Claude Desktop with separate auth, MCP servers, and conversation history.
 
 ## Quick start
 
@@ -46,6 +54,7 @@ cd Ckipper
 | `ck run <project> <branch>` | Create-or-cd to a worktree, optionally Docker |
 | `ck config get/set/unset/list/edit` | View and modify settings |
 | `ck account add/list/default/remove/rename/sync/redeploy-hooks` | Manage Claude accounts (see [Sync state between accounts](#sync-state-between-accounts)) |
+| `ck desktop add/list/remove/rename/launch/login` | Manage Claude Desktop instances (alias `dt`; see [Claude Desktop instances](#claude-desktop-instances)) |
 | `ck worktree run/list/rm/rebuild-image` | Manage git worktrees |
 | `ck doctor [--fix]` | Diagnose registry, hooks, schema; optionally repair |
 | `ck` (no args) | Interactive launcher menu |
