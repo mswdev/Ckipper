@@ -32,6 +32,12 @@ _CKIPPER_DESKTOP_BUNDLE_VERSION="1.0"
 # Mode bits for the generated launcher script (rwxr-xr-x).
 _CKIPPER_DESKTOP_LAUNCHER_MODE=755
 
+# Full path to PlistBuddy — not on $PATH, so we invoke it absolutely.
+# Used to read CFBundleIconFile from the source Claude.app's Info.plist
+# (icon files don't have a fixed name; Anthropic's build calls it
+# electron.icns, not AppIcon.icns).
+_CKIPPER_DESKTOP_PLISTBUDDY=/usr/libexec/PlistBuddy
+
 # Generate a complete .app bundle for a Claude Desktop instance.
 #
 # Materializes <bundle_path> with Contents/Info.plist, Contents/MacOS/launcher
@@ -165,21 +171,56 @@ ${icon_block}</dict>
 EOF
 }
 
-# Best-effort copy the system Claude.app's icon into the new bundle.
+# Best-effort copy the source Claude.app's icon into the new bundle.
 #
 # Reads _CKIPPER_TEST_CLAUDE_APP at call time so tests can stub the source.
-# Returns 0 only when the icon was successfully copied (the caller uses this
-# to decide whether to include CFBundleIconFile in the plist).
+# Delegates to _find_source_icon to locate the icon (which can be named
+# anything per the source's CFBundleIconFile — Anthropic's build calls it
+# electron.icns, not AppIcon.icns). The destination is always renamed to
+# AppIcon.icns so the generated Info.plist's CFBundleIconFile=AppIcon
+# reference is stable.
 #
-# Args: $1 — bundle path.
-# Returns: 0 on copy success; non-zero if the source icon is missing or copy
+# Args: $1 — destination bundle path.
+# Returns: 0 on copy success; non-zero if no source icon was found or copy
 #          failed (the caller treats this as "no icon" and continues).
 _ckipper_desktop_bundle_copy_icon() {
     local bundle="$1"
     local source_app="${_CKIPPER_TEST_CLAUDE_APP:-$_CKIPPER_DESKTOP_SYSTEM_APP}"
-    local source_icon="$source_app/Contents/Resources/AppIcon.icns"
-    [[ -f "$source_icon" ]] || return 1
+    local source_icon
+    source_icon=$(_ckipper_desktop_bundle_find_source_icon "$source_app") || return 1
     cp "$source_icon" "$bundle/Contents/Resources/AppIcon.icns"
+}
+
+# Locate the source .app's icon file. Two-tier lookup:
+#   1. Read CFBundleIconFile from the source's Info.plist (the bundle's own
+#      declaration of its icon). The extension may or may not be present.
+#   2. If the plist read fails or the named file is missing, glob for any
+#      *.icns in the source's Resources dir and return the first match.
+#
+# This covers the real-world cases: Anthropic's Claude.app declares
+# CFBundleIconFile=electron and stores electron.icns; other bundles may
+# use AppIcon.icns with no plist declaration; CI fixtures may have only
+# an .icns file with no plist at all.
+#
+# Args: $1 — source .app bundle path.
+# Returns: 0 with the icon path on stdout; 1 if no usable icon found.
+_ckipper_desktop_bundle_find_source_icon() {
+    local source_app="$1"
+    local resources="$source_app/Contents/Resources"
+    [[ -d "$resources" ]] || return 1
+    local plist="$source_app/Contents/Info.plist"
+    if [[ -f "$plist" && -x "$_CKIPPER_DESKTOP_PLISTBUDDY" ]]; then
+        local name match
+        name=$("$_CKIPPER_DESKTOP_PLISTBUDDY" -c "Print :CFBundleIconFile" "$plist" 2>/dev/null)
+        match="$resources/${name%.icns}.icns"
+        [[ -n "$name" && -f "$match" ]] && { print -r -- "$match"; return 0; }
+    fi
+    local candidate
+    for candidate in "$resources"/*.icns(N); do
+        print -r -- "$candidate"
+        return 0
+    done
+    return 1
 }
 
 # Register the new bundle with Launch Services so macOS picks it up without
