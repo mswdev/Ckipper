@@ -74,6 +74,47 @@ _run_bundle() {
     grep -q "CFBundleIconFile" "$bundle/Contents/Info.plist"
 }
 
+@test "bundle_write copies icon using source CFBundleIconFile name (e.g. electron.icns)" {
+    # Real-world regression: Anthropic's Claude.app names its icon
+    # electron.icns (Electron template default) and declares
+    # CFBundleIconFile=electron in its plist. Earlier versions of this code
+    # hard-coded AppIcon.icns and silently skipped the copy.
+    local fake_app="$TMP_HOME/FakeClaude.app"
+    mkdir -p "$fake_app/Contents/Resources"
+    : > "$fake_app/Contents/Resources/electron.icns"
+    cat > "$fake_app/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIconFile</key><string>electron</string>
+</dict></plist>
+EOF
+    local bundle="$DESKTOP_BUNDLE_DIR/Claude-Q.app"
+    export _CKIPPER_TEST_CLAUDE_APP="$fake_app"
+    _run_bundle "_ckipper_desktop_bundle_write q \"$bundle\" \"$TMP_HOME/.claude-desktop-q\""
+
+    [ "$status" -eq 0 ]
+    [ -f "$bundle/Contents/Resources/AppIcon.icns" ]
+    grep -q "CFBundleIconFile" "$bundle/Contents/Info.plist"
+}
+
+@test "bundle_write falls back to glob when CFBundleIconFile points at a missing file" {
+    local fake_app="$TMP_HOME/FakeClaude.app"
+    mkdir -p "$fake_app/Contents/Resources"
+    : > "$fake_app/Contents/Resources/whatever.icns"
+    cat > "$fake_app/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIconFile</key><string>nonexistent</string>
+</dict></plist>
+EOF
+    local bundle="$DESKTOP_BUNDLE_DIR/Claude-R.app"
+    export _CKIPPER_TEST_CLAUDE_APP="$fake_app"
+    _run_bundle "_ckipper_desktop_bundle_write r \"$bundle\" \"$TMP_HOME/.claude-desktop-r\""
+
+    [ "$status" -eq 0 ]
+    [ -f "$bundle/Contents/Resources/AppIcon.icns" ]
+}
+
 @test "bundle_write tolerates missing lsregister" {
     local bundle="$DESKTOP_BUNDLE_DIR/Claude-Z.app"
     export _CKIPPER_TEST_LSREGISTER="/nonexistent/lsregister"
