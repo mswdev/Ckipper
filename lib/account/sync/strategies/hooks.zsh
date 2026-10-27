@@ -1,10 +1,6 @@
 #!/usr/bin/env zsh
-# Strategy module for "hooks" sync type — USER-WRITTEN HOOKS ONLY.
-#
-# A hook script <src>/hooks/<file> is a sync candidate iff the filename
-# does NOT match a ckipper-managed install hook in $CKIPPER_DIR/hooks/.
-# This filter is computed at runtime so adding a new ckipper safety hook
-# automatically excludes it from sync.
+# Strategy module for "hooks" sync type — hook scripts the user wrote and
+# keeps in <dir>/hooks/.
 #
 # Each enumerated item is (script-file, paired-settings-entry). The apply
 # function does both:
@@ -13,22 +9,7 @@
 #      paired entry from <src>/settings.json, with command paths rewritten
 #      to point at the destination's hooks dir.
 
-# Build the install-managed allowlist as a newline-separated set of basenames.
-#
-# Returns: 0; prints one filename per line. Empty if install hooks dir
-#   doesn't exist.
-_ckipper_account_sync_hooks_install_allowlist() {
-    local install_dir="$CKIPPER_DIR/hooks"
-    [[ ! -d "$install_dir" ]] && return 0
-    local f
-    for f in "$install_dir"/*(N); do
-        [[ -f "$f" ]] || continue
-        echo "${f:t}"
-    done
-}
-
-# Enumerate user-written hooks in <src>/hooks/ — files NOT in the install
-# allowlist.
+# Enumerate the hook scripts in <src>/hooks/.
 #
 # Args: $1 — source account dir.
 # Returns: 0; prints "<relpath>\t<basename>" per item.
@@ -36,15 +17,10 @@ _ckipper_account_sync_hooks_enumerate() {
     local src="$1"
     local hooks_dir="$src/hooks"
     [[ ! -d "$hooks_dir" ]] && return 0
-    local allowlist; allowlist=$(_ckipper_account_sync_hooks_install_allowlist)
-    local f base
+    local f
     for f in "$hooks_dir"/*(N); do
         [[ -f "$f" ]] || continue
-        base="${f:t}"
-        if [[ -n "$allowlist" ]] && echo "$allowlist" | grep -qx "$base"; then
-            continue
-        fi
-        echo "hooks/$base\t$base"
+        echo "hooks/${f:t}\t${f:t}"
     done
 }
 

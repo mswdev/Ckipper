@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Module-level tests for lib/core/registry.zsh.
-# Covers init, check_version, account_dir, registry_read, and update.
+# Covers init, check_version, account_dir, and update.
 
 load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 

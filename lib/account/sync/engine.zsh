@@ -108,8 +108,7 @@ _ckipper_account_sync_build_change_set() {
     done
 }
 
-# Walk a single type's items. Types in _CKIPPER_SYNC_TYPE_USES_NAMES use
-# account names instead of dirs.
+# Walk a single type's items.
 #
 # Args: $1 — type; $2 — src_dir; $3 — dst_dir; $4 — src_name; $5 — dst_name.
 # Returns: 0 always; prints rows.
@@ -118,14 +117,12 @@ _ckipper_account_sync_walk_type() {
     local enumerate_fn compare_fn
     enumerate_fn=$(_ckipper_account_sync_strategy_fn "$type" enumerate)
     compare_fn=$(_ckipper_account_sync_strategy_fn "$type" compare)
-    local arg_a="$src_dir" arg_b="$dst_dir"
-    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="$src_name"; arg_b="$dst_name"; }
     local id display change_status
     while IFS=$'\t' read -r id display; do
         [[ -z "$id" ]] && continue
-        change_status=$("$compare_fn" "$arg_a" "$arg_b" "$id")
+        change_status=$("$compare_fn" "$src_dir" "$dst_dir" "$id")
         echo "$type"$'\t'"$id"$'\t'"$display"$'\t'"$change_status"
-    done < <("$enumerate_fn" "$arg_a")
+    done < <("$enumerate_fn" "$src_dir")
 }
 
 # Apply a change set to a single target. Steps:
@@ -165,8 +162,7 @@ _ckipper_account_sync_apply_target() {
 }
 
 # Apply one change set entry. Bridges between the strategy contract and
-# the manifest schema. Types in _CKIPPER_SYNC_TYPE_USES_NAMES use names;
-# everything else uses dirs.
+# the manifest schema.
 #
 # Reads src_dir/dst_dir/src_name/dst_name/backup_dir from _CKIPPER_SYNC_CTX (set
 # by apply_target). Keeping these in context drops the parameter count
@@ -189,13 +185,11 @@ _ckipper_account_sync_apply_target() {
 _ckipper_account_sync_apply_one() {
     local type="$1" id="$2"
     local apply_fn; apply_fn=$(_ckipper_account_sync_strategy_fn "$type" apply)
-    local arg_a="${_CKIPPER_SYNC_CTX[src_dir]}" arg_b="${_CKIPPER_SYNC_CTX[dst_dir]}"
-    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="${_CKIPPER_SYNC_CTX[src_name]}"; arg_b="${_CKIPPER_SYNC_CTX[dst_name]}"; }
     local rel; rel=$(_ckipper_account_sync_manifest_rel "$type" "$id")
-    local live; live=$(_ckipper_account_sync_live_path "$type" "${_CKIPPER_SYNC_CTX[dst_dir]}" "$rel")
+    local live="${_CKIPPER_SYNC_CTX[dst_dir]}/$rel"
     local op="overwrite"; [[ ! -e "$live" ]] && op="create"
     _ckipper_account_sync_manifest_append "${_CKIPPER_SYNC_CTX[backup_dir]}" "$rel" "$op" "$type" "$id"
-    "$apply_fn" "$arg_a" "$arg_b" "$id" "${_CKIPPER_SYNC_CTX[backup_dir]}"
+    "$apply_fn" "${_CKIPPER_SYNC_CTX[src_dir]}" "${_CKIPPER_SYNC_CTX[dst_dir]}" "$id" "${_CKIPPER_SYNC_CTX[backup_dir]}"
 }
 
 # Compute the manifest's path field for a given (type, id). The relpath
@@ -208,7 +202,6 @@ _ckipper_account_sync_manifest_rel() {
     case "$type" in
         mcp) echo ".claude.json" ;;
         settings|statusline) echo "settings.json" ;;
-        prefs) echo "accounts.json" ;;
         *) echo "$id" ;;
     esac
 }
@@ -221,13 +214,11 @@ _ckipper_account_sync_manifest_rel() {
 # Returns: 0 always.
 _ckipper_account_sync_build_summaries() {
     local src_dir="$1" dst_dir="$2" src_name="$3" dst_name="$4"
-    local type id display change_status summary_fn arg_a arg_b summary
+    local type id display change_status summary_fn summary
     while IFS=$'\t' read -r type id display change_status; do
         [[ -z "$type" || "$change_status" == "unchanged" ]] && continue
         summary_fn=$(_ckipper_account_sync_strategy_fn "$type" summary)
-        arg_a="$src_dir"; arg_b="$dst_dir"
-        (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="$src_name"; arg_b="$dst_name"; }
-        summary=$("$summary_fn" "$arg_a" "$arg_b" "$id")
+        summary=$("$summary_fn" "$src_dir" "$dst_dir" "$id")
         echo "$type"$'\t'"$id"$'\t'"$summary"
     done
 }

@@ -5,7 +5,7 @@
 # (`ckipper desktop` / `ckipper desktop help`) and the focused per-
 # subcommand help (`ckipper desktop <sub> --help`). Kept in a dedicated
 # file because the desktop namespace has substantially longer help blocks
-# (deep-link gotcha, bundle/data-dir layout) than account/worktree.
+# (deep-link gotcha, bundle/data-dir layout) than account.
 #
 # Rendering goes through `_core_help_render` (lib/core/help.zsh) so chrome
 # stays uniform across every ckipper subcommand.

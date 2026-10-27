@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Slim down to accounts + Desktop
+
+Claude Code now covers what the Docker sandbox and worktree commands were for: auto mode gates risky actions on the host, and `claude --worktree` creates and cleans up worktrees. Ckipper is now a lightweight manager for Claude Code accounts and Claude Desktop instances.
+
+### Removed
+- The Docker sandbox: `docker/` (Dockerfile, entrypoint, egress firewall, project cleanup) and every flag that drove it (`--docker`, `--firewall`, `--ssh-forward`, …).
+- The four Docker-only safety hooks (`protect-claude-config`, `bash-guardrails`, `docker-context`, `notify-bell`), the settings template that installed them, and `ckipper account redeploy-hooks`. They already exited immediately outside Docker.
+- `ckipper worktree` / `wt` and `ckipper run`. Use `claude-<account> --worktree <name>`.
+- `ckipper config` and the `ckipper-config.zsh` file — every key configured the sandbox or worktrees.
+- `ckipper setup` (the wizard) and the bare-`ck` launcher menu. Bare `ck` now prints help.
+- Per-account `preferences` (`always_docker`, `always_firewall`, `ssh_forward`) and the `prefs` sync type / `preferences` bundle.
+- The Python tooling (`pytest`, `ruff`, `pyproject.toml`) — no Python code remains.
+
+### Changed
+- Install layout: `~/.ckipper/ckipper.zsh` + `~/.ckipper/lib/` (was `~/.ckipper/docker/`). `install.sh` rewrites the old `~/.zshrc` source line and deletes `~/.ckipper/docker/`, `~/.ckipper/hooks/` and `~/.ckipper/settings-template.json`.
+- `install.sh` no longer sets git's global `core.hooksPath` (it was there to stop a container from planting git hooks). An existing value is left alone.
+- `accounts.json` schema v3: older registries are upgraded in place (with a `.v<N>.bak.<ts>` backup) and lose the `preferences` block.
+- `ckipper doctor` checks the new install path and warns about leftover Docker-era files.
+- New accounts no longer get a template `settings.json` (it only held the hooks and a `_comment`).
+- Removed commands print a pointer to their replacement.
+
 ## [Unreleased] — CLI + onboarding overhaul
 
 ### Claude Desktop multi-instance support

@@ -1,16 +1,14 @@
 #!/usr/bin/env zsh
-# Ckipper main dispatcher.
+# Ckipper (pronounced "skipper") — multi-account Claude Code and Claude
+# Desktop manager. Sourced from ~/.zshrc.
 #
-# Sources shared primitives from lib/core/, account-management subcommands
-# from lib/account/, and worktree subcommands from lib/worktree/, then
-# exposes the top-level `ckipper` command (with `ck` short alias).
-
-# Ckipper (pronounced "skipper") — multi-account Claude Code manager
-# Sourced from ~/.zshrc.
+# Sources shared primitives from lib/core/, account subcommands from
+# lib/account/, and Desktop subcommands from lib/desktop/, then exposes the
+# top-level `ckipper` command (with `ck` short alias).
 
 CKIPPER_DIR="${CKIPPER_DIR:-$HOME/.ckipper}"
 CKIPPER_REGISTRY="$CKIPPER_DIR/accounts.json"
-CKIPPER_REGISTRY_VERSION=2
+CKIPPER_REGISTRY_VERSION=3
 CKIPPER_DESKTOP_REGISTRY="$CKIPPER_DIR/desktop.json"
 CKIPPER_DESKTOP_REGISTRY_VERSION=1
 
@@ -21,8 +19,6 @@ source "$CKIPPER_REPO_DIR/lib/core/utils.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/registry.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/keychain.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/fuzzy.zsh"
-source "$CKIPPER_REPO_DIR/lib/core/schema.zsh"
-source "$CKIPPER_REPO_DIR/lib/core/config.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/style.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/help.zsh"
 source "$CKIPPER_REPO_DIR/lib/core/prompt.zsh"
@@ -48,25 +44,6 @@ source "$CKIPPER_REPO_DIR/lib/account/sync/strategies/hooks.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/doctor.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/dispatcher.zsh"
 
-# Worktree-namespace modules
-source "$CKIPPER_REPO_DIR/lib/worktree/dispatcher.zsh"
-source "$CKIPPER_REPO_DIR/lib/worktree/args.zsh"
-source "$CKIPPER_REPO_DIR/lib/worktree/run.zsh"
-source "$CKIPPER_REPO_DIR/lib/worktree/build-image.zsh"
-source "$CKIPPER_REPO_DIR/lib/worktree/normal-mode.zsh"
-source "$CKIPPER_REPO_DIR/lib/worktree/docker-mode.zsh"
-source "$CKIPPER_REPO_DIR/lib/worktree/ports.zsh"
-source "$CKIPPER_REPO_DIR/lib/worktree/resolve-account.zsh"
-source "$CKIPPER_REPO_DIR/lib/worktree/worktree.zsh"
-
-# Config-namespace modules
-source "$CKIPPER_REPO_DIR/lib/config/get.zsh"
-source "$CKIPPER_REPO_DIR/lib/config/set.zsh"
-source "$CKIPPER_REPO_DIR/lib/config/unset.zsh"
-source "$CKIPPER_REPO_DIR/lib/config/list.zsh"
-source "$CKIPPER_REPO_DIR/lib/config/edit.zsh"
-source "$CKIPPER_REPO_DIR/lib/config/dispatcher.zsh"
-
 # Desktop-namespace modules
 source "$CKIPPER_REPO_DIR/lib/desktop/help.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/bundle.zsh"
@@ -75,55 +52,25 @@ source "$CKIPPER_REPO_DIR/lib/desktop/launcher.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/doctor.zsh"
 source "$CKIPPER_REPO_DIR/lib/desktop/dispatcher.zsh"
 
-# Setup-namespace modules
-source "$CKIPPER_REPO_DIR/lib/setup/prereqs.zsh"
-source "$CKIPPER_REPO_DIR/lib/setup/prompts.zsh"
-source "$CKIPPER_REPO_DIR/lib/setup/apply.zsh"
-source "$CKIPPER_REPO_DIR/lib/setup/dispatcher.zsh"
-
-# Top-level shortcuts (run / launcher)
-source "$CKIPPER_REPO_DIR/lib/run/dispatcher.zsh"
-source "$CKIPPER_REPO_DIR/lib/launcher/menu.zsh"
-
-# User config (projects/worktrees dirs, ports, extra volumes, extra env vars).
-# Renamed from w-config.zsh in the merge; install.sh handles the migration.
-_ckipper_user_config="${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper-config.zsh"
-[[ -f "$_ckipper_user_config" ]] && source "$_ckipper_user_config"
-unset _ckipper_user_config
-
-# Defaults if user config is missing or incomplete. Set once at source time
-# and never reset per-call so users can host their projects anywhere.
-CKIPPER_PROJECTS_DIR="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
-CKIPPER_WORKTREES_DIR="${CKIPPER_WORKTREES_DIR:-$CKIPPER_PROJECTS_DIR/.worktrees}"
-(( ${#CKIPPER_PORTS[@]} == 0 )) && CKIPPER_PORTS=(3000)
-(( ${#CKIPPER_EXTRA_VOLUMES[@]} == 0 )) && CKIPPER_EXTRA_VOLUMES=()
-(( ${#CKIPPER_EXTRA_ENV[@]} == 0 )) && CKIPPER_EXTRA_ENV=()
-
 # Top-level commands. Used both for routing and for fuzzy-suggest.
-_CKIPPER_COMMANDS=(account worktree run config desktop setup doctor help)
+_CKIPPER_COMMANDS=(account desktop doctor help)
 
-# Pre-merge top-level commands → their post-merge namespaced replacement.
-# Used by _ckipper_unknown so a user typing the old form (e.g. `ckipper add`)
-# gets a precise migration hint instead of a generic "Unknown command" —
-# Levenshtein cannot bridge the rename (lev(add, account) = 6, well above the
-# fuzzy threshold). Empty value means the command was removed entirely.
-typeset -gA _CKIPPER_LEGACY_COMMANDS=(
-    [add]='account add'
-    [list]='account list'
-    [default]='account default'
-    [remove]='account remove'
-    [rename]='account rename'
-    [sync]='account sync'
-    [sync-hooks]='account redeploy-hooks'
-    [repair-plugins]='doctor --fix'
-    [migrate]=''
+# Commands that existed before Ckipper was slimmed down → a hint pointing at
+# what replaces them. Used by _ckipper_unknown so muscle memory gets a precise
+# answer instead of a generic "Unknown command".
+typeset -gA _CKIPPER_REMOVED_COMMANDS=(
+    [worktree]="Claude Code manages worktrees itself: claude-<account> --worktree <name>"
+    [wt]="Claude Code manages worktrees itself: claude-<account> --worktree <name>"
+    [run]="Claude Code manages worktrees itself: claude-<account> --worktree <name>"
+    [config]="Ckipper has no settings of its own any more."
+    [setup]="Register an account directly: ckipper account add <name>"
 )
 
 # Dispatch a top-level ckipper command.
 #
 # Args:
-#   $1     — top-level command (account, worktree, config, setup, doctor,
-#             help, -h, --help, empty, or short alias acct/wt)
+#   $1     — top-level command (account, desktop, doctor, help, -h, --help,
+#             empty, or short alias acct/dt)
 #   $2..$N — arguments forwarded to the namespace dispatcher
 #
 # Returns: 0 on success; 1 on unknown command.
@@ -135,46 +82,41 @@ ckipper() {
     shift 2>/dev/null
     case "$cmd" in
         acct) cmd="account" ;;
-        wt)   cmd="worktree" ;;
         dt)   cmd="desktop" ;;
     esac
     case "$cmd" in
-        account)  _ckipper_account_dispatch "$@" ;;
-        worktree) _ckipper_worktree_dispatch "$@" ;;
-        run)      _ckipper_run "$@" ;;
-        config)   _ckipper_config_dispatch "$@" ;;
-        desktop)  _ckipper_desktop_dispatch "$@" ;;
-        setup)    _ckipper_setup "$@" ;;
-        doctor)
-            if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-                _ckipper_help_text_doctor
-                return 0
-            fi
-            local _rc=0
-            _ckipper_doctor "$@" || _rc=1
-            _ckipper_desktop_doctor || _rc=1
-            return $_rc
-            ;;
-        "")               _ckipper_launcher_menu ;;
-        help|-h|--help)   _ckipper_help ;;
+        account) _ckipper_account_dispatch "$@" ;;
+        desktop) _ckipper_desktop_dispatch "$@" ;;
+        doctor)  _ckipper_doctor_all "$@" ;;
+        ""|help|-h|--help) _ckipper_help ;;
         *) _ckipper_unknown "$cmd"; return 1 ;;
     esac
 }
 
-# Print a migration hint for retired pre-merge commands, or fall through to
-# the standard unknown-command + fuzzy-suggest path. Always writes to stderr.
+# Run the account doctor and the Desktop doctor, or print doctor help.
+#
+# Args: $1 — optional `--help`/`-h`.
+# Returns: 0 if neither doctor reported a FAIL; 1 otherwise.
+_ckipper_doctor_all() {
+    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        _ckipper_help_text_doctor
+        return 0
+    fi
+    local rc=0
+    _ckipper_doctor "$@" || rc=1
+    _ckipper_desktop_doctor || rc=1
+    return $rc
+}
+
+# Print a hint for a removed command, or fall through to the standard
+# unknown-command + fuzzy-suggest path. Always writes to stderr.
 #
 # Args: $1 — the unknown command the user typed.
 # Returns: 0 always.
 _ckipper_unknown() {
     local cmd="$1"
-    if (( ${+_CKIPPER_LEGACY_COMMANDS[$cmd]} )); then
-        local replacement="${_CKIPPER_LEGACY_COMMANDS[$cmd]}"
-        if [[ -n "$replacement" ]]; then
-            echo "'ckipper $cmd' was renamed to 'ckipper $replacement' — pass the same arguments." >&2
-        else
-            echo "'ckipper $cmd' was removed in this release." >&2
-        fi
+    if (( ${+_CKIPPER_REMOVED_COMMANDS[$cmd]} )); then
+        echo "'ckipper $cmd' was removed. ${_CKIPPER_REMOVED_COMMANDS[$cmd]}" >&2
         echo "Run 'ckipper help' for the current command list." >&2
         return 0
     fi
@@ -187,15 +129,11 @@ _ckipper_unknown() {
 #
 # Returns: 0 always.
 _ckipper_help() {
-    _core_help_render 'ckipper (pronounced "skipper") — multi-account Claude Code manager' \
+    _core_help_render 'ckipper (pronounced "skipper") — multi-account Claude Code and Desktop manager' \
         "" \
         "Usage:" \
-        "  ckipper account <subcommand>   Manage Claude accounts (alias: acct)" \
-        "  ckipper worktree <subcommand>  Manage git worktrees (alias: wt)" \
-        "  ckipper run <project> <branch> Shortcut for \`ckipper worktree run\`" \
-        "  ckipper config <subcommand>    View and modify Ckipper settings" \
+        "  ckipper account <subcommand>   Manage Claude Code accounts (alias: acct)" \
         "  ckipper desktop <subcommand>   Manage Claude Desktop instances (alias: dt)" \
-        "  ckipper setup                  Run / re-run the interactive setup wizard" \
         "  ckipper doctor                 Diagnostic check of accounts and tooling" \
         "  ckipper help                   Show this overview" \
         "" \
@@ -215,15 +153,16 @@ _ckipper_help() {
 #
 # Returns: 0 always.
 _ckipper_help_text_doctor() {
-    _core_help_render "ckipper doctor" \
+    _core_help_render "ckipper doctor [--fix]" \
         "" \
         "Run a diagnostic checklist on registered accounts and ckipper tooling:" \
         "  - Registry validity (version, JSON shape)" \
-        "  - Per-account: config dir presence, .claude.json/settings.json/hooks/" \
+        "  - Per-account: config dir, .claude.json, settings.json, plugin paths" \
         "  - Keychain entries reachable on macOS" \
-        "  - ~/.zshrc sources ckipper.zsh" \
-        "  - Stub ~/.claude state is absent" \
+        "  - ~/.zshrc sources ckipper.zsh and aliases.zsh" \
         "  - Per-desktop-instance: data dir present, .app bundle valid (macOS only)" \
+        "" \
+        "--fix rewrites stale plugin metadata paths in place." \
         "" \
         "Exits 0 if every check passes (or only INFOs/WARNs); exits 1 if any FAIL."
 }
@@ -239,7 +178,7 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs
 # regenerate the cached completion file. The version is embedded as a literal
 # comment in the generated file and matched here.
-CKIPPER_COMPLETION_VERSION=9
+CKIPPER_COMPLETION_VERSION=10
 if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
     # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
@@ -249,23 +188,18 @@ if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     # a completion file, not maintained shell logic).
     cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
 #compdef ckipper ck
-# ckipper-completion-version=9
+# ckipper-completion-version=10
 
 _ckipper() {
-    local projects_dir="${CKIPPER_PROJECTS_DIR:-$HOME/Developer}"
-    local worktrees_dir="${CKIPPER_WORKTREES_DIR:-$projects_dir/.worktrees}"
-    local -a top_commands account_subs worktree_subs config_subs desktop_subs
+    local registry="${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}"
+    local desktop_registry="${CKIPPER_DESKTOP_REGISTRY:-$HOME/.ckipper/desktop.json}"
+    local -a top_commands account_subs desktop_subs accounts desktop_instances
 
     top_commands=(
-        'account:Manage Claude accounts'
+        'account:Manage Claude Code accounts'
         'acct:Short alias for account'
-        'worktree:Manage git worktrees'
-        'wt:Short alias for worktree'
-        'run:Shortcut for worktree run'
-        'config:View and modify Ckipper settings'
         'desktop:Manage Claude Desktop instances'
         'dt:Short alias for desktop'
-        'setup:Run / re-run the setup wizard'
         'doctor:Diagnostic check of accounts and tooling'
         'help:Show top-level help'
     )
@@ -276,23 +210,7 @@ _ckipper() {
         'remove:Unregister an account'
         'rename:Rename an account in place'
         'sync:Copy state between accounts (interactive or via --include)'
-        'redeploy-hooks:Redeploy ckipper safety hooks from install to all accounts'
         'help:Show account-namespace help'
-    )
-    worktree_subs=(
-        'run:Create-or-cd worktree, optionally Docker'
-        'list:List all worktrees'
-        'rm:Remove worktree + delete branch'
-        'rebuild-image:Rebuild ckipper-dev Docker image'
-        'help:Show worktree-namespace help'
-    )
-    config_subs=(
-        'get:Read a config value'
-        'set:Write a config value'
-        'unset:Remove a config override'
-        'list:Show all config values'
-        'edit:Open the config file in $EDITOR'
-        'help:Show config-namespace help'
     )
     desktop_subs=(
         'add:Register a new Desktop instance'
@@ -303,12 +221,13 @@ _ckipper() {
         'launch:Open a registered instance'
         'help:Show desktop-namespace help'
     )
+    [[ -f "$registry" ]] && accounts=( $(jq -r '.accounts | keys[]' "$registry" 2>/dev/null) )
+    [[ -f "$desktop_registry" ]] && desktop_instances=( $(jq -r '.instances | keys[]' "$desktop_registry" 2>/dev/null) )
 
     _arguments -C \
         '1: :->cmd' \
         '2: :->sub' \
         '3: :->arg3' \
-        '4: :->arg4' \
         '*:: :->args' \
         && return 0
 
@@ -318,149 +237,33 @@ _ckipper() {
             ;;
         sub)
             case "${words[2]}" in
-                account|acct)
-                    _describe -t subcommands 'account subcommand' account_subs && return 0
-                    ;;
-                worktree|wt)
-                    _describe -t subcommands 'worktree subcommand' worktree_subs && return 0
-                    ;;
-                config)
-                    _describe -t subcommands 'config subcommand' config_subs && return 0
-                    ;;
-                desktop|dt)
-                    _describe -t subcommands 'desktop subcommand' desktop_subs && return 0
-                    ;;
-                run)
-                    local -a projects
-                    local dir repo_dir rel
-                    while IFS= read -r -d '' dir; do
-                        repo_dir="${dir:h}"
-                        rel="${repo_dir#$projects_dir/}"
-                        projects+=("$rel")
-                    done < <(find "$projects_dir" -maxdepth 3 -name ".git" -type d -not -path "*/.worktrees/*" -print0 2>/dev/null)
-                    _describe -t projects 'project' projects && return 0
-                    ;;
+                account|acct) _describe -t subcommands 'account subcommand' account_subs && return 0 ;;
+                desktop|dt)   _describe -t subcommands 'desktop subcommand' desktop_subs && return 0 ;;
             esac
             ;;
         arg3)
             case "${words[2]}/${words[3]}" in
-                worktree/run|wt/run|worktree/rm|wt/rm)
-                    local -a projects
-                    local dir repo_dir rel
-                    while IFS= read -r -d '' dir; do
-                        repo_dir="${dir:h}"
-                        rel="${repo_dir#$projects_dir/}"
-                        projects+=("$rel")
-                    done < <(find "$projects_dir" -maxdepth 3 -name ".git" -type d -not -path "*/.worktrees/*" -print0 2>/dev/null)
-                    _describe -t projects 'project' projects && return 0
-                    ;;
                 account/default|acct/default|account/remove|acct/remove|account/rename|acct/rename|account/sync|acct/sync)
-                    local -a accounts
-                    if [[ -f "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" ]]; then
-                        accounts=( $(jq -r '.accounts | keys[]' "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" 2>/dev/null) )
-                    fi
                     _describe -t accounts 'account name' accounts && return 0
                     ;;
-                config/get|config/set|config/unset)
-                    local -a config_keys
-                    config_keys=( "${(@k)_CKIPPER_SCHEMA_TYPE}" )
-                    _describe -t keys 'config key' config_keys && return 0
-                    ;;
                 desktop/remove|dt/remove|desktop/rename|dt/rename|desktop/login|dt/login|desktop/launch|dt/launch)
-                    local -a desktop_instances
-                    local desktop_registry="${CKIPPER_DESKTOP_REGISTRY:-$HOME/.ckipper/desktop.json}"
-                    if [[ -f "$desktop_registry" ]]; then
-                        desktop_instances=( $(jq -r '.instances | keys[]' "$desktop_registry" 2>/dev/null) )
-                    fi
                     _describe -t instances 'desktop instance name' desktop_instances && return 0
-                    ;;
-            esac
-            case "${words[2]}" in
-                run)
-                    local project="${words[3]}"
-                    [[ -z "$project" ]] && return 0
-                    local -a worktrees
-                    if [[ -d "$worktrees_dir/$project" ]]; then
-                        for wt in $worktrees_dir/$project/*(N/); do
-                            worktrees+=(${wt:t})
-                        done
-                    fi
-                    if (( ${#worktrees} > 0 )); then
-                        _describe -t worktrees 'existing worktree' worktrees
-                    else
-                        _message 'new worktree branch name'
-                    fi
-                    ;;
-            esac
-            ;;
-        arg4)
-            case "${words[2]}/${words[3]}" in
-                worktree/run|wt/run|worktree/rm|wt/rm)
-                    local project="${words[4]}"
-                    [[ -z "$project" ]] && return 0
-                    local -a worktrees
-                    if [[ -d "$worktrees_dir/$project" ]]; then
-                        for wt in $worktrees_dir/$project/*(N/); do
-                            worktrees+=(${wt:t})
-                        done
-                    fi
-                    if (( ${#worktrees} > 0 )); then
-                        _describe -t worktrees 'existing worktree' worktrees
-                    else
-                        _message 'new worktree branch name'
-                    fi
-                    ;;
-                account/sync|acct/sync)
-                    local -a accounts
-                    if [[ -f "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" ]]; then
-                        accounts=( $(jq -r '.accounts | keys[]' "${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}" 2>/dev/null) )
-                    fi
-                    _describe -t accounts 'additional sync target' accounts && return 0
                     ;;
             esac
             ;;
         args)
             case "${words[2]}/${words[3]}" in
-                worktree/run|wt/run)
-                    local -a flags
-                    flags=(
-                        '--docker:Run inside the ckipper-dev Docker container'
-                        '--no-docker:Force host-only run (override always_docker preference)'
-                        '--firewall:Add egress firewall (requires --docker)'
-                        '--no-firewall:Disable firewall (override always_firewall preference)'
-                        '--ssh-forward:Mount ~/.ssh into container'
-                        '--no-ssh-forward:Do not mount ~/.ssh (override ssh_forward preference)'
-                        '--account:Use a specific Ckipper account'
-                    )
-                    _describe -t flags 'flag' flags
-                    _command_names -e
-                    ;;
                 account/sync|acct/sync)
                     local -a sync_flags
                     sync_flags=(
-                        '--include:Comma-separated types or named bundle (all/customizations/claude-config/preferences)'
+                        '--include:Comma-separated types or named bundle (all/customizations/claude-config)'
                         '--exclude:Subtract from --include'
                         '--dry-run:Print summary; no writes'
                         '--yes:Skip the confirm prompt; apply directly'
                         '--force:Bypass the destination-Claude-running refusal'
                     )
+                    _describe -t accounts 'sync target' accounts
                     _describe -t flags 'sync flag' sync_flags
-                    ;;
-            esac
-            case "${words[2]}" in
-                run)
-                    local -a flags
-                    flags=(
-                        '--docker:Run inside the ckipper-dev Docker container'
-                        '--no-docker:Force host-only run (override always_docker preference)'
-                        '--firewall:Add egress firewall (requires --docker)'
-                        '--no-firewall:Disable firewall (override always_firewall preference)'
-                        '--ssh-forward:Mount ~/.ssh into container'
-                        '--no-ssh-forward:Do not mount ~/.ssh (override ssh_forward preference)'
-                        '--account:Use a specific Ckipper account'
-                    )
-                    _describe -t flags 'flag' flags
-                    _command_names -e
                     ;;
             esac
             ;;

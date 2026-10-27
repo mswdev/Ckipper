@@ -11,14 +11,12 @@ We aim to acknowledge reports within 72 hours and to provide a fix or mitigation
 ## Scope
 
 In scope:
-- Credential handling (Keychain access, container injection, file permissions).
-- Hook bypass where the bypass affects security (note that `bash-guardrails.sh` is a UX guardrail by design, not a security boundary).
-- Container escape vectors in the Docker sandbox.
+- Credential handling (Keychain access, file permissions on the registry and generated files).
 - Path traversal or shell injection in CLI tools.
 
 Out of scope:
-- Bypasses of `bash-guardrails.sh` via `bash -c`/heredocs/eval — this is documented, intentional, and not a security boundary.
 - Issues requiring physical access to the host.
+- Claude Code's own permission and sandboxing behavior — report those to Anthropic.
 
 ## Supported versions
 

@@ -27,9 +27,8 @@ _core_prompt_use_gum() {
 #
 # Distinguishes "user submitted empty" (rc=0, value=default) from "user
 # cancelled" (rc != 0, no stdout). `gum input` exits non-zero on Esc/Ctrl-C,
-# and we propagate that so callers can distinguish cancellation. Previously
-# we collapsed both into "echo default", which meant a cancelled launcher
-# branch prompt silently created a worktree on the default branch name.
+# and we propagate that so callers can distinguish cancellation instead of
+# acting on the default as if the user had chosen it.
 #
 # Args: $1 — label shown to the user; $2 — default value used on empty input.
 # Returns: 0 on submit (including empty submit); non-zero on cancellation.
