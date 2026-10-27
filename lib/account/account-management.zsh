@@ -1,6 +1,10 @@
 #!/usr/bin/env zsh
 # Account lifecycle subcommands: add, finalize_registration, remove, rename, list, default, bare_alias_safe.
 
+# Module-level context for the in-progress `account add`, filled by
+# _ckipper_account_add_parse_args. Fields: adopt ("true"/"false"), group.
+typeset -gA _CKIPPER_ADD_CTX
+
 # Module-level context for the in-progress rename.
 # Populated by _ckipper_account_rename before invoking _ckipper_account_rename_perform.
 # Fields: old_dir, new_dir
@@ -24,7 +28,7 @@ typeset -g _CKIPPER_ACCOUNT_LIST_DEFAULT=""
 _ckipper_account_add_validate_name() {
     local name="$1"
     if [[ -z "$name" ]]; then
-        echo "Usage: ckipper account add <name> [--adopt]" >&2
+        echo "Usage: ckipper account add <name> [--group <group>] [--adopt]" >&2
         return 1
     fi
     if [[ ! "$name" =~ ^[a-z0-9_-]+$ ]]; then
@@ -157,26 +161,68 @@ _ckipper_account_add_check_credentials() {
     return 1
 }
 
-# Register a new account interactively (fresh login) or by adopting an existing directory.
+# Parse the options after the account name into _CKIPPER_ADD_CTX.
+#
+# Args: $@ — options: --adopt, --group <group>.
+# Returns: 0 on success; 1 on an unknown option, missing value, or bad group name.
+# Errors (stderr): "Unknown option: …", "Missing value for --group"
+_ckipper_account_add_parse_args() {
+    _CKIPPER_ADD_CTX=(adopt false group "")
+    while (( $# > 0 )); do
+        case "$1" in
+            --adopt) _CKIPPER_ADD_CTX[adopt]="true"; shift ;;
+            --group)
+                [[ -n "$2" ]] || { echo "Missing value for --group" >&2; return 1; }
+                _CKIPPER_ADD_CTX[group]="$2"; shift 2 ;;
+            *) echo "Unknown option: $1 (usage: ckipper account add <name> [--group <group>] [--adopt])" >&2; return 1 ;;
+        esac
+    done
+    [[ -z "${_CKIPPER_ADD_CTX[group]}" ]] || _ckipper_account_group_validate_name "${_CKIPPER_ADD_CTX[group]}"
+}
+
+# Register a new account interactively (fresh login) or by adopting an
+# existing directory. With --group, the account joins that group; a fresh
+# account joining a group that already has a master is seeded from it.
 #
 # Args:
-#   $1 — account name (must match ^[a-z0-9_-]+$)
-#   $2 — "--adopt" to register an existing directory; omit for fresh login flow
+#   $1     — account name (must match ^[a-z0-9_-]+$)
+#   $2..$N — options: --adopt (register an existing dir), --group <group>
 #
 # Returns:
-#   0 on success; 1 on validation or registration failure.
+#   0 on success; 1 on validation, registration, or seeding failure.
 _ckipper_account_add() {
     _core_registry_check_version || return 1
-    local name="$1" should_adopt="false"
-    [[ "$2" == "--adopt" ]] && should_adopt="true"
+    local name="$1"; shift 2>/dev/null
+    _ckipper_account_add_parse_args "$@" || return 1
     _core_registry_init
     _ckipper_account_add_validate_name "$name" || return 1
-    local dir="$HOME/.claude-$name"
-    if [[ "$should_adopt" = "true" ]]; then
-        _ckipper_account_add_adopt_flow "$name" "$dir"
+    local dir="$HOME/.claude-$name" master=""
+    [[ -n "${_CKIPPER_ADD_CTX[group]}" ]] && master=$(_ckipper_account_group_master "${_CKIPPER_ADD_CTX[group]}")
+    if [[ "${_CKIPPER_ADD_CTX[adopt]}" == "true" ]]; then
+        _ckipper_account_add_adopt_flow "$name" "$dir" || return 1
+        _ckipper_account_add_join_group "$name" ""
         return $?
     fi
-    _ckipper_account_add_fresh_flow "$name" "$dir"
+    _ckipper_account_add_fresh_flow "$name" "$dir" || return 1
+    _ckipper_account_add_join_group "$name" "$master"
+}
+
+# Put a just-registered account in the --group group, then seed it from the
+# group's master when one is given. Adopted accounts pass an empty master:
+# their dir is already populated.
+#
+# Args: $1 — account name; $2 — master to seed from (empty = no seeding).
+# Returns: 0 on success or when no --group was given; 1 on failure.
+_ckipper_account_add_join_group() {
+    local name="$1" master="$2"
+    local group="${_CKIPPER_ADD_CTX[group]}"
+    [[ -z "$group" ]] && return 0
+    _ckipper_account_group_assign "$name" "$group" || return 1
+    if [[ -z "$master" ]]; then
+        echo "'$name' is in group '$group' (master: $(_ckipper_account_group_master "$group"))."
+        return 0
+    fi
+    _ckipper_account_seed_from_master "$name" "$master"
 }
 
 # Write the account entry to the registry and regenerate aliases atomically.
@@ -271,16 +317,18 @@ _ckipper_account_bare_alias_safe() {
 readonly _CKIPPER_ACCOUNT_LIST_COL_NAME=14
 readonly _CKIPPER_ACCOUNT_LIST_COL_DIR=32
 readonly _CKIPPER_ACCOUNT_LIST_COL_EMAIL=28
+readonly _CKIPPER_ACCOUNT_LIST_COL_GROUP=20
 readonly _CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN=10
 
 # Print the column-header row for `ckipper account list`.
 #
 # Returns: 0 always.
 _ckipper_account_list_header() {
-    printf '%-*s%-*s%-*s%-*s%s\n' \
+    printf '%-*s%-*s%-*s%-*s%-*s%s\n' \
         "$_CKIPPER_ACCOUNT_LIST_COL_NAME" "NAME" \
         "$_CKIPPER_ACCOUNT_LIST_COL_DIR" "DIR" \
         "$_CKIPPER_ACCOUNT_LIST_COL_EMAIL" "EMAIL" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_GROUP" "GROUP" \
         "$_CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN" "KEYCHAIN" \
         "DEFAULT"
 }
@@ -333,6 +381,19 @@ _ckipper_account_list_keychain_status() {
     _core_keychain_entry_exists "$(_core_keychain_service_for_dir "$dir")" && echo "yes" || echo "no"
 }
 
+# Print an account's group for `account list`: "-" when ungrouped, and
+# "<group> (master)" for the group's master.
+#
+# Args: $1 — account name.
+# Returns: 0 always; prints the label.
+_ckipper_account_list_group_label() {
+    local name="$1"
+    local group; group=$(_ckipper_account_group_of "$name")
+    [[ -z "$group" ]] && { echo "-"; return 0; }
+    [[ "$(_ckipper_account_group_master "$group")" == "$name" ]] && { echo "$group (master)"; return 0; }
+    echo "$group"
+}
+
 # Print a single account row for `ckipper account list`.
 #
 # Args:
@@ -353,12 +414,14 @@ _ckipper_account_list_row() {
         email=$(jq -r '.oauthAccount.emailAddress // "-"' "$dir/.claude.json" 2>/dev/null)
     fi
     local keychain_status; keychain_status=$(_ckipper_account_list_keychain_status "$dir")
+    local group_label; group_label=$(_ckipper_account_list_group_label "$name")
     local marker=" "
     [[ "$name" == "$default" ]] && marker=$(_core_style_color green "*")
-    printf '%-*s%-*s%-*s%-*s%s\n' \
+    printf '%-*s%-*s%-*s%-*s%-*s%s\n' \
         "$_CKIPPER_ACCOUNT_LIST_COL_NAME" "$name" \
         "$_CKIPPER_ACCOUNT_LIST_COL_DIR" "$short_dir" \
         "$_CKIPPER_ACCOUNT_LIST_COL_EMAIL" "$email" \
+        "$_CKIPPER_ACCOUNT_LIST_COL_GROUP" "$group_label" \
         "$_CKIPPER_ACCOUNT_LIST_COL_KEYCHAIN" "$keychain_status" \
         "$marker"
 }
@@ -407,7 +470,11 @@ _ckipper_account_remove() {
     fi
     _core_assert_no_running_claude || return 1
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
-    if ! _core_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"; then
+    if ! _core_registry_update '
+        del(.accounts[$n])
+        | (if .default == $n then .default = null else . end)
+        | .groups = ((.groups // {}) | map_values(if .master == $n then .master = null else . end))
+    ' --arg n "$name"; then
         echo "Error: failed to unregister '$name' from the registry. Skipping cleanup of '$dir'." >&2
         return 1
     fi
@@ -496,7 +563,8 @@ _ckipper_account_rename_perform() {
         .accounts[$new] = .accounts[$old] |
         .accounts[$new].config_dir = $newdir |
         del(.accounts[$old]) |
-        (if .default == $old then .default = $new else . end)
+        (if .default == $old then .default = $new else . end) |
+        .groups = ((.groups // {}) | map_values(if .master == $old then .master = $new else . end))
     ' --arg old "$old" --arg new "$new" --arg newdir "$new_dir"; then
         mv "$new_dir" "$old_dir" 2>/dev/null
         echo "Error: registry write failed; reverted directory rename." >&2

@@ -6,10 +6,10 @@ load "${BATS_TEST_DIRNAME}/../../../tests/lib/test-helper.bash"
 setup() {
     setup_isolated_env
     cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":4,"default":"personal","accounts":{
-    "personal":{"config_dir":"$TMP_HOME/personal","registered_at":"t"},
-    "work":{"config_dir":"$TMP_HOME/work","registered_at":"t"},
-    "client1":{"config_dir":"$TMP_HOME/client1","registered_at":"t"}
+{"version":4,"default":"personal","groups":{"home":{"master":"personal"},"clients":{"master":"client1"}},"accounts":{
+    "personal":{"config_dir":"$TMP_HOME/personal","registered_at":"t","group":"home"},
+    "work":{"config_dir":"$TMP_HOME/work","registered_at":"t","group":"home"},
+    "client1":{"config_dir":"$TMP_HOME/client1","registered_at":"t","group":"clients"}
 }}
 JSON
     chmod 600 "$CKIPPER_REGISTRY"
@@ -21,6 +21,7 @@ run_in_zsh() {
         CKIPPER_NO_GUM=1 TMP_HOME="$TMP_HOME" \
         zsh -c "source \"$REPO_ROOT/lib/core/registry.zsh\"; \
                 source \"$REPO_ROOT/lib/core/prompt.zsh\"; \
+                source \"$REPO_ROOT/lib/account/groups.zsh\"; \
                 source \"$REPO_ROOT/lib/account/sync/interactive.zsh\"; $*"
 }
 
@@ -29,10 +30,17 @@ run_in_zsh() {
     [[ "$output" == *"client1,personal,work,"* ]]
 }
 
-@test "_ckipper_account_sync_list_accounts_except filters source" {
+@test "_ckipper_account_sync_list_accounts_except lists only the source's group peers" {
     run_in_zsh "_ckipper_account_sync_list_accounts_except personal | sort | tr '\n' ','"
-    [[ "$output" == *"client1,work,"* ]]
-    [[ "$output" != *"personal"* ]]
+    [ "$output" = "work," ]
+}
+
+@test "_ckipper_account_sync_list_accounts_except is empty for an ungrouped source" {
+    jq '.accounts.personal |= del(.group)' "$CKIPPER_REGISTRY" > "$CKIPPER_REGISTRY.tmp" && mv "$CKIPPER_REGISTRY.tmp" "$CKIPPER_REGISTRY"
+
+    run_in_zsh "_ckipper_account_sync_list_accounts_except personal"
+
+    [ -z "$output" ]
 }
 
 # Regression: cancel from the comma-separated input prompt used to pass

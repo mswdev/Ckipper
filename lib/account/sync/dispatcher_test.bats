@@ -79,9 +79,9 @@ run_in_zsh() {
 
 setup_two_accounts() {
     cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":4,"default":"src","accounts":{
-    "src":{"config_dir":"$TMP_HOME/src","registered_at":"t"},
-    "dst":{"config_dir":"$TMP_HOME/dst","registered_at":"t"}
+{"version":4,"default":"src","groups":{"g":{"master":"src"}},"accounts":{
+    "src":{"config_dir":"$TMP_HOME/src","registered_at":"t","group":"g"},
+    "dst":{"config_dir":"$TMP_HOME/dst","registered_at":"t","group":"g"}
 }}
 JSON
     chmod 600 "$CKIPPER_REGISTRY"

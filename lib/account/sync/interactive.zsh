@@ -13,13 +13,16 @@ _ckipper_account_sync_list_accounts() {
     jq -r '.accounts | keys[]?' "$CKIPPER_REGISTRY" 2>/dev/null
 }
 
-# List every registered account name EXCEPT the given one.
+# List the accounts the given one may sync to: the other members of its
+# group. Empty when the account has no group.
 #
-# Args: $1 — account name to exclude.
-# Returns: 0; prints filtered list.
+# Args: $1 — source account name.
+# Returns: 0; prints account names, one per line.
 _ckipper_account_sync_list_accounts_except() {
-    local exclude="$1"
-    _ckipper_account_sync_list_accounts | grep -vxF "$exclude" 2>/dev/null
+    local source="$1"
+    local group; group=$(_ckipper_account_group_of "$source")
+    [[ -z "$group" ]] && return 0
+    _ckipper_account_group_members "$group" | grep -vxF "$source" 2>/dev/null
 }
 
 # Prompt the user to pick the source account.
@@ -46,7 +49,7 @@ _ckipper_account_sync_pick_targets() {
     local -a candidates
     candidates=( ${(f)"$(_ckipper_account_sync_list_accounts_except "$source")"} )
     if (( ${#candidates} == 0 )); then
-        echo "No other accounts to sync to." >&2
+        echo "No other accounts in $source's group to sync to. See: ckipper account group --help" >&2
         return 1
     fi
     if _core_prompt_use_gum; then
