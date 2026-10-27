@@ -286,10 +286,10 @@ _ckipper_account_sync_help_text() {
         "" \
         "Options:" \
         "  --include <types>    Comma-separated types or named bundle:" \
-        "                         all | customizations | claude-config | preferences" \
+        "                         all | customizations | claude-config" \
         "                         Type tokens: mcp, settings, claude-md, agents," \
         "                         commands, output-styles, skills, statusline," \
-        "                         hooks, prefs" \
+        "                         hooks" \
         "  --exclude <types>    Subtract from --include." \
         "  --dry-run            Print summary, exit (no prompt, no writes)." \
         "  --yes                Skip the confirm prompt; apply directly." \

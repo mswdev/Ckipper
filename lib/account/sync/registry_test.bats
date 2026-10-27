@@ -17,15 +17,15 @@ run_in_zsh() {
         zsh -c "source \"$REPO_ROOT/lib/account/sync/registry.zsh\"; $*"
 }
 
-@test "registry declares all 10 sync types" {
+@test "registry declares all 9 sync types" {
     run_in_zsh 'echo ${(k)_CKIPPER_SYNC_TYPE_LABEL} | tr " " "\n" | sort | tr "\n" ","'
     [ "$status" -eq 0 ]
-    [[ "$output" == *"agents,claude-md,commands,hooks,mcp,output-styles,prefs,settings,skills,statusline,"* ]]
+    [[ "$output" == *"agents,claude-md,commands,hooks,mcp,output-styles,settings,skills,statusline,"* ]]
 }
 
 @test "every type has a label" {
     run_in_zsh '
-        for t in mcp settings claude-md agents commands output-styles skills statusline hooks prefs; do
+        for t in mcp settings claude-md agents commands output-styles skills statusline hooks; do
             [[ -n "${_CKIPPER_SYNC_TYPE_LABEL[$t]}" ]] || { echo "missing label for $t"; exit 1; }
         done
         echo OK'
@@ -35,7 +35,7 @@ run_in_zsh() {
 
 @test "every type has a kind in {structured, files-flat, files-dir, special}" {
     run_in_zsh '
-        for t in mcp settings claude-md agents commands output-styles skills statusline hooks prefs; do
+        for t in mcp settings claude-md agents commands output-styles skills statusline hooks; do
             kind="${_CKIPPER_SYNC_TYPE_KIND[$t]}"
             case "$kind" in
                 structured|files-flat|files-dir|special) ;;
@@ -49,7 +49,7 @@ run_in_zsh() {
 
 @test "every type has at least one bundle membership" {
     run_in_zsh '
-        for t in mcp settings claude-md agents commands output-styles skills statusline hooks prefs; do
+        for t in mcp settings claude-md agents commands output-styles skills statusline hooks; do
             [[ -n "${_CKIPPER_SYNC_TYPE_BUNDLES[$t]}" ]] || { echo "missing bundles for $t"; exit 1; }
         done
         echo OK'
@@ -57,21 +57,16 @@ run_in_zsh() {
     [[ "$output" == *"OK"* ]]
 }
 
-@test "_ckipper_account_sync_resolve_bundle expands all to all 10 types" {
+@test "_ckipper_account_sync_resolve_bundle expands all to all 9 types" {
     run_in_zsh '_ckipper_account_sync_resolve_bundle all | sort | tr "\n" ","'
     [ "$status" -eq 0 ]
-    [[ "$output" == "agents,claude-md,commands,hooks,mcp,output-styles,prefs,settings,skills,statusline," ]]
+    [[ "$output" == "agents,claude-md,commands,hooks,mcp,output-styles,settings,skills,statusline," ]]
 }
 
 @test "_ckipper_account_sync_resolve_bundle expands customizations" {
     run_in_zsh '_ckipper_account_sync_resolve_bundle customizations | sort | tr "\n" ","'
     [ "$status" -eq 0 ]
     [[ "$output" == "agents,claude-md,commands,hooks,mcp,output-styles,settings,skills,statusline," ]]
-}
-
-@test "_ckipper_account_sync_resolve_bundle preferences = prefs" {
-    run_in_zsh '_ckipper_account_sync_resolve_bundle preferences | tr "\n" ","'
-    [[ "$output" == "prefs," ]]
 }
 
 @test "_ckipper_account_sync_resolve_bundle claude-config = mcp,settings,hooks" {
@@ -85,12 +80,12 @@ run_in_zsh() {
 }
 
 @test "_ckipper_account_sync_resolve_includes mixes types and bundles, dedups" {
-    run_in_zsh '_ckipper_account_sync_resolve_includes "preferences,mcp" "" | sort | tr "\n" ","'
-    [[ "$output" == "mcp,prefs," ]]
+    run_in_zsh '_ckipper_account_sync_resolve_includes "claude-config,mcp" "" | sort | tr "\n" ","'
+    [[ "$output" == "hooks,mcp,settings," ]]
 }
 
 @test "_ckipper_account_sync_resolve_includes subtracts excludes" {
-    run_in_zsh '_ckipper_account_sync_resolve_includes "all" "prefs,hooks" | sort | tr "\n" ","'
+    run_in_zsh '_ckipper_account_sync_resolve_includes "all" "hooks" | sort | tr "\n" ","'
     [[ "$output" == "agents,claude-md,commands,mcp,output-styles,settings,skills,statusline," ]]
 }
 
@@ -107,7 +102,7 @@ run_in_zsh() {
 
 @test "bundle names never collide with type ids" {
     run_in_zsh '
-        for b in all customizations claude-config preferences; do
+        for b in all customizations claude-config; do
             if (( ${+_CKIPPER_SYNC_TYPE_LABEL[$b]} )); then
                 echo "bundle $b collides with type id"
                 exit 1

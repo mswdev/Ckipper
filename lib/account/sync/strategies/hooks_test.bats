@@ -5,12 +5,6 @@ load "${BATS_TEST_DIRNAME}/../../../../tests/lib/test-helper.bash"
 
 setup() {
     setup_isolated_env
-    # Simulate ckipper install hook set so the allowlist filter has data.
-    mkdir -p "$CKIPPER_DIR/hooks"
-    touch "$CKIPPER_DIR/hooks/bash-guardrails.sh"
-    touch "$CKIPPER_DIR/hooks/protect-claude-config.sh"
-    touch "$CKIPPER_DIR/hooks/docker-context.sh"
-    touch "$CKIPPER_DIR/hooks/notify-bell.sh"
 }
 teardown() { teardown_isolated_env; }
 
@@ -22,25 +16,23 @@ run_in_zsh() {
                 source \"$REPO_ROOT/lib/account/sync/strategies/hooks.zsh\"; $*"
 }
 
-@test "hooks_enumerate skips ckipper safety hooks (filename allowlist)" {
+@test "hooks_enumerate lists every script in the source hooks dir" {
     local src="$TMP_HOME/src"
     mkdir -p "$src/hooks"
-    # Two safety hooks (mirroring install dir) — should be filtered.
-    echo "x" > "$src/hooks/bash-guardrails.sh"
-    echo "x" > "$src/hooks/notify-bell.sh"
-    # One user hook — should appear.
     echo "x" > "$src/hooks/lint-on-save.sh"
-    run_in_zsh "_ckipper_account_sync_hooks_enumerate '$src' | cut -f1"
-    [[ "$output" == *"hooks/lint-on-save.sh"* ]]
-    [[ "$output" != *"bash-guardrails.sh"* ]]
-    [[ "$output" != *"notify-bell.sh"* ]]
+    echo "x" > "$src/hooks/format.sh"
+
+    run_in_zsh "_ckipper_account_sync_hooks_enumerate '$src' | cut -f1 | sort | tr '\n' ','"
+
+    [[ "$output" == *"hooks/format.sh,hooks/lint-on-save.sh,"* ]]
 }
 
-@test "hooks_enumerate emits empty when no user hooks present" {
+@test "hooks_enumerate emits nothing when the hooks dir is empty" {
     local src="$TMP_HOME/src"
     mkdir -p "$src/hooks"
-    echo "x" > "$src/hooks/bash-guardrails.sh"
+
     run_in_zsh "_ckipper_account_sync_hooks_enumerate '$src' | wc -l | tr -d ' '"
+
     [[ "$output" == *"0"* ]]
 }
 

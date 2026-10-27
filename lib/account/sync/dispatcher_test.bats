@@ -47,11 +47,11 @@ run_in_zsh() {
 
 @test "parse_args identifies --exclude with comma list" {
     run_in_zsh '
-        _ckipper_account_sync_parse_args personal work --include all --exclude prefs
+        _ckipper_account_sync_parse_args personal work --include all --exclude hooks
         echo "include=$_CKIPPER_SYNC_INCLUDE"
         echo "exclude=$_CKIPPER_SYNC_EXCLUDE"'
     [[ "$output" == *"include=all"* ]]
-    [[ "$output" == *"exclude=prefs"* ]]
+    [[ "$output" == *"exclude=hooks"* ]]
 }
 
 @test "parse_args identifies --force" {
@@ -79,9 +79,9 @@ run_in_zsh() {
 
 setup_two_accounts() {
     cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":2,"default":"src","accounts":{
-    "src":{"config_dir":"$TMP_HOME/src","keychain_service":null,"registered_at":"t","preferences":{"always_docker":true,"always_firewall":false,"ssh_forward":true}},
-    "dst":{"config_dir":"$TMP_HOME/dst","keychain_service":null,"registered_at":"t","preferences":{"always_docker":false,"always_firewall":false,"ssh_forward":false}}
+{"version":3,"default":"src","accounts":{
+    "src":{"config_dir":"$TMP_HOME/src","keychain_service":null,"registered_at":"t"},
+    "dst":{"config_dir":"$TMP_HOME/dst","keychain_service":null,"registered_at":"t"}
 }}
 JSON
     chmod 600 "$CKIPPER_REGISTRY"

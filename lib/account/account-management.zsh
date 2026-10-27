@@ -103,7 +103,7 @@ _ckipper_account_add_pick_keychain_entry() {
     echo "$picked"
 }
 
-# Run the fresh registration flow: create the dir, deploy hooks, launch Claude, detect new keychain.
+# Run the fresh registration flow: create the dir, launch Claude, detect new keychain.
 #
 # Args:
 #   $1 — account name
@@ -117,11 +117,7 @@ _ckipper_account_add_fresh_flow() {
         echo "Directory $dir already exists. Use --adopt to register it." >&2
         return 1
     fi
-    mkdir -p "$dir/hooks"
-    if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then
-        cp "$CKIPPER_DIR/settings-template.json" "$dir/settings.json"
-    fi
-    _ckipper_account_redeploy_hooks_for "$name" "$dir"
+    mkdir -p "$dir"
     local before_snapshot
     before_snapshot=$(_core_keychain_snapshot) || return 1
     _ckipper_account_add_launch_claude "$name" "$dir" || return 1
@@ -239,7 +235,6 @@ _ckipper_account_finalize_registration() {
     local dir="${_CKIPPER_FINALIZE_CTX[dir]}"
     local service="${_CKIPPER_FINALIZE_CTX[service]}"
     local now; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    local defaults; defaults=$(_core_registry_account_defaults_json)
     _core_registry_init
     if ! _core_registry_update '
         if (.accounts | has($n)) then
@@ -250,19 +245,18 @@ _ckipper_account_finalize_registration() {
             .accounts[$n] = {
                 config_dir: $d,
                 keychain_service: (if $s == "" then null else $s end),
-                registered_at: $t,
-                preferences: $p
+                registered_at: $t
             }
             | (if .default == null then .default = $n else . end)
         end
-    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now" --argjson p "$defaults"; then
+    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"; then
         _ckipper_account_finalize_diagnose_error "$name" "$dir"
         return 1
     fi
     _ckipper_account_finalize_announce "$name" "$mode"
 }
 
-# Regenerate aliases, sync hooks, and print the post-registration usage hint.
+# Regenerate aliases and print the post-registration usage hint.
 #
 # Args:
 #   $1 — account name
@@ -272,7 +266,6 @@ _ckipper_account_finalize_registration() {
 _ckipper_account_finalize_announce() {
     local name="$1" mode="$2"
     _ckipper_account_regenerate_aliases
-    _ckipper_account_redeploy_hooks_for "$name"
     echo "Registered '$name' (mode: $mode)."
     if _ckipper_account_bare_alias_safe "$name"; then
         echo "Use it via: claude-$name   (or just: $name)"
@@ -568,7 +561,6 @@ _ckipper_account_rename() {
     unset -f "claude-$old" 2>/dev/null
     unset -f "$old" 2>/dev/null
     _ckipper_account_regenerate_aliases
-    _ckipper_account_redeploy_hooks_for "$new"   # rewrite per-account settings.json hook paths to new dir
     echo "Renamed '$old' → '$new'."
     echo "Directory:    $old_dir → $new_dir"
     if _ckipper_account_bare_alias_safe "$new"; then

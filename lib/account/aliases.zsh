@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
-# Alias generation and install-hook redeploy subcommands:
-# regenerate_aliases, redeploy_hooks_for, redeploy_hooks.
+# Launcher generation: writes ~/.ckipper/aliases.zsh with one claude-<name>
+# function per account plus the bare-claude guard.
 
 readonly _CKIPPER_ACCOUNT_ALIASES_FILE_PERMS=644
 
@@ -86,74 +86,4 @@ _ckipper_account_regenerate_aliases() {
     # Re-source in the calling shell so newly-registered accounts are usable
     # immediately without the user having to `exec zsh`.
     source "$out"
-}
-
-# Rewrite settings.json hook paths to absolute paths for the given account directory.
-# Consumes any prefix matching $HOME/.claude*/hooks/ or $HOME/.ckipper/hooks/.
-#
-# Args:
-#   $1 — account config directory path
-#
-# Returns:
-#   0 always.
-_ckipper_account_rewrite_settings_json_hooks() {
-    local dir="$1"
-    [[ -f "$dir/settings.json" ]] || return 0
-    command -v jq &>/dev/null || return 0
-    local settings_tmpfile; settings_tmpfile=$(mktemp "$dir/.settings.tmp.XXXXXX")
-    jq --arg d "$dir" '
-        (.hooks // {}) as $h |
-        .hooks = ($h | walk(
-            if type == "string" and test("\\$HOME/(\\.claude(-[a-z0-9_-]+)?|\\.ckipper)/hooks/")
-            then sub("\\$HOME/(\\.claude(-[a-z0-9_-]+)?|\\.ckipper)/hooks/"; "\($d)/hooks/")
-            else . end
-        ))
-    ' "$dir/settings.json" > "$settings_tmpfile" && mv "$settings_tmpfile" "$dir/settings.json"
-}
-
-# Redeploy ckipper-managed safety hooks from $CKIPPER_DIR/hooks/ into one
-# account dir and rewrite that account's settings.json hook paths to absolute
-# destination paths. This is install→one redeploy, not peer-to-peer sync.
-#
-# Allows callers (e.g. _ckipper_account_add) to pass the dir directly before
-# the account is registered in the registry.
-#
-# Args:
-#   $1 — account name
-#   $2 — (optional) account config directory; looked up in registry if omitted
-#
-# Returns:
-#   0 on success; 1 if directory cannot be resolved.
-_ckipper_account_redeploy_hooks_for() {
-    local name="$1" dir="${2:-}"
-    if [[ -z "$dir" ]]; then
-        _core_registry_check_version || return 1
-        dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
-        [[ -z "$dir" || "$dir" == "null" ]] && return 1
-    fi
-    mkdir -p "$dir/hooks"
-    cp -a "$CKIPPER_DIR/hooks/." "$dir/hooks/" 2>/dev/null || true
-    _ckipper_account_rewrite_settings_json_hooks "$dir"
-}
-
-# Redeploy ckipper-managed safety hooks into every registered account dir.
-#
-# This is install→all redeploy (NOT peer-to-peer sync). Run after editing
-# anything under $CKIPPER_DIR/hooks/ so the change propagates everywhere.
-# For peer-to-peer sync of user-written hooks, see `ckipper account sync
-# <from> <to> --include hooks`.
-#
-# Returns:
-#   0 on success; 1 if registry version check fails.
-_ckipper_account_redeploy_hooks() {
-    if [[ ! -f "$CKIPPER_REGISTRY" ]]; then
-        echo "No accounts registered."
-        return 0
-    fi
-    _core_registry_check_version || return 1
-    local names; names=$(jq -r '.accounts | keys[]' "$CKIPPER_REGISTRY")
-    while IFS= read -r name; do
-        echo "Redeploying install hooks → $name"
-        _ckipper_account_redeploy_hooks_for "$name"
-    done <<< "$names"
 }
