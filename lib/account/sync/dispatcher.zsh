@@ -173,14 +173,18 @@ _ckipper_account_sync_run_targets() {
     return $rc
 }
 
-# Validate that source + every target are registered accounts.
+# Validate that source + every target are registered accounts in the same
+# group. Refuses the whole run before anything is written.
 #
-# Returns: 0 if all registered; 1 if any unknown (error printed by _core_account_dir).
+# Returns: 0 if all registered and grouped together; 1 otherwise (errors
+#   printed by _core_account_dir / _ckipper_account_assert_same_group).
 _ckipper_account_sync_validate_accounts() {
     _core_account_dir "$_CKIPPER_SYNC_FROM" >/dev/null || return 1
     local t
     for t in "${_CKIPPER_SYNC_TARGETS[@]}"; do
         _core_account_dir "$t" >/dev/null || return 1
+        [[ "$t" == "$_CKIPPER_SYNC_FROM" ]] && continue
+        _ckipper_account_assert_same_group "$_CKIPPER_SYNC_FROM" "$t" || return 1
     done
 }
 
@@ -321,8 +325,9 @@ _ckipper_account_sync_finalize() {
 _ckipper_account_sync_help_text() {
     _core_help_render "ckipper account sync [<from>] [<to>...] [options]" \
         "" \
-        "Sync state between registered Claude accounts. Empty positionals drop" \
-        "into interactive pickers (gum-driven)." \
+        "Sync state between registered Claude accounts in the same group (see" \
+        "\`ckipper account group\`). Empty positionals drop into interactive" \
+        "pickers (gum-driven)." \
         "" \
         "Options:" \
         "  --include <types>    Comma-separated types or named bundle:" \

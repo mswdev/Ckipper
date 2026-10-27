@@ -471,6 +471,7 @@ _ckipper_doctor() {
         return 0
     fi
     _ckipper_doctor_accounts
+    _ckipper_doctor_groups
     _ckipper_doctor_shell
     _ckipper_doctor_summary
 }

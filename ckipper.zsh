@@ -27,6 +27,7 @@ source "$CKIPPER_REPO_DIR/lib/core/prompt.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/account-management.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/cleanup.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/aliases.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/groups.zsh"
 # Sync subsystem — registry, backup, shared helpers, engine, preview,
 # interactive, dispatcher, then the strategy modules.
 source "$CKIPPER_REPO_DIR/lib/account/sync/registry.zsh"
@@ -42,6 +43,7 @@ source "$CKIPPER_REPO_DIR/lib/account/sync/strategies/files_dir.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/sync/strategies/statusline.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/sync/strategies/hooks.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/doctor.zsh"
+source "$CKIPPER_REPO_DIR/lib/account/doctor-groups.zsh"
 source "$CKIPPER_REPO_DIR/lib/account/dispatcher.zsh"
 
 # Desktop-namespace modules
@@ -182,7 +184,7 @@ fpath=(~/.zsh/completions $fpath)
 # Bump this when the heredoc body below changes so existing installs
 # regenerate the cached completion file. The version is embedded as a literal
 # comment in the generated file and matched here.
-CKIPPER_COMPLETION_VERSION=10
+CKIPPER_COMPLETION_VERSION=11
 if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     || ! grep -q "# ckipper-completion-version=$CKIPPER_COMPLETION_VERSION" ~/.zsh/completions/_ckipper 2>/dev/null; then
     # Note: `_ckipper()` below is a zsh tab-completion definition embedded in
@@ -192,7 +194,7 @@ if [[ ! -f ~/.zsh/completions/_ckipper ]] \
     # a completion file, not maintained shell logic).
     cat > ~/.zsh/completions/_ckipper << 'COMPEOF'
 #compdef ckipper ck
-# ckipper-completion-version=10
+# ckipper-completion-version=11
 
 _ckipper() {
     local registry="${CKIPPER_REGISTRY:-$HOME/.ckipper/accounts.json}"
@@ -213,7 +215,8 @@ _ckipper() {
         'default:Set the default account'
         'remove:Unregister an account'
         'rename:Rename an account in place'
-        'sync:Copy state between accounts (interactive or via --include)'
+        'group:Put an account in a sync group'
+        'sync:Copy state between accounts in the same group'
         'help:Show account-namespace help'
     )
     desktop_subs=(
@@ -247,7 +250,7 @@ _ckipper() {
             ;;
         arg3)
             case "${words[2]}/${words[3]}" in
-                account/default|acct/default|account/remove|acct/remove|account/rename|acct/rename|account/sync|acct/sync)
+                account/default|acct/default|account/remove|acct/remove|account/rename|acct/rename|account/group|acct/group|account/sync|acct/sync)
                     _describe -t accounts 'account name' accounts && return 0
                     ;;
                 desktop/remove|dt/remove|desktop/rename|dt/rename|desktop/login|dt/login|desktop/launch|dt/launch)

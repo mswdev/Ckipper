@@ -26,6 +26,12 @@ Claude Code now covers what the Docker sandbox and worktree commands were for: a
 - New accounts no longer get a template `settings.json` (it only held the hooks and a `_comment`).
 - Removed commands print a pointer to their replacement.
 
+### Added
+- Account groups: `ckipper account group <name> <group> [--master]`. Each group has a master; `ckipper account list` shows groups.
+- `account sync` refuses to cross groups (and refuses ungrouped accounts), so personal-only settings, memory dirs, plugins and marketplaces cannot leak into work accounts or overwrite work-only settings. The interactive target picker only offers the source's group.
+- `ckipper account add <name> --group <group>` seeds a fresh account from the group master after `/login`: every sync type plus installed plugins (`installed_plugins.json`, `known_marketplaces.json`, `cache/`, `marketplaces/`, paths rewritten). The first account in a new group becomes its master.
+- `ckipper doctor` "Sync groups" section: warns about ungrouped accounts, groups without a master, and members whose `env.CLAUDE_CODE_REMOTE_MEMORY_DIR` differs from their master's; fails when two groups share a memory dir.
+
 ### Fixed
 - `account sync` treated `false` settings as missing, so keys like `verbose`, `attribution.sessionUrl`, `idleCompaction` and `switchModelsOnFlag` showed as "new" on every sync.
 - Sync's skills, agents/commands/output-styles, hooks and `sync undo` silently found nothing when run from a shell with `NO_BARE_GLOB_QUAL` (Claude Code's Bash tool sets it). `ckipper` now runs every subcommand under `emulate -L zsh`, and each globbing helper does too.

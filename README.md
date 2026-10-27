@@ -62,7 +62,7 @@ To get the per-account launchers, also add this line to `.zshrc` (the installer 
 
 | Command | Purpose |
 | --- | --- |
-| `ck account add/list/default/remove/rename/sync` | Manage Claude Code accounts (alias `acct`; see [Multiple accounts](#multiple-accounts)) |
+| `ck account add/list/default/remove/rename/group/sync` | Manage Claude Code accounts (alias `acct`; see [Multiple accounts](#multiple-accounts)) |
 | `ck desktop add/list/remove/rename/launch/login` | Manage Claude Desktop instances (alias `dt`; see [Claude Desktop instances](#claude-desktop-instances)) |
 | `ck doctor [--fix]` | Diagnose the registry, account dirs, Keychain entries and shell setup; optionally repair |
 | `ck help` (or bare `ck`) | Show the command overview |
@@ -76,9 +76,27 @@ Run a personal account in one terminal and a work account in another, fully isol
 ### Add an account
 
 ```bash
-ckipper account add work            # fresh: creates ~/.claude-work/, launches /login
-ckipper account add work --adopt    # register an existing ~/.claude-work/
+ckipper account add work                      # fresh: creates ~/.claude-work/, launches /login
+ckipper account add work-2 --group work       # …and copies the work group's master into it
+ckipper account add work --adopt              # register an existing ~/.claude-work/
 ```
+
+Account names may not start with `desktop-` (that prefix is a Desktop instance's data dir).
+
+### Groups
+
+Accounts that should share one setup form a **group** with one **master**: for example `personal` (master) with `personal-2`, `personal-3`, and `aff` (master) with `aff-2`, `aff-3`.
+
+```bash
+ckipper account group personal personal       # first account in a group becomes its master
+ckipper account group personal-2 personal
+ckipper account group aff aff
+ckipper account group aff-3 aff --master      # hand the master role to another member
+```
+
+- **Sync stays inside a group.** `ckipper account sync personal aff` is refused, so a personal-only memory dir, plugin or marketplace never lands in a work account, and work-only settings (like an `autoMode` block) are never overwritten from personal. The interactive target picker only offers the source's group.
+- **New members start as a copy of the master.** `ckipper account add <name> --group <group>` runs `/login`, then copies everything sync covers from the master (MCP servers, settings, CLAUDE.md, agents, commands, output styles, skills except `skills/synced`, statusline, hooks) plus its installed plugins (`plugins/installed_plugins.json`, `known_marketplaces.json`, `cache/`, `marketplaces/`, with paths rewritten). `plugins/data` and `plugins/synced` are left out.
+- **One memory dir per group.** If you share memory across a group with `env.CLAUDE_CODE_REMOTE_MEMORY_DIR` in `settings.json`, `ckipper doctor` checks that every member uses its master's value and fails if two groups point at the same dir.
 
 ### Use an account
 
@@ -123,7 +141,7 @@ If you want concurrent runs of the *same* account, register it twice under two n
 
 ## Sync state between accounts
 
-`ckipper account sync` copies state between registered accounts — MCP servers, settings, agents, commands, skills, user hooks, etc. — interactively by default, with one source and one or more destinations.
+`ckipper account sync` copies state between registered accounts in the same [group](#groups) — MCP servers, settings, agents, commands, skills, user hooks, etc. — interactively by default, with one source and one or more destinations.
 
 ### Syncable types
 
@@ -135,7 +153,7 @@ If you want concurrent runs of the *same* account, register it twice under two n
 | `agents` | `agents/*.md` |
 | `commands` | `commands/*.md` |
 | `output-styles` | `output-styles/*.md` |
-| `skills` | `skills/<name>/` (per-directory; symlinks preserved) |
+| `skills` | `skills/<name>/` (per-directory; symlinks preserved; `skills/synced/` is skipped — claude.ai manages it per account) |
 | `statusline` | `settings.json` `.statusLine` + referenced script (if internal to the account dir) |
 | `hooks` | Hook scripts under `<account>/hooks/` + their paired `settings.json` `.hooks` entries |
 
@@ -237,7 +255,7 @@ ckipper desktop login work          # quit all, launch only 'work' — safe for 
 
 ## Diagnose
 
-`ckipper doctor` checks the install (`~/.ckipper/ckipper.zsh`, leftovers from the old Docker-based layout, `gum`), the registry, each account (config dir, `.claude.json`, `settings.json`, stale plugin paths, Keychain entry), the `~/.zshrc` source lines, and every Desktop instance. Pass `--fix` to rewrite stale plugin metadata paths in place.
+`ckipper doctor` checks the install (`~/.ckipper/ckipper.zsh`, leftovers from the old Docker-based layout, `gum`), the registry, each account (config dir, `.claude.json`, `settings.json`, stale plugin paths, Keychain entry), the groups (every account grouped, every group with a master, one memory dir per group), the `~/.zshrc` source lines, and every Desktop instance. Pass `--fix` to rewrite stale plugin metadata paths in place.
 
 ## Multi-account caveats
 
@@ -261,7 +279,7 @@ Files inside a project repo are *not* governed by `CLAUDE_CONFIG_DIR`: `<repo>/.
 
 ### MCP servers, plugins and marketplaces are per-account
 
-`mcpServers` lives in each account's `.claude.json`; installed plugins live in each account's `plugins/` dir. Use `ckipper account sync <from> <to> --include mcp,settings` to copy MCP servers and the `enabledPlugins` / `extraKnownMarketplaces` settings.
+`mcpServers` lives in each account's `.claude.json`; installed plugins live in each account's `plugins/` dir. `ckipper account add <name> --group <group>` copies both from the group's master; afterwards, `ckipper account sync <master> <name> --include mcp,settings` keeps MCP servers and the `enabledPlugins` / `extraKnownMarketplaces` settings in step.
 
 ## Troubleshooting
 
@@ -271,7 +289,7 @@ Files inside a project repo are *not* governed by `CLAUDE_CONFIG_DIR`: `<repo>/.
 | `claude-<name>: command not found` | Add the `aliases.zsh` source line to `~/.zshrc`, then `source ~/.zshrc`. |
 | `ckipper doctor` says ~/.zshrc doesn't source ckipper.zsh | Re-run `./install.sh`. |
 | Plugins fail to load after a rename | `ckipper doctor --fix` rewrites stale plugin paths. |
-| Sync refuses to run | A Claude CLI is running. Quit it, use `--dry-run`, or pass `--force`. |
+| Sync refuses to run | A Claude CLI is running (quit it, use `--dry-run`, or pass `--force`), or the accounts are in different groups or none (`ckipper account group <name> <group>`). |
 
 ## Contributing
 

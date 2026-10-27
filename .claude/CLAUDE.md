@@ -31,7 +31,7 @@ Ckipper is a zsh-based wrapper for the [Claude Code CLI](https://claude.ai/cli) 
 
 - **Multi-account isolation** — separate `~/.claude-<account>/` config dirs per registered account. Claude Code keeps each config dir's login under its own macOS Keychain entry.
 - **Per-account launchers** — auto-generated `claude-<account>` (and bare `<account>`) shell functions that set `CLAUDE_CONFIG_DIR`, plus a guard that stops bare `claude` from logging into the unmanaged `~/.claude/`.
-- **Sync** — `ckipper account sync` copies MCP servers, settings, skills, agents, commands, hooks and more between accounts, with backups and undo.
+- **Groups + sync** — accounts belong to groups with a master; `ckipper account sync` copies MCP servers, settings, skills, agents, commands, hooks and more between accounts of the same group, with backups and undo, and `account add --group` seeds a new account from the master.
 - **Claude Desktop instances** — generated `.app` wrappers that run the system Claude.app against isolated user-data dirs.
 - **Doctor** — `ckipper doctor` checks the registry, each account, Keychain entries, shell setup and Desktop instances.
 

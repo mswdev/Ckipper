@@ -7,14 +7,14 @@
 
 # Known account subcommands. Used both for routing and for fuzzy-suggest.
 _CKIPPER_ACCOUNT_SUBCOMMANDS=(
-    add list default remove rename sync help
+    add list default remove rename group sync help
 )
 
 # Dispatch an `account` subcommand.
 #
 # Args:
-#   $1     — subcommand name (add, list, default, remove, rename, sync,
-#             help, -h, --help, or empty)
+#   $1     — subcommand name (add, list, default, remove, rename, group,
+#             sync, help, -h, --help, or empty)
 #   $2..$N — arguments forwarded to the subcommand handler
 #
 # Returns: 0 on success; 1 on unknown subcommand.
@@ -25,7 +25,7 @@ _ckipper_account_dispatch() {
     local cmd="$1"
     shift 2>/dev/null
     case "$cmd" in
-        add|list|default|remove|rename)
+        add|list|default|remove|rename|group)
             if [[ "$1" == "--help" || "$1" == "-h" ]]; then
                 _ckipper_account_help_for "$cmd"
                 return 0
@@ -60,12 +60,14 @@ _ckipper_account_help() {
         "" \
         "Usage:" \
         "  ckipper account add <name>           Register a new account (interactive /login)" \
+        "      [--group <group>]                  …and join a group, copying its master's setup" \
         "  ckipper account add <name> --adopt   Register an existing populated config dir" \
         "  ckipper account list                 Show registered accounts" \
         "  ckipper account default <name>       Set the default account" \
         "  ckipper account remove <name>        Unregister; prompts to delete dir + Keychain" \
         "  ckipper account rename <old> <new>   Rename an account in place" \
-        "  ckipper account sync [<from> <to>]   Sync state peer-to-peer between accounts" \
+        "  ckipper account group <name> <group> Put an account in a group (--master to lead it)" \
+        "  ckipper account sync [<from> <to>]   Sync state between accounts in the same group" \
         "" \
         "Short form: \`ckipper acct ...\` is equivalent." \
         "" \
@@ -85,17 +87,24 @@ _ckipper_account_help_for() {
         default)         _ckipper_account_help_text_default ;;
         remove)          _ckipper_account_help_text_remove ;;
         rename)          _ckipper_account_help_text_rename ;;
+        group)           _ckipper_account_help_text_group ;;
         sync)            _ckipper_account_sync_help_text ;;
     esac
 }
 
 _ckipper_account_help_text_add() {
-    _core_help_render "ckipper account add <name> [--adopt]" \
+    _core_help_render "ckipper account add <name> [--group <group>] [--adopt]" \
         "" \
-        "Register a new account. <name> must match ^[a-z0-9_-]+$." \
+        "Register a new account. <name> must match ^[a-z0-9_-]+$ and may not start" \
+        "with 'desktop-'." \
         "" \
         "Without --adopt: creates ~/.claude-<name>/ and walks you through /login." \
-        "With --adopt:    registers an existing populated ~/.claude-<name>/ directory."
+        "With --adopt:    registers an existing populated ~/.claude-<name>/ directory." \
+        "" \
+        "With --group, the account joins <group>. A fresh account joining a group" \
+        "that has a master gets the master's setup copied in after /login: every" \
+        "sync type (MCP servers, settings, CLAUDE.md, skills, …) plus its installed" \
+        "plugins. The first account in a new group becomes its master."
 }
 
 _ckipper_account_help_text_list() {
@@ -136,4 +145,19 @@ _ckipper_account_help_text_rename() {
         "You must /login again afterwards: Claude Code names the Keychain entry" \
         "after the config dir, so the moved dir starts logged out. The old entry" \
         "is left in place and the command to delete it is printed."
+}
+
+_ckipper_account_help_text_group() {
+    _core_help_render "ckipper account group <name> <group> [--master]" \
+        "" \
+        "Put an account in a group. Sync only runs between accounts in the same" \
+        "group, so a personal account's settings, memory dir and plugins never" \
+        "leak into a work account (or the reverse)." \
+        "" \
+        "The first account in a group becomes its master — the account new" \
+        "members are copied from (see \`ckipper account add --group\`). Pass" \
+        "--master to make <name> the master of an existing group." \
+        "" \
+        "\`ckipper doctor\` checks that each group's accounts share one" \
+        "env.CLAUDE_CODE_REMOTE_MEMORY_DIR and that no two groups share one."
 }
