@@ -91,7 +91,7 @@ run_helper() {
 # ── _ckipper_doctor_accounts ──────────────────────────────────────────
 
 @test "doctor_accounts emits a WARN when the registry has no accounts" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
         _ckipper_doctor_accounts'
@@ -104,7 +104,7 @@ run_helper() {
 @test "doctor_accounts lists each registered account by name" {
     local acc_dir="$TMP_HOME/.claude-work"
     mkdir -p "$acc_dir"
-    echo '{"version":3,"default":"work","accounts":{"work":{"config_dir":"'"$acc_dir"'","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":"work","accounts":{"work":{"config_dir":"'"$acc_dir"'"}}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
         _ckipper_doctor_accounts'
@@ -204,7 +204,7 @@ _seed_account_with_stale_plugins() {
     # Using $TMP_HOME/.claude/ guarantees both conditions in the isolated env.
     printf '{"url":"%s/plugins/marketplace.json"}' "$TMP_HOME/.claude/" \
         > "$acc_dir/plugins/known_marketplaces.json"
-    printf '{"version":3,"default":"%s","accounts":{"%s":{"config_dir":"%s","keychain_service":null}}}' \
+    printf '{"version":4,"default":"%s","accounts":{"%s":{"config_dir":"%s"}}}' \
         "$name" "$name" "$acc_dir" > "$CKIPPER_REGISTRY"
 }
 
@@ -287,4 +287,51 @@ _seed_account_with_stale_plugins() {
 
     [[ "$output" =~ "PASS" ]]
     [[ "$output" =~ "~/.zshrc sources ckipper.zsh" ]]
+}
+
+# ── _ckipper_doctor_account_keychain ──────────────────────────────────
+
+# Run the per-account Keychain check on macOS with the given stubbed services.
+_run_doctor_keychain() {
+    local dir="$1" services="$2"
+    run env HOME="$TMP_HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" _CKIPPER_TEST_OSTYPE="darwin19.0" SECURITY_STUB_SERVICES="$services" \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_doctor_account_keychain '$dir' work"
+}
+
+@test "doctor keychain check passes when the entry derived from the dir exists" {
+    local dir="$TMP_HOME/.claude-work"
+    local service; service="Claude Code-credentials-$(printf '%s' "$dir" | shasum -a 256 | cut -c1-8)"
+
+    _run_doctor_keychain "$dir" "$service"
+
+    [[ "$output" =~ "PASS" ]]
+    [[ "$output" =~ "$service" ]]
+}
+
+# Regression: doctor used the registry's stored keychain_service, which could
+# point at the wrong entry (e.g. the default "Claude Code-credentials").
+@test "doctor keychain check ignores other entries and warns the account is logged out" {
+    local dir="$TMP_HOME/.claude-work"
+
+    _run_doctor_keychain "$dir" "Claude Code-credentials"
+
+    [[ "$output" =~ "WARN" ]]
+    [[ "$output" =~ "logged out" ]]
+    [[ "$output" =~ "claude-work, then /login" ]]
+}
+
+# ── _ckipper_doctor_unmanaged_claude_home ─────────────────────────────
+
+@test "doctor reports ~/.claude as INFO and never suggests deleting it" {
+    mkdir -p "$HOME/.claude/skills"
+    echo '{}' > "$HOME/.claude.json"
+
+    run_helper '_CKIPPER_DOCTOR_FAIL=0; _CKIPPER_DOCTOR_WARN=0
+        _ckipper_doctor_unmanaged_claude_home; echo "warns=$_CKIPPER_DOCTOR_WARN"'
+
+    [[ "$output" =~ "[INFO] ~/.claude exists" ]]
+    [[ "$output" =~ "[INFO] ~/.claude.json exists" ]]
+    [[ ! "$output" =~ "rm -rf" ]]
+    [[ "$output" =~ "warns=0" ]]
 }

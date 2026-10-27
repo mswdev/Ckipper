@@ -79,9 +79,9 @@ run_in_zsh() {
 
 setup_two_accounts() {
     cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":3,"default":"src","accounts":{
-    "src":{"config_dir":"$TMP_HOME/src","keychain_service":null,"registered_at":"t"},
-    "dst":{"config_dir":"$TMP_HOME/dst","keychain_service":null,"registered_at":"t"}
+{"version":4,"default":"src","accounts":{
+    "src":{"config_dir":"$TMP_HOME/src","registered_at":"t"},
+    "dst":{"config_dir":"$TMP_HOME/dst","registered_at":"t"}
 }}
 JSON
     chmod 600 "$CKIPPER_REGISTRY"
@@ -232,4 +232,18 @@ run_full() {
         rm -f "$items"
         echo "ACTION=[$action]"'
     [[ "$output" == *"ACTION=[apply]"* ]]
+}
+
+# Regression: run from Claude Code's Bash tool (NO_BARE_GLOB_QUAL) or a shell
+# with KSH_ARRAYS, the skills type silently found nothing. The top-level
+# ckipper() now runs under `emulate -L zsh`.
+@test "ckipper account sync finds skills even when the caller set no_bare_glob_qual and ksh_arrays" {
+    setup_two_accounts
+    mkdir -p "$TMP_HOME/src/skills/humanizer"
+    echo "x" > "$TMP_HOME/src/skills/humanizer/SKILL.md"
+
+    run_full 'setopt no_bare_glob_qual ksh_arrays; ckipper account sync src dst --include skills --dry-run'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"humanizer"* ]]
 }

@@ -186,3 +186,13 @@ run_in_zsh() {
 }
 
 # ── live_path + type-aware rollback (Bug G fix) ──────────────────────────
+
+# Regression: `*(N/)` broke under NO_BARE_GLOB_QUAL, so `sync undo` found no backups.
+@test "manifest_list_backups works when the caller set no_bare_glob_qual" {
+    mkdir -p "$TMP_HOME/dst/.ckipper-sync-backups/2026-01-01T00-00-00Z-from-a"
+
+    run_in_zsh "setopt no_bare_glob_qual; _ckipper_account_sync_manifest_list_backups '$TMP_HOME/dst'"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"2026-01-01T00-00-00Z-from-a"* ]]
+}

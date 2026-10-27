@@ -26,6 +26,16 @@ Claude Code now covers what the Docker sandbox and worktree commands were for: a
 - New accounts no longer get a template `settings.json` (it only held the hooks and a `_comment`).
 - Removed commands print a pointer to their replacement.
 
+### Fixed
+- `account sync` treated `false` settings as missing, so keys like `verbose`, `attribution.sessionUrl`, `idleCompaction` and `switchModelsOnFlag` showed as "new" on every sync.
+- Sync's skills, agents/commands/output-styles, hooks and `sync undo` silently found nothing when run from a shell with `NO_BARE_GLOB_QUAL` (Claude Code's Bash tool sets it). `ckipper` now runs every subcommand under `emulate -L zsh`, and each globbing helper does too.
+- Skills sync no longer touches `skills/synced/`, which claude.ai manages per account.
+- Keychain handling trusted a stored `keychain_service` that could be wrong (the first account was recorded against the default `Claude Code-credentials` entry while Claude Code actually used a hashed one). Ckipper now derives the entry name from the config dir exactly as Claude Code does: `account add` checks for it instead of diffing Keychain snapshots, doctor checks it, `account list` shows it, and `account remove` deletes only that entry (never the default one). Registry v4 drops `keychain_service`.
+- `account rename` silently logged the account out and broke its plugins. It now rewrites the plugin metadata paths and tells you to `/login` again, naming the old Keychain entry.
+- The bare-`claude` guard refused `claude` even when `CLAUDE_CONFIG_DIR` was set, e.g. inside a `claude-<name>` session.
+- Doctor no longer suggests `rm -rf ~/.claude`; that dir belongs to bare `claude` and other tools.
+- Plugin path rewrites use a literal, portable replacement instead of `sed -i` with the path as a regex.
+
 ## [Unreleased] — CLI + onboarding overhaul
 
 ### Claude Desktop multi-instance support

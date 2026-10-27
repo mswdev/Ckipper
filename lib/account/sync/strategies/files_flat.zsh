@@ -27,6 +27,9 @@ typeset -gA _CKIPPER_SYNC_FILES_FLAT_PATH=(
 # Args: $1 — type id; $2 — source account dir.
 # Returns: 0; prints items one per line.
 _ckipper_account_sync_files_flat_enumerate() {
+    # Reset to zsh defaults so the (N…) glob qualifiers below work even when
+    # the caller's shell has NO_BARE_GLOB_QUAL set (Claude Code's Bash tool does).
+    emulate -L zsh
     local type="$1" src="$2"
     local sub="${_CKIPPER_SYNC_FILES_FLAT_PATH[$type]}"
     local target="$src/$sub"

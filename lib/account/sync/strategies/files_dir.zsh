@@ -16,20 +16,33 @@ typeset -gA _CKIPPER_SYNC_FILES_DIR_PATH=(
     [skills]="skills"
 )
 
+# Per-type item names that are never synced (space-separated). claude.ai
+# manages skills/synced/ separately for each account, so copying it would
+# overwrite one account's claude.ai skills with another's.
+typeset -gA _CKIPPER_SYNC_FILES_DIR_EXCLUDE=(
+    [skills]="synced"
+)
+
 # Enumerate top-level items under the type's subdir. Picks up dirs AND
 # symlinks. We use a manual loop so broken symlinks also enumerate, with
-# apply later catching the failure.
+# apply later catching the failure. Skips the names listed in
+# _CKIPPER_SYNC_FILES_DIR_EXCLUDE for the type.
 #
 # Args: $1 — type id; $2 — source account dir.
 # Returns: 0; prints "<relpath>\t<basename>" per item.
 _ckipper_account_sync_files_dir_enumerate() {
+    # Reset to zsh defaults so the (N…) glob qualifiers below work even when
+    # the caller's shell has NO_BARE_GLOB_QUAL set (Claude Code's Bash tool does).
+    emulate -L zsh
     local type="$1" src="$2"
     local sub="${_CKIPPER_SYNC_FILES_DIR_PATH[$type]}"
     local root="$src/$sub"
     [[ ! -d "$root" ]] && return 0
+    local -a excluded=( ${=_CKIPPER_SYNC_FILES_DIR_EXCLUDE[$type]} )
     local entry
     for entry in "$root"/*(NDoN); do
         [[ -d "$entry" || -L "$entry" ]] || continue
+        (( ${excluded[(Ie)${entry:t}]} )) && continue
         echo "$sub/${entry:t}\t${entry:t}"
     done
 }

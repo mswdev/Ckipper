@@ -6,10 +6,10 @@ load "${BATS_TEST_DIRNAME}/../../../tests/lib/test-helper.bash"
 setup() {
     setup_isolated_env
     cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":3,"default":"personal","accounts":{
-    "personal":{"config_dir":"$TMP_HOME/personal","keychain_service":null,"registered_at":"t"},
-    "work":{"config_dir":"$TMP_HOME/work","keychain_service":null,"registered_at":"t"},
-    "client1":{"config_dir":"$TMP_HOME/client1","keychain_service":null,"registered_at":"t"}
+{"version":4,"default":"personal","accounts":{
+    "personal":{"config_dir":"$TMP_HOME/personal","registered_at":"t"},
+    "work":{"config_dir":"$TMP_HOME/work","registered_at":"t"},
+    "client1":{"config_dir":"$TMP_HOME/client1","registered_at":"t"}
 }}
 JSON
     chmod 600 "$CKIPPER_REGISTRY"

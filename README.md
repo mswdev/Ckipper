@@ -92,21 +92,24 @@ CLAUDE_CONFIG_DIR=~/.claude-work claude      # raw form
 
 ### The bare-`claude` guard
 
-Once any account is registered, `aliases.zsh` replaces plain `claude` with a guard that refuses to start and points you at `claude-<default>`. Plain `claude` uses `~/.claude/`, which no registered account owns, so a `/login` there would create a stray, unmanaged login. To bypass the guard on purpose: `command claude`.
+Once any account is registered, `aliases.zsh` replaces plain `claude` with a guard that refuses to start and points you at `claude-<default>`. Plain `claude` uses `~/.claude/`, which no registered account owns, so a `/login` there would create a stray, unmanaged login. The guard steps aside when `CLAUDE_CONFIG_DIR` is already set (for example inside a `claude-<name>` session), since `claude` then can't touch `~/.claude/`. To bypass it on purpose: `command claude`.
 
 ### List, default, remove, rename
 
 ```bash
 ckipper account list
 ckipper account default personal
-ckipper account remove old-account     # prompts before deleting the dir and the Keychain entry
-ckipper account rename work client
+ckipper account remove old-account     # prompts before deleting the dir and the Keychain login
+ckipper account rename work client     # then: claude-client, /login
 ```
+
+`rename` moves the config dir, and Claude Code names the Keychain entry after the dir, so the renamed account starts logged out — run `/login` once. Ckipper rewrites the plugin paths for you and prints the command to delete the old entry.
 
 ### How accounts are stored
 
 - Per-account state lives in `~/.claude-<name>/`.
-- The registry mapping account names to dirs lives at `~/.ckipper/accounts.json` (chmod 600, atomic writes, schema v3). Older registries are upgraded in place on first use, with a backup next to the file.
+- The registry mapping account names to dirs lives at `~/.ckipper/accounts.json` (chmod 600, atomic writes, schema v4). Older registries are upgraded in place on first use, with a backup next to the file.
+- Logins live in the macOS Keychain, one entry per config dir. Claude Code names the entry `Claude Code-credentials-<first 8 hex of sha256(config dir path)>` (plain `~/.claude` uses `Claude Code-credentials`), so Ckipper derives it rather than storing it.
 - Auto-generated `~/.ckipper/aliases.zsh` defines `claude-<name>` (and a bare `<name>` shortcut, when it doesn't shadow an existing command) per registered account, plus the bare-`claude` guard.
 
 ### Don't run the same account in two sessions

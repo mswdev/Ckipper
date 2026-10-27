@@ -14,6 +14,9 @@
 # Args: $1 — source account dir.
 # Returns: 0; prints "<relpath>\t<basename>" per item.
 _ckipper_account_sync_hooks_enumerate() {
+    # Reset to zsh defaults so the (N…) glob qualifiers below work even when
+    # the caller's shell has NO_BARE_GLOB_QUAL set (Claude Code's Bash tool does).
+    emulate -L zsh
     local src="$1"
     local hooks_dir="$src/hooks"
     [[ ! -d "$hooks_dir" ]] && return 0

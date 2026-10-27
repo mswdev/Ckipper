@@ -104,6 +104,9 @@ _ckipper_account_sync_manifest_append() {
 # Args: $1 — destination account dir.
 # Returns: 0 always; prints absolute backup-dir paths, one per line.
 _ckipper_account_sync_manifest_list_backups() {
+    # Reset to zsh defaults so the (N…) glob qualifiers below work even when
+    # the caller's shell has NO_BARE_GLOB_QUAL set (Claude Code's Bash tool does).
+    emulate -L zsh
     local dst_dir="$1"
     local root="$dst_dir/$_CKIPPER_SYNC_BACKUP_SUBDIR"
     [[ ! -d "$root" ]] && return 0

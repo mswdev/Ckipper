@@ -35,14 +35,14 @@ run_install() {
 }
 
 @test "install.sh leaves accounts.json, desktop.json and aliases.zsh alone" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_DIR/accounts.json"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_DIR/accounts.json"
     echo '{"version":1,"instances":{}}' > "$CKIPPER_DIR/desktop.json"
     echo '# generated' > "$CKIPPER_DIR/aliases.zsh"
 
     run_install
 
     [ "$status" -eq 0 ]
-    grep -q '"version":3' "$CKIPPER_DIR/accounts.json"
+    grep -q '"version":4' "$CKIPPER_DIR/accounts.json"
     grep -q '"instances"' "$CKIPPER_DIR/desktop.json"
     grep -q '# generated' "$CKIPPER_DIR/aliases.zsh"
 }

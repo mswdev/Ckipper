@@ -188,8 +188,9 @@ _ckipper_account_rewrite_plugin_paths() {
     return 0
 }
 
-# Rewrite stale paths in a single plugin metadata file using sed (in-place).
-# Creates a timestamped backup before modifying the file.
+# Rewrite stale paths in a single plugin metadata file. Creates a
+# timestamped backup, then replaces every literal occurrence of the old
+# prefix (no regex: paths contain `.`) and swaps the result in atomically.
 #
 # Args:
 #   $1 — old prefix (must end with `/`)
@@ -197,18 +198,17 @@ _ckipper_account_rewrite_plugin_paths() {
 #   $3 — relative plugin file path (e.g. plugins/known_marketplaces.json)
 #
 # Returns:
-#   0 always (no-op if file absent or old prefix not found).
+#   0 on success or no-op (file absent or old prefix not found); 1 if the
+#   rewritten file could not be written.
 _ckipper_account_rewrite_single_plugin_file() {
     local old="$1" new="$2" rel_path="$3"
     local fp="$new$rel_path"
     [[ -f "$fp" ]] || return 0
-    grep -q -- "$old" "$fp" 2>/dev/null || return 0
+    grep -qF -- "$old" "$fp" 2>/dev/null || return 0
     cp "$fp" "$fp.pre-rewrite-backup-$(date +%s)"
-    if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
-        sed -i '' "s|$old|$new|g" "$fp"
-    else
-        sed -i "s|$old|$new|g" "$fp"
-    fi
+    local content; content=$(<"$fp")
+    local rewrite_tmpfile; rewrite_tmpfile=$(mktemp "$fp.XXXXXX")
+    print -r -- "${content//"$old"/$new}" > "$rewrite_tmpfile" && mv "$rewrite_tmpfile" "$fp"
 }
 
 # Detect the stale prefix in the plugin metadata files for the given account.
@@ -290,25 +290,26 @@ _ckipper_account_repair_plugins_apply() {
     echo "Done. Backups saved alongside each rewritten file (.pre-rewrite-backup-<ts>)."
 }
 
-# Check macOS Keychain entry presence for a single account.
+# Check that the Keychain entry Claude Code derives from the account's
+# config dir exists. A missing entry means the account is logged out (or
+# was never logged in). Skips off macOS.
 #
 # Args:
-#   $1 — keychain service string (may be empty)
+#   $1 — account config directory
 #   $2 — account name
 #
 # Returns:
-#   0 always (skips on non-darwin).
+#   0 always.
 _ckipper_doctor_account_keychain() {
-    local svc="$1" name="$2"
+    local dir="$1" name="$2"
     [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]] && return 0
-    if [[ -z "$svc" ]]; then
-        _ckipper_doctor_check INFO "    keychain_service: null (account uses on-disk credentials)"
-    elif ! _core_keychain_validate "$svc"; then
-        _ckipper_doctor_check FAIL "    keychain_service has invalid shape: $svc"
-    elif security find-generic-password -s "$svc" >/dev/null 2>&1; then
-        _ckipper_doctor_check PASS "    keychain entry present: $svc"
+    local service; service=$(_core_keychain_service_for_dir "$dir")
+    if _core_keychain_entry_exists "$service"; then
+        _ckipper_doctor_check PASS "    keychain entry present: $service"
+    elif [[ -f "$dir/.credentials.json" ]]; then
+        _ckipper_doctor_check INFO "    no keychain entry; using on-disk credentials ($dir/.credentials.json)"
     else
-        _ckipper_doctor_check WARN "    keychain entry NOT FOUND: $svc — re-run /login with: claude-$name"
+        _ckipper_doctor_check WARN "    logged out (no keychain entry '$service') — run claude-$name, then /login"
     fi
 }
 
@@ -324,7 +325,6 @@ _ckipper_doctor_account() {
     echo ""
     echo "  Account: $name"
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
-    local svc; svc=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
     if [[ -d "$dir" ]]; then _ckipper_doctor_check PASS "    dir exists: $dir"
     else _ckipper_doctor_check FAIL "    dir missing: $dir"; fi
     if [[ -f "$dir/.claude.json" ]]; then
@@ -337,7 +337,7 @@ _ckipper_doctor_account() {
     fi
     if [[ -f "$dir/settings.json" ]]; then _ckipper_doctor_check PASS "    settings.json present"; else _ckipper_doctor_check WARN "    settings.json missing"; fi
     _ckipper_doctor_account_plugins "$name" "$dir"
-    _ckipper_doctor_account_keychain "$svc" "$name"
+    _ckipper_doctor_account_keychain "$dir" "$name"
 }
 
 # Iterate registry accounts and run per-account checks.
@@ -409,15 +409,25 @@ _ckipper_doctor_shell() {
     else _ckipper_doctor_check FAIL "~/.zshrc does NOT source ~/.ckipper/ckipper.zsh — re-run install.sh"; fi
     _ckipper_doctor_check_completion
     echo ""
-    _core_style_header "Stub files (cosmetic)"
+    _ckipper_doctor_unmanaged_claude_home
+}
+
+# Report the default ~/.claude/ dir and ~/.claude.json, which belong to bare
+# `claude` and to other tools (skill installers, IDE plugins, Claude Desktop),
+# not to any Ckipper account. INFO only: they are not Ckipper's to delete.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_unmanaged_claude_home() {
+    echo ""
+    _core_style_header "Default Claude Code home (not managed by Ckipper)"
     if [[ -d "$HOME/.claude" ]]; then
-        local stub_count; stub_count=$(ls -1A "$HOME/.claude" 2>/dev/null | wc -l | tr -d ' ')
-        _ckipper_doctor_check WARN "~/.claude exists ($stub_count files) — Claude Code may have recreated it. Safe to: rm -rf ~/.claude"
+        _ckipper_doctor_check INFO "~/.claude exists — used by bare 'claude' and other tools; Ckipper accounts don't read it"
     else
-        _ckipper_doctor_check PASS "~/.claude (stub dir) is absent"
+        _ckipper_doctor_check PASS "~/.claude is absent"
     fi
-    if [[ -f "$HOME/.claude.json" ]]; then _ckipper_doctor_check WARN "~/.claude.json exists at home root — leftover from a pre-ckipper claude install."
-    else _ckipper_doctor_check PASS "~/.claude.json (home root) is absent"; fi
+    if [[ -f "$HOME/.claude.json" ]]; then
+        _ckipper_doctor_check INFO "~/.claude.json exists — belongs to bare 'claude'; Ckipper accounts don't read it"
+    fi
 }
 
 # Print the three-state summary line (FAIL / WARN-only / all-passed).

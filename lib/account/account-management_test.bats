@@ -27,7 +27,7 @@ run_helper() {
 # ── _ckipper_account_add_validate_name ───────────────────────────────────────
 
 @test "validate_name accepts valid lowercase-alphanumeric names" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_add_validate_name "myaccount"'
 
@@ -35,7 +35,7 @@ run_helper() {
 }
 
 @test "validate_name accepts names with hyphens and underscores" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_add_validate_name "my-account_1"'
 
@@ -43,7 +43,7 @@ run_helper() {
 }
 
 @test "validate_name rejects an empty name" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_add_validate_name ""'
 
@@ -52,7 +52,7 @@ run_helper() {
 }
 
 @test "validate_name rejects names with uppercase letters" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_add_validate_name "MyAccount"'
 
@@ -61,7 +61,7 @@ run_helper() {
 }
 
 @test "validate_name rejects names with spaces" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_add_validate_name "my account"'
 
@@ -70,7 +70,7 @@ run_helper() {
 }
 
 @test "validate_name rejects a name already registered" {
-    echo '{"version":3,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work"}}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_add_validate_name "work"'
 
@@ -80,14 +80,14 @@ run_helper() {
 
 # ── _ckipper_account_finalize_registration ───────────────────────────────────
 
-@test "finalize_registration writes the account without a preferences block" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+@test "finalize_registration writes only config_dir and registered_at" {
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
-    run_helper '_CKIPPER_FINALIZE_CTX[name]="work"; _CKIPPER_FINALIZE_CTX[dir]="/tmp/.claude-work"; _CKIPPER_FINALIZE_CTX[service]=""; _ckipper_account_finalize_registration "adopt"'
+    run_helper '_ckipper_account_finalize_registration work /tmp/.claude-work adopt'
 
     [ "$status" -eq 0 ]
     [ "$(jq -r '.accounts.work.config_dir' "$CKIPPER_REGISTRY")" = "/tmp/.claude-work" ]
-    [ "$(jq -r '.accounts.work | has("preferences")' "$CKIPPER_REGISTRY")" = "false" ]
+    [ "$(jq -r '.accounts.work | keys | join(",")' "$CKIPPER_REGISTRY")" = "config_dir,registered_at" ]
     [ "$(jq -r '.default' "$CKIPPER_REGISTRY")" = "work" ]
 }
 
@@ -119,7 +119,7 @@ run_helper() {
 }
 
 @test "list shows registered account name" {
-    echo '{"version":3,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work"}}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_list'
 
@@ -128,7 +128,7 @@ run_helper() {
 }
 
 @test "list marks the default account with an asterisk" {
-    echo '{"version":3,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work"}}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_list'
 
@@ -145,7 +145,7 @@ run_helper() {
 # ── _ckipper_account_default ──────────────────────────────────────────────────
 
 @test "default sets the default account in the registry" {
-    echo '{"version":3,"default":null,"accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{"work":{"config_dir":"/tmp/.claude-work"}}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_default "work"'
 
@@ -156,7 +156,7 @@ run_helper() {
 }
 
 @test "default fails when account is not registered" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_default "nobody"'
 
@@ -169,7 +169,7 @@ run_helper() {
 @test "remove unregisters a known account and exits 0" {
     # Use $TMP_HOME-relative dir so the cleanup helpers find no directory and
     # don't prompt — this test only asserts the unregistration outcome.
-    printf '{"version":3,"default":null,"accounts":{"tmp":{"config_dir":"%s/.claude-tmp","keychain_service":null}}}\n' \
+    printf '{"version":4,"default":null,"accounts":{"tmp":{"config_dir":"%s/.claude-tmp"}}}\n' \
         "$TMP_HOME" > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_remove "tmp"'
@@ -179,7 +179,7 @@ run_helper() {
 }
 
 @test "remove fails for an account that is not registered" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_remove "nobody"'
 
@@ -190,7 +190,7 @@ run_helper() {
 # ── _ckipper_account_rename_validate ──────────────────────────────────────────
 
 @test "rename_validate rejects an empty old name" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_rename_validate "" "newname"'
 
@@ -199,7 +199,7 @@ run_helper() {
 }
 
 @test "rename_validate rejects a new name with uppercase letters" {
-    echo '{"version":3,"default":null,"accounts":{"old":{"config_dir":"/tmp/.claude-old","keychain_service":null}}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{"old":{"config_dir":"/tmp/.claude-old"}}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_rename_validate "old" "NewName"'
 
@@ -208,7 +208,7 @@ run_helper() {
 }
 
 @test "rename_validate rejects rename when old name is not registered" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
 
     run_helper '_ckipper_account_rename_validate "ghost" "newname"'
 
@@ -216,56 +216,70 @@ run_helper() {
     [[ "$output" =~ "not registered" ]]
 }
 
-# ── _ckipper_account_add_pick_keychain_entry ─────────────────────────────────
-# Regression: zsh has no working `local -n` / `typeset -n`, so the previous
-# nameref-style implementation silently leaked the picked value to a global
-# named `_picked_ref` and the caller's variable stayed empty. The contract is
-# now stdout-capture: the function echoes the picked service to stdout (or
-# nothing on skip / no candidates).
+# ── _ckipper_account_add_check_credentials ───────────────────────────────────
 
-@test "pick_keychain_entry echoes the picked service to stdout" {
-    run_helper '
-        _core_keychain_snapshot() { printf "Claude Code-credentials\nClaude Code-credentials-personal\n"; }
-        _core_prompt_choose() { echo "Claude Code-credentials-personal"; }
-        _core_keychain_validate() { return 0; }
-        _ckipper_account_add_pick_keychain_entry myaccount
-    '
+@test "check_credentials passes when the derived Keychain entry exists" {
+    local dir="$TMP_HOME/.claude-work"
+    local service; service="Claude Code-credentials-$(printf '%s' "$dir" | shasum -a 256 | cut -c1-8)"
+
+    run env HOME="$TMP_HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" _CKIPPER_TEST_OSTYPE="darwin19.0" SECURITY_STUB_SERVICES="$service" \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_account_add_check_credentials work '$dir'"
 
     [ "$status" -eq 0 ]
-    [ "$output" = "Claude Code-credentials-personal" ]
+    [[ "$output" =~ "Found Keychain entry: $service" ]]
 }
 
-@test "pick_keychain_entry emits nothing on skip selection" {
-    run_helper '
-        _core_keychain_snapshot() { printf "Claude Code-credentials\n"; }
-        _core_prompt_choose() { echo "$_CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL"; }
-        _ckipper_account_add_pick_keychain_entry myaccount
-    '
+@test "check_credentials falls back to on-disk .credentials.json" {
+    local dir="$TMP_HOME/.claude-work"
+    mkdir -p "$dir"
+    echo '{}' > "$dir/.credentials.json"
+
+    run_helper "_ckipper_account_add_check_credentials work '$dir'"
 
     [ "$status" -eq 0 ]
-    [ -z "$output" ]
+    [[ "$output" =~ "on-disk credentials" ]]
 }
 
-@test "pick_keychain_entry emits nothing when keychain_snapshot returns no candidates" {
-    run_helper '
-        _core_keychain_snapshot() { :; }
-        _ckipper_account_add_pick_keychain_entry myaccount
-    '
+@test "check_credentials fails when neither store has the login" {
+    local dir="$TMP_HOME/.claude-work"
+    mkdir -p "$dir"
 
-    [ "$status" -eq 0 ]
-    [ -z "$output" ]
-}
-
-@test "pick_keychain_entry returns 1 with stderr error when picked service has bad shape" {
-    run_helper '
-        _core_keychain_snapshot() { echo "bogus-service"; }
-        _core_prompt_choose() { echo "bogus-service"; }
-        _core_keychain_validate() { return 1; }
-        _ckipper_account_add_pick_keychain_entry myaccount
-    '
+    run_helper "_ckipper_account_add_check_credentials work '$dir'"
 
     [ "$status" -ne 0 ]
-    [[ "$output" =~ "Invalid Keychain service shape" ]]
+    [[ "$output" =~ "Login may not have completed" ]]
+}
+
+# ── _ckipper_account_rename ──────────────────────────────────────────────────
+
+@test "rename rewrites plugin metadata paths to the new dir" {
+    local old_dir="$TMP_HOME/.claude-old"
+    mkdir -p "$old_dir/plugins"
+    printf '{"m":{"installLocation":"%s/plugins/marketplaces/m"}}' "$old_dir" > "$old_dir/plugins/known_marketplaces.json"
+    printf '{"version":4,"default":"old","accounts":{"old":{"config_dir":"%s"}}}' "$old_dir" > "$CKIPPER_REGISTRY"
+
+    run_helper 'ckipper account rename old new'
+
+    [ "$status" -eq 0 ]
+    local pm="$TMP_HOME/.claude-new/plugins/known_marketplaces.json"
+    grep -q "$TMP_HOME/.claude-new/plugins/marketplaces/m" "$pm"
+    ! grep -q "$TMP_HOME/.claude-old/" "$pm"
+}
+
+@test "rename tells the user to log in again and names the old Keychain entry" {
+    local old_dir="$TMP_HOME/.claude-old"
+    mkdir -p "$old_dir"
+    printf '{"version":4,"default":"old","accounts":{"old":{"config_dir":"%s"}}}' "$old_dir" > "$CKIPPER_REGISTRY"
+    local old_service; old_service="Claude Code-credentials-$(printf '%s' "$old_dir" | shasum -a 256 | cut -c1-8)"
+
+    run env HOME="$TMP_HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
+        PATH="$PATH" _CKIPPER_TEST_OSTYPE="darwin19.0" CKIPPER_FORCE=1 \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; ckipper account rename old new"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Log in again" ]]
+    [[ "$output" =~ "$old_service" ]]
 }
 
 # ── _ckipper_account_remove ──────────────────────────────────────────────────
@@ -279,7 +293,7 @@ run_helper() {
     local dir="$TMP_HOME/.claude-work"
     mkdir -p "$dir"
     cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":3,"default":"work","accounts":{"work":{"config_dir":"$dir","keychain_service":null,"registered_at":"t","preferences":{}}}}
+{"version":4,"default":"work","accounts":{"work":{"config_dir":"$dir","registered_at":"t","preferences":{}}}}
 JSON
 
     # CKIPPER_FORCE=0 → the assert is enforced (not bypassed); PGREP_STUB_MATCH=1
@@ -314,7 +328,7 @@ JSON
 
 @test "account default surfaces registry-update failure and does not print success" {
     cat > "$CKIPPER_REGISTRY" <<'JSON'
-{"version":3,"default":null,"accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":null,"registered_at":"t","preferences":{}}}}
+{"version":4,"default":null,"accounts":{"work":{"config_dir":"/tmp/.claude-work","registered_at":"t","preferences":{}}}}
 JSON
 
     run_helper '
@@ -331,7 +345,7 @@ JSON
     local dir="$TMP_HOME/.claude-work"
     mkdir -p "$dir"
     cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":3,"default":"work","accounts":{"work":{"config_dir":"$dir","keychain_service":null,"registered_at":"t","preferences":{}}}}
+{"version":4,"default":"work","accounts":{"work":{"config_dir":"$dir","registered_at":"t","preferences":{}}}}
 JSON
 
     run_helper '

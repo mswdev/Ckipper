@@ -72,3 +72,26 @@ run_in_zsh() {
     [[ "$output" == *"x"* ]]
     [[ "$output" == *"y"* ]]
 }
+
+# claude.ai manages skills/synced/ per account; syncing it would overwrite
+# one account's claude.ai skills with another's.
+@test "skills_enumerate never lists skills/synced" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src/skills/foo" "$src/skills/synced/from-claude-ai"
+
+    run_in_zsh "_ckipper_account_sync_skills_enumerate '$src' | cut -f2 | sort | tr '\n' ','"
+
+    [ "$output" = "foo," ]
+}
+
+# Regression: Claude Code's Bash tool runs zsh with NO_BARE_GLOB_QUAL, where
+# `*(NDoN)` is a literal pattern and enumeration silently found nothing.
+@test "skills_enumerate works when the caller set no_bare_glob_qual" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src/skills/foo" "$src/skills/bar"
+
+    run_in_zsh "setopt no_bare_glob_qual; _ckipper_account_sync_skills_enumerate '$src' | cut -f2 | sort | tr '\n' ','"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "bar,foo," ]
+}

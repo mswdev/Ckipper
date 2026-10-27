@@ -96,3 +96,15 @@ run_in_zsh() {
     [[ "$output" == *"new content"* ]]
     [[ "$output" == *"old content"* ]]
 }
+
+# Regression: `*.md(N)` broke under NO_BARE_GLOB_QUAL (Claude Code's Bash tool).
+@test "agents_enumerate works when the caller set no_bare_glob_qual" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src/agents"
+    echo "x" > "$src/agents/reviewer.md"
+
+    run_in_zsh "setopt no_bare_glob_qual; _ckipper_account_sync_agents_enumerate '$src' | cut -f1"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "agents/reviewer.md" ]
+}

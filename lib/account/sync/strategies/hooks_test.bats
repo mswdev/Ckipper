@@ -136,3 +136,15 @@ JSON
     [[ "$output" == *"this"* ]]
     [[ "$output" == *"CLEAN"* ]]
 }
+
+# Regression: `*(N)` broke under NO_BARE_GLOB_QUAL (Claude Code's Bash tool).
+@test "hooks_enumerate works when the caller set no_bare_glob_qual" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src/hooks"
+    echo "x" > "$src/hooks/lint.sh"
+
+    run_in_zsh "setopt no_bare_glob_qual; _ckipper_account_sync_hooks_enumerate '$src' | cut -f1"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "hooks/lint.sh" ]
+}

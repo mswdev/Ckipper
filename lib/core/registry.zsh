@@ -228,9 +228,11 @@ _core_registry_init_at() {
 # shape extends this filter and bumps CKIPPER_REGISTRY_VERSION.
 #   v2 added a per-account `preferences` block (Docker sandbox flags).
 #   v3 drops `preferences` again: the Docker sandbox is gone.
+#   v4 drops `keychain_service`: Claude Code derives the entry name from the
+#      config dir (see lib/core/keychain.zsh), and stored values could be stale.
 readonly _CORE_REGISTRY_UPGRADE_FILTER='
     .version = $v
-    | .accounts |= map_values(del(.preferences))
+    | .accounts |= map_values(del(.preferences, .keychain_service))
 '
 
 # Upgrade the default registry ($CKIPPER_REGISTRY) to the current version in
