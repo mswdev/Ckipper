@@ -51,6 +51,5 @@ Linting is enforced via `make lint` (locally) and `.github/workflows/ci.yml` (CI
 
 - **shellcheck** — all `.zsh` and `.sh` files. Configured via `.shellcheckrc` at repo root: `enable=all`, `disable=SC1090` (dynamic source paths are intentional in this project). Any other disables require a comment justifying the exception.
 - **shfmt** — `shfmt -d -i 4 -ci -s` (4-space indent, indent case, simplify). Diffs MUST be empty in CI.
-- **ruff** — Python files. Configured in `pyproject.toml`. Rules: `E`, `F`, `B`, `D` (docstring checks). Line length 100.
 
-Run `make bootstrap` once to install all linters via Homebrew + pip.
+Run `make bootstrap` once to install all linters via Homebrew.
