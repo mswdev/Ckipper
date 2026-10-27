@@ -130,3 +130,15 @@ EOF
     [ "$status" -eq 0 ]
     [ -d "$bundle/Contents/MacOS" ]
 }
+
+# Regression: `*.icns(N)` broke under NO_BARE_GLOB_QUAL (Claude Code's Bash tool).
+@test "find_source_icon falls back to any .icns when the caller set no_bare_glob_qual" {
+    local fake_app="$TMP_HOME/FakeClaude.app"
+    mkdir -p "$fake_app/Contents/Resources"
+    : > "$fake_app/Contents/Resources/electron.icns"
+
+    _run_bundle "setopt no_bare_glob_qual; _ckipper_desktop_bundle_find_source_icon '$fake_app'"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "$fake_app/Contents/Resources/electron.icns" ]
+}

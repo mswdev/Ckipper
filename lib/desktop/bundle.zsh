@@ -205,6 +205,9 @@ _ckipper_desktop_bundle_copy_icon() {
 # Args: $1 — source .app bundle path.
 # Returns: 0 with the icon path on stdout; 1 if no usable icon found.
 _ckipper_desktop_bundle_find_source_icon() {
+    # Reset to zsh defaults so the (N) glob qualifier below works even when
+    # the caller's shell has NO_BARE_GLOB_QUAL set (Claude Code's Bash tool does).
+    emulate -L zsh
     local source_app="$1"
     local resources="$source_app/Contents/Resources"
     [[ -d "$resources" ]] || return 1

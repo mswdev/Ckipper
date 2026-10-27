@@ -101,8 +101,8 @@ _ckipper_account_help_text_add() {
 _ckipper_account_help_text_list() {
     _core_help_render "ckipper account list" \
         "" \
-        "Print registered accounts: name, config dir, keychain service, default flag," \
-        "and last-login email (read from each account's .claude.json, if present)."
+        "Print registered accounts: name, config dir, last-login email (from each" \
+        "account's .claude.json), whether its Keychain login exists, and the default flag."
 }
 
 _ckipper_account_help_text_default() {
@@ -116,8 +116,10 @@ _ckipper_account_help_text_remove() {
     _core_help_render "ckipper account remove <name>" \
         "" \
         "Unregister an account from the registry and aliases, then interactively" \
-        "prompt to delete the config dir and the macOS Keychain entry. Decline" \
-        "either prompt to keep the file/entry; the manual cleanup command is shown."
+        "prompt to delete the config dir and the account's macOS Keychain login" \
+        "(the entry Claude Code derives from the dir path; the default" \
+        "'Claude Code-credentials' entry is never touched). Decline either prompt" \
+        "to keep the file/entry; the manual cleanup command is shown."
 }
 
 _ckipper_account_help_text_rename() {
@@ -127,8 +129,11 @@ _ckipper_account_help_text_rename() {
         "  - Renames ~/.claude-<old>/ → ~/.claude-<new>/" \
         "  - Updates the registry (key + config_dir)" \
         "  - If <old> was the default, makes <new> the default" \
+        "  - Rewrites absolute paths in plugins/*.json to the new dir" \
         "  - Regenerates aliases.zsh" \
         "  - Refuses if any Claude session is running (so the dir isn't held open)" \
         "" \
-        "Keychain service name is NOT changed — only the dir + registry mapping."
+        "You must /login again afterwards: Claude Code names the Keychain entry" \
+        "after the config dir, so the moved dir starts logged out. The old entry" \
+        "is left in place and the command to delete it is printed."
 }

@@ -4,7 +4,7 @@
 #   - claude-md     → <dir>/CLAUDE.md (single file, not a directory)
 #   - agents        → <dir>/agents/*.md
 #   - commands      → <dir>/commands/*.md
-#   - output-styles → <dir>/output_styles/*.md
+#   - output-styles → <dir>/output-styles/*.md
 #
 # All four types share the contract implementations; the only thing that
 # varies is the subpath, declared in _CKIPPER_SYNC_FILES_FLAT_PATH.
@@ -17,7 +17,7 @@ typeset -gA _CKIPPER_SYNC_FILES_FLAT_PATH=(
     [claude-md]="CLAUDE.md"
     [agents]="agents"
     [commands]="commands"
-    [output-styles]="output_styles"
+    [output-styles]="output-styles"
 )
 
 # Generic enumerator. Lists items as "<relpath>\t<basename>".
@@ -27,18 +27,21 @@ typeset -gA _CKIPPER_SYNC_FILES_FLAT_PATH=(
 # Args: $1 — type id; $2 — source account dir.
 # Returns: 0; prints items one per line.
 _ckipper_account_sync_files_flat_enumerate() {
+    # Reset to zsh defaults so the (N…) glob qualifiers below work even when
+    # the caller's shell has NO_BARE_GLOB_QUAL set (Claude Code's Bash tool does).
+    emulate -L zsh
     local type="$1" src="$2"
     local sub="${_CKIPPER_SYNC_FILES_FLAT_PATH[$type]}"
     local target="$src/$sub"
     if [[ "$type" == "claude-md" ]]; then
         [[ ! -f "$target" ]] && return 0
-        echo "$sub\t$sub"
+        printf '%s\t%s\n' "$sub" "$sub"
         return 0
     fi
     [[ ! -d "$target" ]] && return 0
     local f
     for f in "$target"/*.md(N); do
-        echo "${f#$src/}\t${f:t}"
+        printf '%s\t%s\n' "${f#$src/}" "${f:t}"
     done
 }
 
@@ -85,6 +88,7 @@ _ckipper_account_sync_files_flat_diff() {
 _ckipper_account_sync_files_flat_apply() {
     local type="$1" src="$2" dst="$3" rel="$4" backup_dir="$5"
     _ckipper_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
+    _ckipper_account_sync_drop_dst_symlink "$dst/$rel"
     mkdir -p "$dst/${rel:h}"
     cp -a "$src/$rel" "$dst/$rel"
 }

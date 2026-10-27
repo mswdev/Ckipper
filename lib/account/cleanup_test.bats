@@ -28,8 +28,12 @@ _run_cleanup() {
     run env CKIPPER_NO_GUM=1 \
         HOME="$TMP_HOME" PATH="$PATH" \
         _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-linux}" \
+        SECURITY_STUB_SERVICES="${SECURITY_STUB_SERVICES:-}" \
+        SECURITY_STUB_FAIL_FIND="${SECURITY_STUB_FAIL_FIND:-}" \
+        SECURITY_STUB_LOG="${SECURITY_STUB_LOG:-}" \
         zsh -c "
             source \"$REPO_ROOT/lib/core/prompt.zsh\"
+            source \"$REPO_ROOT/lib/core/keychain.zsh\"
             source \"$REPO_ROOT/lib/account/cleanup.zsh\"
             $zsh_cmd
         " <<<"$stdin"
@@ -83,19 +87,52 @@ _run_cleanup() {
     [[ "$output" != *"Delete Keychain"* ]]
 }
 
-@test "cleanup_keychain calls security on darwin when user confirms" {
+@test "cleanup_keychain deletes the entry derived from the config dir when confirmed" {
+    local dir="$TMP_HOME/.claude-foo"
+    local service; service="Claude Code-credentials-$(printf '%s' "$dir" | shasum -a 256 | cut -c1-8)"
+    export SECURITY_STUB_SERVICES="$service"
+    export SECURITY_STUB_LOG="$TMP_HOME/security.log"
+
     _CKIPPER_TEST_OSTYPE=darwin19.0 \
-        _run_cleanup "y" "_ckipper_account_cleanup_keychain foo 'Claude Code-credentials'"
+        _run_cleanup "y" "_ckipper_account_cleanup_keychain foo '$dir'"
 
     [ "$status" -eq 0 ]
     [[ "$output" =~ "Deleted" ]]
+    [ "$(cat "$SECURITY_STUB_LOG")" = "$service" ]
 }
 
 @test "cleanup_keychain leaves entry when user declines on darwin" {
+    local dir="$TMP_HOME/.claude-foo"
+    export SECURITY_STUB_LOG="$TMP_HOME/security.log"
+
     _CKIPPER_TEST_OSTYPE=darwin19.0 \
-        _run_cleanup "n" "_ckipper_account_cleanup_keychain foo 'Claude Code-credentials'"
+        _run_cleanup "n" "_ckipper_account_cleanup_keychain foo '$dir'"
 
     [ "$status" -eq 0 ]
     [[ "$output" != *"Deleted"* ]]
     [[ "$output" =~ "security delete-generic-password" ]]
+    [ ! -f "$SECURITY_STUB_LOG" ]
+}
+
+@test "cleanup_keychain never deletes the default Claude Code-credentials entry" {
+    export SECURITY_STUB_LOG="$TMP_HOME/security.log"
+
+    _CKIPPER_TEST_OSTYPE=darwin19.0 \
+        _run_cleanup "y" "_ckipper_account_cleanup_keychain foo \"\$HOME/.claude\""
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+    [ ! -f "$SECURITY_STUB_LOG" ]
+}
+
+@test "cleanup_keychain is a no-op when the account has no Keychain entry" {
+    export SECURITY_STUB_FAIL_FIND=1
+    export SECURITY_STUB_LOG="$TMP_HOME/security.log"
+
+    _CKIPPER_TEST_OSTYPE=darwin19.0 \
+        _run_cleanup "y" "_ckipper_account_cleanup_keychain foo '$TMP_HOME/.claude-foo'"
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+    [ ! -f "$SECURITY_STUB_LOG" ]
 }

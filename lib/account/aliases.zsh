@@ -27,21 +27,24 @@ _ckipper_account_generate_account_launcher_function() {
 }
 
 # Write the bare-claude guard function to stdout.
-# Blocks bare `claude` invocations when accounts are registered to prevent
-# credential overwrites on the default account's keychain entry.
+# Blocks bare `claude` invocations when accounts are registered. Bare
+# `claude` uses ~/.claude/, which no registered account owns, so a /login
+# there would create a stray, unmanaged login (stored in the default
+# "Claude Code-credentials" Keychain entry). Passes straight through when
+# CLAUDE_CONFIG_DIR is already set (e.g. inside a claude-<name> session),
+# because then `claude` does not touch ~/.claude/.
 #
 # Returns:
 #   0 always.
 _ckipper_account_write_bare_claude_guard() {
     echo "claude() {"
-    echo "    if [[ -f \"\$_CKIPPER_REGISTRY\" ]] && jq -e '.accounts | length > 0' \"\$_CKIPPER_REGISTRY\" >/dev/null 2>&1; then"
+    echo "    if [[ -z \"\$CLAUDE_CONFIG_DIR\" && -f \"\$_CKIPPER_REGISTRY\" ]] && jq -e '.accounts | length > 0' \"\$_CKIPPER_REGISTRY\" >/dev/null 2>&1; then"
     echo "        local default"
     echo "        default=\$(jq -r '.default // \"\"' \"\$_CKIPPER_REGISTRY\" 2>/dev/null)"
     echo "        echo \"Refusing to launch bare 'claude' — Ckipper has registered accounts.\" >&2"
     echo "        echo \"\" >&2"
-    echo "        echo \"Bare 'claude' uses ~/.claude/ and writes to the Keychain entry your\" >&2"
-    echo "        echo \"default account ('\${default:-personal}') is registered against. A fresh\" >&2"
-    echo "        echo \"/login here would silently overwrite those credentials.\" >&2"
+    echo "        echo \"Bare 'claude' uses ~/.claude/, which no registered account owns. A /login\" >&2"
+    echo "        echo \"there would create a separate, unmanaged login.\" >&2"
     echo "        echo \"\" >&2"
     echo "        if [[ -n \"\$default\" ]]; then"
     echo "            echo \"Use:  claude-\$default\" >&2"

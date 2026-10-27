@@ -26,6 +26,25 @@ Claude Code now covers what the Docker sandbox and worktree commands were for: a
 - New accounts no longer get a template `settings.json` (it only held the hooks and a `_comment`).
 - Removed commands print a pointer to their replacement.
 
+### Fixed
+- `account sync` treated `false` settings as missing, so keys like `verbose`, `attribution.sessionUrl`, `idleCompaction` and `switchModelsOnFlag` showed as "new" on every sync.
+- Sync's skills, agents/commands/output-styles, hooks and `sync undo` silently found nothing when run from a shell with `NO_BARE_GLOB_QUAL` (Claude Code's Bash tool sets it). `ckipper` now runs every subcommand under `emulate -L zsh`, and each globbing helper does too.
+- Skills sync no longer touches `skills/synced/`, which claude.ai manages per account.
+- Keychain handling trusted a stored `keychain_service` that could be wrong (the first account was recorded against the default `Claude Code-credentials` entry while Claude Code actually used a hashed one). Ckipper now derives the entry name from the config dir exactly as Claude Code does: `account add` checks for it instead of diffing Keychain snapshots, doctor checks it, `account list` shows it, and `account remove` deletes only that entry (never the default one). Registry v4 drops `keychain_service`.
+- `account rename` silently logged the account out and broke its plugins. It now rewrites the plugin metadata paths and tells you to `/login` again, naming the old Keychain entry.
+- The bare-`claude` guard refused `claude` even when `CLAUDE_CONFIG_DIR` was set, e.g. inside a `claude-<name>` session.
+- Doctor no longer suggests `rm -rf ~/.claude`; that dir belongs to bare `claude` and other tools.
+- Plugin path rewrites use a literal, portable replacement instead of `sed -i` with the path as a regex.
+- Sync piped whole JSON files through zsh's `echo`, which expands backslash escapes: any `\n` inside a string (every real `.claude.json` has some) made the write fail, and `\\t`-style text was silently rewritten. JSON and data rows now go through `print -r` / `printf`.
+- A statusline command containing the bare account dir (`cd ~/.claude-a/ && …`) made sync copy the whole source account into the destination, and `undo` then deleted the destination dir. The internal-script check now requires a real file inside the account, and rollback refuses empty, absolute or `..` manifest paths.
+- Sync wrote through destination symlinks (e.g. a `CLAUDE.md` linked to a dotfile), destroying the link target while the backup held only the link. The link is now replaced.
+- Rollback/undo restored a half-synced copy when one run created a file and then changed it again. The manifest now keeps the first entry per path.
+- Two syncs in the same second shared one backup dir; zero-change syncs left empty backups that `undo` consumed; unknown `--include` types (typos) reported success. All fixed.
+- `--include` / `--exclude` as the last argument hung the shell.
+- Re-syncing a changed hook duplicated its `settings.json` entry.
+- The `output-styles` type looked in `output_styles/` instead of Claude Code's `output-styles/`.
+- A failed `desktop add` deleted a data dir that already existed (with its chats). Account names starting with `desktop-` are now reserved, because `~/.claude-desktop-<name>` is a Desktop instance's data dir.
+
 ## [Unreleased] — CLI + onboarding overhaul
 
 ### Claude Desktop multi-instance support

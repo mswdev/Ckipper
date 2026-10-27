@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
-# Test stub for `security`. Reads scripted responses from env vars.
-# Set SECURITY_STUB_FAIL_FIND=1 to make find-generic-password exit non-zero
-# (used to exercise the keychain fallback path in _ckipper_migrate_detect_keychain).
+# Test stub for macOS `security`. Never touches a real Keychain.
+#
+# find-generic-password -s <service>:
+#   SECURITY_STUB_SERVICES set   → succeed only if <service> is one of its
+#                                  lines (newline-separated).
+#   SECURITY_STUB_FAIL_FIND set  → always fail.
+#   otherwise                    → always succeed.
+# delete-generic-password -s <service>:
+#   appends "<service>" to $SECURITY_STUB_LOG when set; always succeeds.
 case "$1 $2" in
     "find-generic-password -s")
-        if [ -n "$SECURITY_STUB_FAIL_FIND" ]; then
-            exit 1
+        [ -n "$SECURITY_STUB_FAIL_FIND" ] && exit 1
+        if [ -n "$SECURITY_STUB_SERVICES" ]; then
+            printf '%s\n' "$SECURITY_STUB_SERVICES" | grep -qxF -- "$3" || exit 44
         fi
-        echo "${SECURITY_STUB_PASSWORD:-{\"oauth\":\"fake-token\"}}"
+        echo "keychain: \"stub\""
         exit 0
         ;;
-    "dump-keychain")
-        echo "${SECURITY_STUB_DUMP:-empty}"
+    "delete-generic-password -s")
+        [ -n "$SECURITY_STUB_LOG" ] && printf '%s\n' "$3" >>"$SECURITY_STUB_LOG"
         exit 0
         ;;
     *)

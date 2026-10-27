@@ -186,3 +186,55 @@ run_in_zsh() {
 }
 
 # ── live_path + type-aware rollback (Bug G fix) ──────────────────────────
+
+# Regression: `*(N/)` broke under NO_BARE_GLOB_QUAL, so `sync undo` found no backups.
+@test "manifest_list_backups works when the caller set no_bare_glob_qual" {
+    mkdir -p "$TMP_HOME/dst/.ckipper-sync-backups/2026-01-01T00-00-00Z-from-a"
+
+    run_in_zsh "setopt no_bare_glob_qual; _ckipper_account_sync_manifest_list_backups '$TMP_HOME/dst'"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"2026-01-01T00-00-00Z-from-a"* ]]
+}
+
+@test "rollback_one refuses an empty or escaping manifest path instead of deleting the account dir" {
+    local dst="$TMP_HOME/dst"
+    mkdir -p "$dst" && echo keep > "$dst/keep.txt"
+
+    run_in_zsh "_ckipper_account_sync_rollback_one '$TMP_HOME/bk' '$dst' create ''; echo rc=\$?
+        _ckipper_account_sync_rollback_one '$TMP_HOME/bk' '$dst' create '../dst'; echo rc=\$?"
+
+    [[ "$output" == *"refusing unsafe manifest path"* ]]
+    [[ "$output" != *"rc=0"* ]]
+    [ -f "$dst/keep.txt" ]
+}
+
+# Regression: two writes to a file the sync itself created recorded
+# create + overwrite; rollback then restored the half-synced copy.
+@test "manifest keeps the first entry per path, so rollback removes a file the sync created" {
+    local dst="$TMP_HOME/dst"
+    mkdir -p "$dst"
+
+    run_in_zsh "
+        bk=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$bk\" src dst
+        _ckipper_account_sync_manifest_append \"\$bk\" .claude.json create mcp a
+        echo '{\"mcpServers\":{\"a\":{}}}' > '$dst/.claude.json'
+        _ckipper_account_sync_backup_file \"\$bk\" '$dst/.claude.json' .claude.json
+        _ckipper_account_sync_manifest_append \"\$bk\" .claude.json overwrite mcp b
+        jq '.files | length' \"\$bk/.ckipper-sync-manifest.json\"
+        _ckipper_account_sync_rollback_target \"\$bk\" '$dst'"
+
+    [ "${lines[0]}" = "1" ]
+    [ ! -e "$dst/.claude.json" ]
+}
+
+@test "backup_create gives two syncs in the same second distinct dirs" {
+    run_in_zsh "
+        _ckipper_account_sync_backup_dir_path() { echo '$TMP_HOME/dst/.ckipper-sync-backups/same-ts-from-src'; }
+        _ckipper_account_sync_backup_create '$TMP_HOME/dst' src
+        _ckipper_account_sync_backup_create '$TMP_HOME/dst' src"
+
+    [ "${lines[0]}" = "$TMP_HOME/dst/.ckipper-sync-backups/same-ts-from-src" ]
+    [ "${lines[1]}" = "$TMP_HOME/dst/.ckipper-sync-backups/same-ts-from-src-2" ]
+}

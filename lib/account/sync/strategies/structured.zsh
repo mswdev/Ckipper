@@ -32,7 +32,9 @@ _ckipper_account_sync_json_atomic_write() {
     local target="$1" json="$2"
     mkdir -p "${target:h}"
     local tmp; tmp=$(mktemp "${target}.XXXXXX")
-    echo "$json" | jq '.' > "$tmp" 2>/dev/null
+    # print -r, not echo: zsh's echo expands backslash escapes, which turned
+    # every "\n" inside a JSON string into a raw newline and broke the file.
+    print -r -- "$json" | jq '.' > "$tmp" 2>/dev/null
     if ! _ckipper_account_sync_json_validate "$tmp"; then
         echo "Refusing to write invalid JSON to $target" >&2
         rm -f "$tmp"
@@ -152,13 +154,17 @@ _ckipper_account_sync_settings_enumerate() {
 
 # Compare a jq-path between source and destination.
 #
+# Uses a bare `getpath` (no `// null` fallback): jq's `//` treats `false` as
+# missing, which made every `false` setting look "new" on every sync.
+# getpath already yields null for an absent path.
+#
 # Args: $1 — src; $2 — dst; $3 — JSON path array (e.g. '["model"]').
 # Returns: 0; prints "new" | "overwrite" | "unchanged".
 _ckipper_account_sync_settings_compare() {
     local src="$1" dst="$2" id="$3"
     local s d
-    s=$(jq -c --argjson p "$id" 'getpath($p) // null' "$src/settings.json" 2>/dev/null)
-    d=$(jq -c --argjson p "$id" 'getpath($p) // null' "$dst/settings.json" 2>/dev/null)
+    s=$(jq -c --argjson p "$id" 'getpath($p)' "$src/settings.json" 2>/dev/null)
+    d=$(jq -c --argjson p "$id" 'getpath($p)' "$dst/settings.json" 2>/dev/null)
     _ckipper_account_sync_json_status "$s" "$d"
 }
 

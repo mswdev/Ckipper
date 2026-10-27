@@ -1,95 +1,45 @@
 #!/usr/bin/env zsh
-# Shared macOS Keychain and Claude process utilities.
-
-readonly _CORE_KEYCHAIN_TIMEOUT_SECONDS=10
-
-# Validate a keychain_service name before passing to `security`.
-# Accepts "Claude Code-credentials" optionally followed by "-<hex>".
+# macOS Keychain naming and Claude process utilities.
 #
-# Args:
-#   $1 — service name to validate
+# Claude Code stores each config dir's login in its own Keychain entry and
+# derives the entry's service name from the dir path, so Ckipper never has
+# to record or discover it:
+#   ~/.claude (no CLAUDE_CONFIG_DIR)  → "Claude Code-credentials"
+#   any other CLAUDE_CONFIG_DIR       → "Claude Code-credentials-<hash>"
+# where <hash> is the first 8 hex chars of sha256(<config dir path>).
+
+readonly _CORE_KEYCHAIN_SERVICE_PREFIX="Claude Code-credentials"
+readonly _CORE_KEYCHAIN_HASH_LENGTH=8
+
+# Print the Keychain service name Claude Code uses for a config dir.
 #
-# Returns:
-#   0 if valid; non-zero if empty or wrong shape.
-_core_keychain_validate() {
-    local svc="$1"
-    [[ -z "$svc" ]] && return 1
-    [[ "$svc" =~ ^Claude\ Code-credentials(-[a-f0-9]+)?$ ]]
+# Args: $1 — absolute config dir path, exactly as passed in CLAUDE_CONFIG_DIR.
+# Returns: 0; prints the service name.
+#
+# Example:
+#   _core_keychain_service_for_dir "$HOME/.claude-work"
+#   # → Claude Code-credentials-1a2b3c4d
+_core_keychain_service_for_dir() {
+    local dir="$1"
+    if [[ "$dir" == "$HOME/.claude" ]]; then
+        print -r -- "$_CORE_KEYCHAIN_SERVICE_PREFIX"
+        return 0
+    fi
+    local digest
+    digest=$(print -rn -- "$dir" | shasum -a 256 | cut -c "1-$_CORE_KEYCHAIN_HASH_LENGTH")
+    print -r -- "$_CORE_KEYCHAIN_SERVICE_PREFIX-$digest"
 }
 
-# Detect the best available timeout command for wrapping keychain access.
+# Return 0 if the macOS Keychain has an entry for the given service. Reads
+# attributes only (no -w), so it never prompts and never touches the secret.
+# Always returns 1 off macOS.
 #
-# Returns:
-#   0 always; prints the timeout command prefix to stdout (empty if none found).
-_core_keychain_detect_timeout_cmd() {
-    if command -v timeout >/dev/null 2>&1; then
-        printf 'timeout %s' "$_CORE_KEYCHAIN_TIMEOUT_SECONDS"
-    elif command -v gtimeout >/dev/null 2>&1; then
-        printf 'gtimeout %s' "$_CORE_KEYCHAIN_TIMEOUT_SECONDS"
-    fi
-}
-
-# Dump the macOS Keychain using a timeout wrapper, then filter for Claude entries.
-#
-# Args:
-#   $1 — timeout command prefix (e.g. "timeout 10"), or empty for no timeout
-#
-# Returns:
-#   0 on success with Claude service names printed to stdout; 1 on keychain error.
-_core_keychain_snapshot_with_timeout() {
-    local timeout_cmd="$1"
-    local out
-    if ! out=$($timeout_cmd security dump-keychain 2>/dev/null); then
-        echo "Warning: Keychain may be locked or slow. Unlock it (Keychain Access > File > Unlock) and retry." >&2
-        return 1
-    fi
-    printf '%s\n' "$out" | \
-        awk -F'"' '/"svce"<blob>="Claude Code-credentials/ {print $4}' | \
-        sort -u
-}
-
-# Dump the macOS Keychain without a timeout wrapper, then filter for Claude entries.
-#
-# Returns:
-#   0 on success with Claude service names printed to stdout; 1 on keychain error.
-#
-# Errors (stderr):
-#   "Warning: 'security dump-keychain' failed..." — when keychain dump exits non-zero.
-_core_keychain_snapshot_fallback() {
-    local out
-    # No timeout available — run without. If keychain is locked the GUI
-    # password prompt will block this, which is a fine failure mode.
-    if ! out=$(security dump-keychain 2>/dev/null); then
-        echo "Warning: 'security dump-keychain' failed. Keychain may be locked." >&2
-        return 1
-    fi
-    printf '%s\n' "$out" | \
-        awk -F'"' '/"svce"<blob>="Claude Code-credentials/ {print $4}' | \
-        sort -u
-}
-
-# Return service names of all "Claude Code-credentials*" Keychain entries, sorted.
-# macOS only — returns 0 immediately on other platforms.
-#
-# Returns:
-#   0 on success; 1 if keychain is locked or unavailable.
-#
-# Errors (stderr):
-#   Warning messages when the keychain is slow, locked, or dump fails.
-_core_keychain_snapshot() {
-    [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]] && return 0
-
-    # Pick a timeout binary if available (macOS doesn't ship one; gtimeout from
-    # coreutils is the typical brew install). Fall through to no timeout if neither
-    # is present — better than failing with a misleading "keychain locked" error.
-    local timeout_cmd
-    timeout_cmd=$(_core_keychain_detect_timeout_cmd)
-
-    if [[ -n "$timeout_cmd" ]]; then
-        _core_keychain_snapshot_with_timeout "$timeout_cmd"
-    else
-        _core_keychain_snapshot_fallback
-    fi
+# Args: $1 — Keychain service name.
+# Returns: 0 if the entry exists; 1 otherwise.
+_core_keychain_entry_exists() {
+    local service="$1"
+    [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]] && return 1
+    security find-generic-password -s "$service" >/dev/null 2>&1
 }
 
 # Detect running Claude processes that would conflict with destructive operations.

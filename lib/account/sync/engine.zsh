@@ -121,7 +121,7 @@ _ckipper_account_sync_walk_type() {
     while IFS=$'\t' read -r id display; do
         [[ -z "$id" ]] && continue
         change_status=$("$compare_fn" "$src_dir" "$dst_dir" "$id")
-        echo "$type"$'\t'"$id"$'\t'"$display"$'\t'"$change_status"
+        printf '%s\t%s\t%s\t%s\n' "$type" "$id" "$display" "$change_status"
     done < <("$enumerate_fn" "$src_dir")
 }
 
@@ -202,7 +202,7 @@ _ckipper_account_sync_manifest_rel() {
     case "$type" in
         mcp) echo ".claude.json" ;;
         settings|statusline) echo "settings.json" ;;
-        *) echo "$id" ;;
+        *) print -r -- "$id" ;;
     esac
 }
 
@@ -219,6 +219,6 @@ _ckipper_account_sync_build_summaries() {
         [[ -z "$type" || "$change_status" == "unchanged" ]] && continue
         summary_fn=$(_ckipper_account_sync_strategy_fn "$type" summary)
         summary=$("$summary_fn" "$src_dir" "$dst_dir" "$id")
-        echo "$type"$'\t'"$id"$'\t'"$summary"
+        printf '%s\t%s\t%s\n' "$type" "$id" "$summary"
     done
 }

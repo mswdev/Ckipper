@@ -85,7 +85,7 @@ teardown() {
 }
 
 @test "ckipper account remove rejects unknown name" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
     run_ckipper account remove nobody
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not registered" ]]
@@ -134,7 +134,7 @@ teardown() {
 }
 
 @test "ckipper doctor mentions registry in output" {
-    echo '{"version":3,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
     run_ckipper doctor
     [[ "$output" =~ [Rr]egistry ]]
 }

@@ -7,7 +7,7 @@ load "${BATS_TEST_DIRNAME}/../../tests/lib/test-helper.bash"
 
 setup() {
     setup_isolated_env
-    export CKIPPER_REGISTRY_VERSION=3
+    export CKIPPER_REGISTRY_VERSION=4
     export _CKIPPER_TEST_OSTYPE="darwin19.0"
 }
 
@@ -21,7 +21,7 @@ _run_registry() {
     run env HOME="$TMP_HOME" \
         CKIPPER_DIR="$CKIPPER_DIR" \
         CKIPPER_REGISTRY="$CKIPPER_REGISTRY" \
-        CKIPPER_REGISTRY_VERSION="${CKIPPER_REGISTRY_VERSION:-3}" \
+        CKIPPER_REGISTRY_VERSION="${CKIPPER_REGISTRY_VERSION:-4}" \
         _CKIPPER_TEST_OSTYPE="${_CKIPPER_TEST_OSTYPE:-darwin19.0}" \
         PATH="$PATH" \
         zsh -c "source \"$REPO_ROOT/lib/core/utils.zsh\"; source \"$REPO_ROOT/lib/core/registry.zsh\"; $zsh_cmd"
@@ -52,8 +52,8 @@ EOF
     _run_registry "_core_registry_check_version"
 
     [ "$status" -eq 0 ]
-    [ "$(jq -r '.version' "$CKIPPER_REGISTRY")" = "3" ]
-    [[ "$output" =~ "Migrating accounts.json v2 → v3" ]]
+    [ "$(jq -r '.version' "$CKIPPER_REGISTRY")" = "4" ]
+    [[ "$output" =~ "Migrating accounts.json v2 → v4" ]]
 }
 
 @test "migration drops the Docker preferences block" {
@@ -63,6 +63,26 @@ EOF
 
     [ "$status" -eq 0 ]
     [ "$(jq -r '.accounts.personal | has("preferences")' "$CKIPPER_REGISTRY")" = "false" ]
+}
+
+@test "migration drops the stale keychain_service field" {
+    _seed_v2_registry
+
+    _run_registry "_core_registry_check_version"
+
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.accounts.personal | has("keychain_service")' "$CKIPPER_REGISTRY")" = "false" ]
+}
+
+@test "v3 registry (keychain_service, no preferences) migrates to v4" {
+    echo '{"version":3,"default":"work","accounts":{"work":{"config_dir":"/tmp/.claude-work","keychain_service":"Claude Code-credentials"}}}' > "$CKIPPER_REGISTRY"
+    chmod 600 "$CKIPPER_REGISTRY"
+
+    _run_registry "_core_registry_check_version"
+
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.version' "$CKIPPER_REGISTRY")" = "4" ]
+    [ "$(jq -c '.accounts.work' "$CKIPPER_REGISTRY")" = '{"config_dir":"/tmp/.claude-work"}' ]
 }
 
 @test "migration preserves the other account fields" {
@@ -83,7 +103,7 @@ EOF
     _run_registry "_core_registry_check_version"
 
     [ "$status" -eq 0 ]
-    [ "$(jq -r '.version' "$CKIPPER_REGISTRY")" = "3" ]
+    [ "$(jq -r '.version' "$CKIPPER_REGISTRY")" = "4" ]
     [ "$(jq -r '.accounts.work.config_dir' "$CKIPPER_REGISTRY")" = "/tmp/.claude-work" ]
 }
 
@@ -130,5 +150,5 @@ EOF
     run_ckipper account list
 
     [ "$status" -eq 0 ]
-    [ "$(jq -r '.version' "$CKIPPER_REGISTRY")" = "3" ]
+    [ "$(jq -r '.version' "$CKIPPER_REGISTRY")" = "4" ]
 }

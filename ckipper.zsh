@@ -8,7 +8,7 @@
 
 CKIPPER_DIR="${CKIPPER_DIR:-$HOME/.ckipper}"
 CKIPPER_REGISTRY="$CKIPPER_DIR/accounts.json"
-CKIPPER_REGISTRY_VERSION=3
+CKIPPER_REGISTRY_VERSION=4
 CKIPPER_DESKTOP_REGISTRY="$CKIPPER_DIR/desktop.json"
 CKIPPER_DESKTOP_REGISTRY_VERSION=1
 
@@ -66,7 +66,10 @@ typeset -gA _CKIPPER_REMOVED_COMMANDS=(
     [setup]="Register an account directly: ckipper account add <name>"
 )
 
-# Dispatch a top-level ckipper command.
+# Dispatch a top-level ckipper command. Runs every subcommand under zsh's
+# default options (`emulate -L zsh`, restored on return), so settings in the
+# caller's shell — e.g. NO_BARE_GLOB_QUAL in Claude Code's Bash tool, or
+# KSH_ARRAYS — cannot change how Ckipper's globs and arrays behave.
 #
 # Args:
 #   $1     — top-level command (account, desktop, doctor, help, -h, --help,
@@ -78,6 +81,7 @@ typeset -gA _CKIPPER_REMOVED_COMMANDS=(
 # Errors (stderr):
 #   "Unknown command: '<cmd>'. Did you mean: '<match>'? ..."
 ckipper() {
+    emulate -L zsh
     local cmd="$1"
     shift 2>/dev/null
     case "$cmd" in

@@ -26,7 +26,7 @@ _ckipper_account_sync_statusline_enumerate() {
     [[ ! -f "$file" ]] && return 0
     local has; has=$(jq -r '.statusLine // null' "$file" 2>/dev/null)
     [[ "$has" == "null" ]] && return 0
-    echo "$_CKIPPER_SYNC_STATUSLINE_ID\tStatus line"
+    printf '%s\t%s\n' "$_CKIPPER_SYNC_STATUSLINE_ID" "Status line"
 }
 
 # Compare: shape varies. We treat the .statusLine subtree as one structured
@@ -49,7 +49,10 @@ _ckipper_account_sync_statusline_compare() {
 # Walks every whitespace-delimited token because real-world commands often
 # use an interpreter prefix (e.g. "bash /path/to/script.sh", "node x.js",
 # "python3 statusline.py"). Returns the first token that resolves to a path
-# under the source dir.
+# under the source dir. A token only counts if it names an existing regular
+# file strictly inside src with no `..` segment: a bare "$src/" (e.g.
+# `cd ~/.claude-a/ && ./sl.sh`) once made the copy step clone the whole
+# account into the destination.
 #
 # Args: $1 — src dir.
 # Returns: 0; prints internal-script path or empty.
@@ -60,10 +63,10 @@ _ckipper_account_sync_statusline_internal_path() {
     local cmd; cmd=$(jq -r '.statusLine.command // empty' "$file" 2>/dev/null)
     [[ -z "$cmd" ]] && return 0
     local token
-    for token in ${(z)cmd}; do
-        case "$token" in
-            "$src"/*) echo "$token"; return 0 ;;
-        esac
+    for token in ${(Q)${(z)cmd}}; do
+        [[ "$token" == "$src"/?* && "/$token/" != *"/../"* && -f "$token" ]] || continue
+        print -r -- "$token"
+        return 0
     done
 }
 
@@ -130,11 +133,12 @@ _ckipper_account_sync_statusline_copy_and_rewrite() {
     local script_op="overwrite"; [[ -e "$dst/$rel" ]] || script_op="create"
     _ckipper_account_sync_backup_file "$backup_dir" "$dst/$rel" "$rel" || return 1
     _ckipper_account_sync_manifest_append "$backup_dir" "$rel" "$script_op" statusline "$rel"
+    _ckipper_account_sync_drop_dst_symlink "$dst/$rel"
     mkdir -p "$dst/${rel:h}"
     cp -a "$internal" "$dst/$rel" || return 1
     # Literal split+join (NOT sub/gsub) — paths often contain regex
     # metacharacters (`.`, `-`) and the interpreter-prefix form means
     # the `$src` substring is not necessarily at position 0.
-    echo "$obj" | jq --arg src "$src" --arg dst "$dst" \
+    print -r -- "$obj" | jq --arg src "$src" --arg dst "$dst" \
         '.command = (.command | split($src) | join($dst))'
 }

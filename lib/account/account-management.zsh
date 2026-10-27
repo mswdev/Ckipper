@@ -1,11 +1,6 @@
 #!/usr/bin/env zsh
 # Account lifecycle subcommands: add, finalize_registration, remove, rename, list, default, bare_alias_safe.
 
-# Module-level context for the in-progress registration.
-# Populated by callers before invoking _ckipper_account_finalize_registration.
-# Fields: name, dir, service
-typeset -gA _CKIPPER_FINALIZE_CTX
-
 # Module-level context for the in-progress rename.
 # Populated by _ckipper_account_rename before invoking _ckipper_account_rename_perform.
 # Fields: old_dir, new_dir
@@ -36,81 +31,55 @@ _ckipper_account_add_validate_name() {
         echo "Account name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)." >&2
         return 1
     fi
+    _ckipper_account_assert_name_not_reserved "$name" || return 1
     if jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>/dev/null; then
         echo "Account '$name' is already registered." >&2
         return 1
     fi
 }
 
-# Run the adopt flow: pick a Keychain entry and finalize registration for an existing dir.
+# Account-name prefix reserved for Claude Desktop instances: account
+# `desktop-x` would live in ~/.claude-desktop-x, which is Desktop instance
+# `x`'s user-data dir, so removing either would delete the other's data.
+readonly _CKIPPER_ACCOUNT_RESERVED_PREFIX="desktop-"
+
+# Refuse account names that would collide with a Desktop instance data dir.
+#
+# Args: $1 — proposed account name.
+# Returns: 0 if allowed; 1 if reserved.
+# Errors (stderr): "Account names starting with 'desktop-' are reserved …"
+_ckipper_account_assert_name_not_reserved() {
+    [[ "$1" != "$_CKIPPER_ACCOUNT_RESERVED_PREFIX"* ]] && return 0
+    echo "Account names starting with '$_CKIPPER_ACCOUNT_RESERVED_PREFIX' are reserved: ~/.claude-desktop-<name> is a Claude Desktop instance's data dir." >&2
+    return 1
+}
+
+# Run the adopt flow: register an existing, already-populated config dir.
 #
 # Args:
 #   $1 — account name
 #   $2 — account config directory
 #
 # Returns:
-#   0 on success; 1 on validation or registration failure.
+#   0 on success; 1 if the dir is missing or registration fails.
 _ckipper_account_add_adopt_flow() {
     local name="$1" dir="$2"
     if [[ ! -d "$dir" ]]; then
         echo "Cannot adopt: $dir does not exist." >&2
         return 1
     fi
-    local picked=""
-    if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
-        picked=$(_ckipper_account_add_pick_keychain_entry "$name") || return 1
-    fi
-    _CKIPPER_FINALIZE_CTX[name]="$name"
-    _CKIPPER_FINALIZE_CTX[dir]="$dir"
-    _CKIPPER_FINALIZE_CTX[service]="$picked"
-    _ckipper_account_finalize_registration "adopt"
+    _ckipper_account_finalize_registration "$name" "$dir" "adopt"
 }
 
-# Sentinel item shown alongside Keychain candidates so the picker has an
-# explicit "skip" choice (consistent with _core_prompt_choose's no-empty-on-cancel
-# semantics).
-readonly _CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL="(skip — register without Keychain entry)"
-
-# Prompt the user to pick a Keychain entry from the available candidates.
-# Echoes the chosen service name to stdout (or empty string when the user
-# picked the skip sentinel or no candidates exist). zsh has no working
-# `local -n` / `typeset -n`, so the contract is stdout-capture rather than
-# nameref — the caller does `picked=$(_ckipper_account_add_pick_keychain_entry "$name")`.
-#
-# Args:
-#   $1 — account name (for the prompt label and error messages)
-#
-# Returns:
-#   0 on success; 1 on keychain error or invalid service shape.
-#
-# Errors (stderr):
-#   "Invalid Keychain service shape: <service>" — when the picked entry has
-#     an unexpected shape (caught by _core_keychain_validate).
-_ckipper_account_add_pick_keychain_entry() {
-    local name="$1"
-    local candidates
-    candidates=$(_core_keychain_snapshot) || return 1
-    [[ -z "$candidates" ]] && return 0
-    local -a items
-    items=( ${(f)candidates} "$_CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL" )
-    local picked
-    picked=$(_core_prompt_choose "Pick a Keychain entry for '$name'" "${items[@]}")
-    [[ -z "$picked" || "$picked" == "$_CKIPPER_ACCOUNT_KEYCHAIN_SKIP_LABEL" ]] && return 0
-    if ! _core_keychain_validate "$picked"; then
-        echo "Invalid Keychain service shape: $picked" >&2
-        return 1
-    fi
-    echo "$picked"
-}
-
-# Run the fresh registration flow: create the dir, launch Claude, detect new keychain.
+# Run the fresh registration flow: create the dir, launch Claude for /login,
+# confirm the login landed, then register.
 #
 # Args:
 #   $1 — account name
 #   $2 — account config directory
 #
 # Returns:
-#   0 on success; 1 on abort or credential detection failure.
+#   0 on success; 1 on abort, missing credentials, or registration failure.
 _ckipper_account_add_fresh_flow() {
     local name="$1" dir="$2"
     if [[ -d "$dir" ]]; then
@@ -118,20 +87,9 @@ _ckipper_account_add_fresh_flow() {
         return 1
     fi
     mkdir -p "$dir"
-    local before_snapshot
-    before_snapshot=$(_core_keychain_snapshot) || return 1
     _ckipper_account_add_launch_claude "$name" "$dir" || return 1
-    local after_snapshot
-    after_snapshot=$(_core_keychain_snapshot) || return 1
-    local new_service
-    new_service=$(comm -13 \
-        <(printf '%s\n' "$before_snapshot") \
-        <(printf '%s\n' "$after_snapshot") | head -1)
-    _ckipper_account_add_check_credentials "$name" "$dir" "$new_service" || return 1
-    _CKIPPER_FINALIZE_CTX[name]="$name"
-    _CKIPPER_FINALIZE_CTX[dir]="$dir"
-    _CKIPPER_FINALIZE_CTX[service]="$new_service"
-    _ckipper_account_finalize_registration "fresh"
+    _ckipper_account_add_check_credentials "$name" "$dir" || return 1
+    _ckipper_account_finalize_registration "$name" "$dir" "fresh"
 }
 
 # Display the fresh-add instructions, prompt for confirmation, and launch Claude.
@@ -169,32 +127,33 @@ EOF
     echo "Claude exited (status $rc). Finalizing registration..."
 }
 
-# Validate that credentials were captured after a fresh login attempt.
+# Confirm the /login in the fresh flow stored credentials: either the
+# Keychain entry Claude Code derives from the dir path (macOS), or an
+# on-disk .credentials.json (other platforms, or Keychain unavailable).
 #
 # Args:
 #   $1 — account name
 #   $2 — account config directory
-#   $3 — detected new keychain service (may be empty)
 #
 # Returns:
-#   0 if credentials are present; 1 otherwise with error message.
+#   0 if credentials are present; 1 otherwise.
+#
+# Errors (stderr):
+#   "Warning: no Keychain entry ... and no .credentials.json ..." — when
+#     neither credential store has the login.
 _ckipper_account_add_check_credentials() {
-    local name="$1" dir="$2" new_service="$3"
-    if [[ -n "$new_service" ]]; then
-        if ! _core_keychain_validate "$new_service"; then
-            echo "Detected entry has unexpected shape: $new_service" >&2
-            echo "Refusing to register. Use --adopt to register manually." >&2
-            return 1
-        fi
-        echo "Detected new Keychain entry: $new_service"
+    local name="$1" dir="$2"
+    local service; service=$(_core_keychain_service_for_dir "$dir")
+    if _core_keychain_entry_exists "$service"; then
+        echo "Found Keychain entry: $service"
         return 0
     fi
     if [[ -f "$dir/.credentials.json" ]]; then
-        echo "No new Keychain entry, but $dir/.credentials.json exists — proceeding with on-disk credentials."
+        echo "Found on-disk credentials: $dir/.credentials.json"
         return 0
     fi
-    echo "Warning: no new Keychain entry detected and no .credentials.json on disk." >&2
-    echo "Login may not have completed. Re-run /login or use: ckipper account add $name --adopt" >&2
+    echo "Warning: no Keychain entry '$service' and no .credentials.json in $dir." >&2
+    echo "Login may not have completed. Run: CLAUDE_CONFIG_DIR=$dir command claude, /login, then: ckipper account add $name --adopt" >&2
     return 1
 }
 
@@ -222,18 +181,16 @@ _ckipper_account_add() {
 
 # Write the account entry to the registry and regenerate aliases atomically.
 # On collision, diagnoses the cause and prints an appropriate error.
-# Reads name, dir, and service from _CKIPPER_FINALIZE_CTX module global.
 #
 # Args:
-#   $1 — registration mode: "fresh" or "adopt"
+#   $1 — account name
+#   $2 — account config directory
+#   $3 — registration mode: "fresh" or "adopt"
 #
 # Returns:
 #   0 on success; 1 on registry collision or write failure.
 _ckipper_account_finalize_registration() {
-    local mode="$1"
-    local name="${_CKIPPER_FINALIZE_CTX[name]}"
-    local dir="${_CKIPPER_FINALIZE_CTX[dir]}"
-    local service="${_CKIPPER_FINALIZE_CTX[service]}"
+    local name="$1" dir="$2" mode="$3"
     local now; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     _core_registry_init
     if ! _core_registry_update '
@@ -244,12 +201,11 @@ _ckipper_account_finalize_registration() {
         else
             .accounts[$n] = {
                 config_dir: $d,
-                keychain_service: (if $s == "" then null else $s end),
                 registered_at: $t
             }
             | (if .default == null then .default = $n else . end)
         end
-    ' --arg n "$name" --arg d "$dir" --arg s "$service" --arg t "$now"; then
+    ' --arg n "$name" --arg d "$dir" --arg t "$now"; then
         _ckipper_account_finalize_diagnose_error "$name" "$dir"
         return 1
     fi
@@ -343,9 +299,9 @@ _ckipper_account_list() {
     _core_style_header "Registered accounts"
     _ckipper_account_list_header
     _core_style_divider
-    jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)\t\(.value.keychain_service // "null")"' "$CKIPPER_REGISTRY" | \
-        while IFS=$'\t' read -r name dir keychain; do
-            _ckipper_account_list_row "$name" "$dir" "$keychain"
+    jq -r '.accounts | to_entries[] | "\(.key)\t\(.value.config_dir)"' "$CKIPPER_REGISTRY" | \
+        while IFS=$'\t' read -r name dir; do
+            _ckipper_account_list_row "$name" "$dir"
         done
     echo ""
     echo "* = default. Run: ckipper account default <name>"
@@ -363,31 +319,40 @@ _ckipper_account_list_short_dir() {
     [[ "$dir" == "$HOME"* ]] && printf '~%s' "${dir#$HOME}" || printf '%s' "$dir"
 }
 
+# Print whether the account's Keychain entry exists: "yes" or "no" on
+# macOS, "n/a" elsewhere.
+#
+# Args: $1 — account config directory.
+# Returns: 0 always; prints the status word.
+_ckipper_account_list_keychain_status() {
+    local dir="$1"
+    if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]]; then
+        echo "n/a"
+        return 0
+    fi
+    _core_keychain_entry_exists "$(_core_keychain_service_for_dir "$dir")" && echo "yes" || echo "no"
+}
+
 # Print a single account row for `ckipper account list`.
 #
 # Args:
 #   $1 — account name
 #   $2 — config directory
-#   $3 — keychain service ("null" string when unset)
 #
 # Reads `_CKIPPER_ACCOUNT_LIST_DEFAULT` (set by `_ckipper_account_list`) to
-# decide whether to mark this row as the default. Threading default through
-# the registry-stream pipeline as a 4th positional would break the
-# 3-parameter cap.
+# decide whether to mark this row as the default.
 #
 # Returns:
 #   0 always.
 _ckipper_account_list_row() {
-    local name="$1" dir="$2" keychain="$3"
+    local name="$1" dir="$2"
     local default="$_CKIPPER_ACCOUNT_LIST_DEFAULT"
     local short_dir; short_dir=$(_ckipper_account_list_short_dir "$dir")
     local email="-"
     if [[ -f "$dir/.claude.json" ]]; then
         email=$(jq -r '.oauthAccount.emailAddress // "-"' "$dir/.claude.json" 2>/dev/null)
     fi
-    local keychain_status="no"
-    [[ "$keychain" == "null" ]] && keychain_status="null"
-    [[ "$keychain" != "null" && -n "$keychain" ]] && keychain_status="yes"
+    local keychain_status; keychain_status=$(_ckipper_account_list_keychain_status "$dir")
     local marker=" "
     [[ "$name" == "$default" ]] && marker=$(_core_style_color green "*")
     printf '%-*s%-*s%-*s%-*s%s\n' \
@@ -442,7 +407,6 @@ _ckipper_account_remove() {
     fi
     _core_assert_no_running_claude || return 1
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
-    local service; service=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
     if ! _core_registry_update 'del(.accounts[$n]) | (if .default == $n then .default = null else . end)' --arg n "$name"; then
         echo "Error: failed to unregister '$name' from the registry. Skipping cleanup of '$dir'." >&2
         return 1
@@ -453,7 +417,7 @@ _ckipper_account_remove() {
     _ckipper_account_regenerate_aliases
     echo "Unregistered '$name'."
     _ckipper_account_cleanup_dir "$name" "$dir"
-    _ckipper_account_cleanup_keychain "$name" "$service"
+    _ckipper_account_cleanup_keychain "$name" "$dir"
 }
 
 # Validate arguments for `ckipper account rename` before performing the rename.
@@ -474,6 +438,7 @@ _ckipper_account_rename_validate() {
         echo "New name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)." >&2
         return 1
     fi
+    _ckipper_account_assert_name_not_reserved "$new" || return 1
     if [[ "$old" == "$new" ]]; then
         echo "Old and new name are the same. Nothing to do." >&2
         return 1
@@ -539,7 +504,8 @@ _ckipper_account_rename_perform() {
     fi
 }
 
-# Rename a registered account: moves its directory and updates the registry.
+# Rename a registered account: moves its directory, updates the registry,
+# and rewrites the absolute paths baked into its plugin metadata.
 #
 # Args:
 #   $1 — old account name
@@ -551,21 +517,48 @@ _ckipper_account_rename() {
     _core_registry_check_version || return 1
     local old="$1" new="$2"
     _ckipper_account_rename_validate "$old" "$new" || return 1
-    local old_dir new_dir
-    old_dir=$(jq -r --arg n "$old" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
-    new_dir="$HOME/.claude-$new"
-    _CKIPPER_RENAME_CTX[old_dir]="$old_dir"
-    _CKIPPER_RENAME_CTX[new_dir]="$new_dir"
+    _CKIPPER_RENAME_CTX[old_dir]=$(jq -r --arg n "$old" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
+    _CKIPPER_RENAME_CTX[new_dir]="$HOME/.claude-$new"
     _ckipper_account_rename_perform "$old" "$new" || return 1
+    _ckipper_account_rewrite_plugin_paths "${_CKIPPER_RENAME_CTX[old_dir]}/" "${_CKIPPER_RENAME_CTX[new_dir]}/"
     # Drop old-name launcher functions from the calling shell.
     unset -f "claude-$old" 2>/dev/null
     unset -f "$old" 2>/dev/null
     _ckipper_account_regenerate_aliases
+    _ckipper_account_rename_announce "$old" "$new"
+}
+
+# Print the rename summary and the re-login notice. Reads old_dir and
+# new_dir from _CKIPPER_RENAME_CTX.
+#
+# Args: $1 — old account name; $2 — new account name.
+# Returns: 0 always.
+_ckipper_account_rename_announce() {
+    local old="$1" new="$2"
     echo "Renamed '$old' → '$new'."
-    echo "Directory:    $old_dir → $new_dir"
+    echo "Directory:    ${_CKIPPER_RENAME_CTX[old_dir]} → ${_CKIPPER_RENAME_CTX[new_dir]}"
     if _ckipper_account_bare_alias_safe "$new"; then
         echo "Use:          claude-$new   (or just: $new)"
     else
         echo "Use:          claude-$new"
     fi
+    _ckipper_account_rename_login_notice "$new"
+}
+
+# Explain that a renamed account starts logged out. Claude Code names the
+# Keychain entry after the config dir path, so the moved dir maps to a new,
+# empty entry while the old login stays behind under the old name. macOS only.
+#
+# Args: $1 — new account name.
+# Returns: 0 always.
+_ckipper_account_rename_login_notice() {
+    local new="$1"
+    [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]] && return 0
+    local old_service
+    old_service=$(_core_keychain_service_for_dir "${_CKIPPER_RENAME_CTX[old_dir]}")
+    echo ""
+    echo "Log in again: Claude Code names the Keychain entry after the config dir,"
+    echo "so the renamed account starts logged out. Run claude-$new, then /login."
+    echo "The old login stays in the Keychain as '$old_service'. To remove it:"
+    printf '  security delete-generic-password -s %q\n' "$old_service"
 }
