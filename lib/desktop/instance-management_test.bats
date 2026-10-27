@@ -282,3 +282,32 @@ _run_remove_with_answers() {
     [ "$status" -ne 0 ]
     [[ "$output" =~ "must match" ]]
 }
+
+# Regression: a failed `desktop add` rm -rf'd the data dir even when it
+# already existed (e.g. kept by an earlier `desktop remove`), deleting chats.
+@test "desktop add rollback keeps a data dir that existed before the add" {
+    _install_fake_claude_app
+    mkdir -p "$HOME/.claude-desktop-work"
+    echo chats > "$HOME/.claude-desktop-work/history"
+
+    run env HOME="$TMP_HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" PATH="$PATH" \
+        _CKIPPER_TEST_OSTYPE="$_CKIPPER_TEST_OSTYPE" _CKIPPER_DESKTOP_SYSTEM_APP="$_CKIPPER_DESKTOP_SYSTEM_APP" \
+        _CKIPPER_TEST_CLAUDE_APP="$_CKIPPER_TEST_CLAUDE_APP" _CKIPPER_TEST_LSREGISTER=/nonexistent \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_desktop_register() { return 1; }; ckipper desktop add work"
+
+    [ "$status" -ne 0 ]
+    [ -f "$HOME/.claude-desktop-work/history" ]
+    [ ! -e "$HOME/Applications/Claude-Work.app" ]
+}
+
+@test "desktop add rollback removes a data dir it created itself" {
+    _install_fake_claude_app
+
+    run env HOME="$TMP_HOME" CKIPPER_DIR="$CKIPPER_DIR" CKIPPER_REGISTRY="$CKIPPER_REGISTRY" PATH="$PATH" \
+        _CKIPPER_TEST_OSTYPE="$_CKIPPER_TEST_OSTYPE" _CKIPPER_DESKTOP_SYSTEM_APP="$_CKIPPER_DESKTOP_SYSTEM_APP" \
+        _CKIPPER_TEST_CLAUDE_APP="$_CKIPPER_TEST_CLAUDE_APP" _CKIPPER_TEST_LSREGISTER=/nonexistent \
+        zsh -c "source \"$REPO_ROOT/ckipper.zsh\"; _ckipper_desktop_register() { return 1; }; ckipper desktop add work"
+
+    [ "$status" -ne 0 ]
+    [ ! -e "$HOME/.claude-desktop-work" ]
+}

@@ -134,7 +134,7 @@ If you want concurrent runs of the *same* account, register it twice under two n
 | `claude-md` | `CLAUDE.md` (user memory) |
 | `agents` | `agents/*.md` |
 | `commands` | `commands/*.md` |
-| `output-styles` | `output_styles/*.md` |
+| `output-styles` | `output-styles/*.md` |
 | `skills` | `skills/<name>/` (per-directory; symlinks preserved) |
 | `statusline` | `settings.json` `.statusLine` + referenced script (if internal to the account dir) |
 | `hooks` | Hook scripts under `<account>/hooks/` + their paired `settings.json` `.hooks` entries |
@@ -176,7 +176,9 @@ ckipper account sync undo work --pick   # gum-pick from backup ledger
 ckipper account sync undo work --list   # print backup directory paths
 ```
 
-Sync refuses to write while any Claude CLI is running (override with `--force` if you understand the risk). `--dry-run` is always allowed.
+Sync refuses to write while any Claude CLI is running (override with `--force` if you understand the risk). `--dry-run` is always allowed. A sync with nothing to change writes nothing and leaves no backup. A destination file that is a symlink is replaced by a regular file; its target is never written through.
+
+Settings sync copies each value as-is: arrays such as `permissions.allow` are replaced, not merged. Check the drill-down (`View changes`) before applying.
 
 ## Claude Desktop instances
 

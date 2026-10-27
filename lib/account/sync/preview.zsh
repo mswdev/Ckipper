@@ -157,5 +157,5 @@ _ckipper_account_sync_drill_down_resolve_id() {
     local resolved
     resolved=$(awk -F'\t' -v t="$type" -v d="$display" \
         '$1 == t && $3 == d { print $2; exit }' "$items_file")
-    echo "${resolved:-$display}"
+    print -r -- "${resolved:-$display}"
 }

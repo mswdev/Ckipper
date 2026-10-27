@@ -297,3 +297,25 @@ run_in_zsh() {
 
     [ "$output" = "new" ]
 }
+
+# Regression: json_atomic_write piped the whole file through zsh's echo,
+# which expands backslash escapes — every "\n" inside a JSON string became a
+# raw newline (invalid JSON, sync refused) and "\\t" became a TAB.
+@test "mcp_apply keeps backslash escapes elsewhere in .claude.json intact" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"mcpServers":{"github":{"command":"x"}}}' > "$src/.claude.json"
+    cat > "$dst/.claude.json" <<'JSON'
+{"projects":{"/p":{"note":"line1\nline2","path":"C:\\temp","rule":"Bash(printf 'a\\nb')"}}}
+JSON
+    local before; before=$(jq -c '.projects' "$dst/.claude.json")
+
+    run_in_zsh "
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
+        _ckipper_account_sync_mcp_apply '$src' '$dst' github \"\$backup_dir\""
+
+    [ "$status" -eq 0 ]
+    [ "$(jq -c '.projects' "$dst/.claude.json")" = "$before" ]
+    [ "$(jq -r '.mcpServers.github.command' "$dst/.claude.json")" = "x" ]
+}

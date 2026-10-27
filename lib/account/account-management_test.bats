@@ -363,3 +363,12 @@ JSON
     accts=$(jq -r '.accounts | keys | length' "$CKIPPER_REGISTRY")
     [ "$accts" = "1" ]
 }
+
+@test "validate_name rejects the desktop- prefix reserved for Desktop data dirs" {
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+
+    run_helper '_ckipper_account_add_validate_name desktop-work'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "reserved" ]]
+}

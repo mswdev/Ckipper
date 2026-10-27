@@ -148,3 +148,19 @@ JSON
     [ "$status" -eq 0 ]
     [ "$output" = "hooks/lint.sh" ]
 }
+
+# Regression: re-syncing a changed hook appended a second identical entry,
+# so the hook ran twice (and once more per re-sync).
+@test "hooks_merge_settings replaces an existing entry for the same command instead of duplicating it" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src/hooks" "$dst/hooks"
+    echo x > "$src/hooks/lint.sh"
+    echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash '"$src"'/hooks/lint.sh"}]}]}}' > "$src/settings.json"
+    echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash '"$dst"'/hooks/lint.sh"}]},{"matcher":"Edit","hooks":[{"type":"command","command":"other"}]}]}}' > "$dst/settings.json"
+
+    run_in_zsh "_ckipper_account_sync_hooks_merge_settings '$src' '$dst' hooks/lint.sh"
+
+    [ "$status" -eq 0 ]
+    [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | contains("lint.sh"))] | length' "$dst/settings.json")" = "1" ]
+    [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command == "other")] | length' "$dst/settings.json")" = "1" ]
+}

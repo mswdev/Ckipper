@@ -43,7 +43,7 @@ _ckipper_account_sync_files_dir_enumerate() {
     for entry in "$root"/*(NDoN); do
         [[ -d "$entry" || -L "$entry" ]] || continue
         (( ${excluded[(Ie)${entry:t}]} )) && continue
-        echo "$sub/${entry:t}\t${entry:t}"
+        printf '%s\t%s\n' "$sub/${entry:t}" "${entry:t}"
     done
 }
 

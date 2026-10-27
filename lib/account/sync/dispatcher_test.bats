@@ -247,3 +247,32 @@ run_full() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"humanizer"* ]]
 }
+
+@test "parse_args errors instead of hanging when --include has no value" {
+    run_in_zsh '_ckipper_account_sync_parse_args personal work --include; echo "rc=$?"'
+
+    [[ "$output" == *"Missing value for --include"* ]]
+    [[ "$output" == *"rc=1"* ]]
+}
+
+@test "ckipper account sync rejects an unknown type instead of reporting success" {
+    setup_two_accounts
+
+    run_full 'ckipper account sync src dst --include mpc --yes'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown sync type: mpc"* ]]
+    [ ! -d "$TMP_HOME/dst/.ckipper-sync-backups" ]
+}
+
+# Regression: an applied sync with zero changes still created a backup,
+# which `sync undo` then consumed instead of the real one.
+@test "ckipper account sync with nothing to change creates no backup" {
+    setup_two_accounts
+    echo '{"mcpServers":{"github":{"command":"x"}}}' > "$TMP_HOME/dst/.claude.json"
+
+    run_full 'ckipper account sync src dst --include mcp --yes'
+
+    [ "$status" -eq 0 ]
+    [ ! -d "$TMP_HOME/dst/.ckipper-sync-backups" ]
+}

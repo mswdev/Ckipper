@@ -32,7 +32,9 @@ _ckipper_account_sync_json_atomic_write() {
     local target="$1" json="$2"
     mkdir -p "${target:h}"
     local tmp; tmp=$(mktemp "${target}.XXXXXX")
-    echo "$json" | jq '.' > "$tmp" 2>/dev/null
+    # print -r, not echo: zsh's echo expands backslash escapes, which turned
+    # every "\n" inside a JSON string into a raw newline and broke the file.
+    print -r -- "$json" | jq '.' > "$tmp" 2>/dev/null
     if ! _ckipper_account_sync_json_validate "$tmp"; then
         echo "Refusing to write invalid JSON to $target" >&2
         rm -f "$tmp"

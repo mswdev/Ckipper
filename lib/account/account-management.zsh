@@ -31,10 +31,27 @@ _ckipper_account_add_validate_name() {
         echo "Account name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)." >&2
         return 1
     fi
+    _ckipper_account_assert_name_not_reserved "$name" || return 1
     if jq -e --arg n "$name" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>/dev/null; then
         echo "Account '$name' is already registered." >&2
         return 1
     fi
+}
+
+# Account-name prefix reserved for Claude Desktop instances: account
+# `desktop-x` would live in ~/.claude-desktop-x, which is Desktop instance
+# `x`'s user-data dir, so removing either would delete the other's data.
+readonly _CKIPPER_ACCOUNT_RESERVED_PREFIX="desktop-"
+
+# Refuse account names that would collide with a Desktop instance data dir.
+#
+# Args: $1 — proposed account name.
+# Returns: 0 if allowed; 1 if reserved.
+# Errors (stderr): "Account names starting with 'desktop-' are reserved …"
+_ckipper_account_assert_name_not_reserved() {
+    [[ "$1" != "$_CKIPPER_ACCOUNT_RESERVED_PREFIX"* ]] && return 0
+    echo "Account names starting with '$_CKIPPER_ACCOUNT_RESERVED_PREFIX' are reserved: ~/.claude-desktop-<name> is a Claude Desktop instance's data dir." >&2
+    return 1
 }
 
 # Run the adopt flow: register an existing, already-populated config dir.
@@ -421,6 +438,7 @@ _ckipper_account_rename_validate() {
         echo "New name must match ^[a-z0-9_-]+$ (lowercase alphanumeric, underscore, hyphen)." >&2
         return 1
     fi
+    _ckipper_account_assert_name_not_reserved "$new" || return 1
     if [[ "$old" == "$new" ]]; then
         echo "Old and new name are the same. Nothing to do." >&2
         return 1

@@ -35,6 +35,15 @@ Claude Code now covers what the Docker sandbox and worktree commands were for: a
 - The bare-`claude` guard refused `claude` even when `CLAUDE_CONFIG_DIR` was set, e.g. inside a `claude-<name>` session.
 - Doctor no longer suggests `rm -rf ~/.claude`; that dir belongs to bare `claude` and other tools.
 - Plugin path rewrites use a literal, portable replacement instead of `sed -i` with the path as a regex.
+- Sync piped whole JSON files through zsh's `echo`, which expands backslash escapes: any `\n` inside a string (every real `.claude.json` has some) made the write fail, and `\\t`-style text was silently rewritten. JSON and data rows now go through `print -r` / `printf`.
+- A statusline command containing the bare account dir (`cd ~/.claude-a/ && …`) made sync copy the whole source account into the destination, and `undo` then deleted the destination dir. The internal-script check now requires a real file inside the account, and rollback refuses empty, absolute or `..` manifest paths.
+- Sync wrote through destination symlinks (e.g. a `CLAUDE.md` linked to a dotfile), destroying the link target while the backup held only the link. The link is now replaced.
+- Rollback/undo restored a half-synced copy when one run created a file and then changed it again. The manifest now keeps the first entry per path.
+- Two syncs in the same second shared one backup dir; zero-change syncs left empty backups that `undo` consumed; unknown `--include` types (typos) reported success. All fixed.
+- `--include` / `--exclude` as the last argument hung the shell.
+- Re-syncing a changed hook duplicated its `settings.json` entry.
+- The `output-styles` type looked in `output_styles/` instead of Claude Code's `output-styles/`.
+- A failed `desktop add` deleted a data dir that already existed (with its chats). Account names starting with `desktop-` are now reserved, because `~/.claude-desktop-<name>` is a Desktop instance's data dir.
 
 ## [Unreleased] — CLI + onboarding overhaul
 

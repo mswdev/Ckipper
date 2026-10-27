@@ -174,7 +174,9 @@ _ckipper_desktop_add_announce() {
 
 # Register a new Claude Desktop instance: create the user-data dir, generate
 # its wrapper .app bundle, and record the entry in the desktop registry.
-# Rolls back the data dir + bundle if the registry write fails.
+# On failure, rolls back the bundle and — only if this run created it — the
+# data dir. A data dir that already existed (e.g. kept by an earlier
+# `desktop remove`) holds the user's chats and is never deleted here.
 #
 # Args: $1 — instance name (must match _CKIPPER_DESKTOP_NAME_REGEX).
 # Returns: 0 on success; 1 on validation, generation, or registry failure.
@@ -188,18 +190,32 @@ _ckipper_desktop_add() {
     data_dir=$(_ckipper_desktop_data_dir_for "$name")
     bundle=$(_ckipper_desktop_bundle_path_for "$name")
     _ckipper_desktop_assert_no_bundle_collision "$bundle" || return 1
+    local created_data_dir="false"
+    [[ -e "$data_dir" ]] || created_data_dir="true"
     mkdir -p "$data_dir" "$HOME/Applications"
-    if ! _ckipper_desktop_bundle_write "$name" "$bundle" "$data_dir"; then
-        rm -rf "$data_dir" "$bundle"
-        echo "Failed to write .app bundle; rolled back $data_dir and $bundle." >&2
-        return 1
-    fi
-    if ! _ckipper_desktop_register "$name" "$data_dir" "$bundle"; then
-        rm -rf "$data_dir" "$bundle"
-        echo "Failed to write desktop registry; rolled back $data_dir and $bundle." >&2
+    if ! _ckipper_desktop_bundle_write "$name" "$bundle" "$data_dir" \
+        || ! _ckipper_desktop_register "$name" "$data_dir" "$bundle"; then
+        _ckipper_desktop_add_rollback "$data_dir" "$bundle" "$created_data_dir"
         return 1
     fi
     _ckipper_desktop_add_announce "$name" "$bundle"
+}
+
+# Undo a failed `desktop add`: remove the bundle, and the data dir only when
+# this run created it.
+#
+# Args: $1 — data dir; $2 — bundle path; $3 — "true" if this run created $1.
+# Returns: 0 always.
+# Errors (stderr): "Failed to add Desktop instance; removed …"
+_ckipper_desktop_add_rollback() {
+    local data_dir="$1" bundle="$2" created_data_dir="$3"
+    rm -rf "$bundle"
+    if [[ "$created_data_dir" == "true" ]]; then
+        rm -rf "$data_dir"
+        echo "Failed to add Desktop instance; removed $bundle and $data_dir." >&2
+        return 0
+    fi
+    echo "Failed to add Desktop instance; removed $bundle (kept existing $data_dir)." >&2
 }
 
 # Column widths (chars) used when rendering `ckipper desktop list` rows.
