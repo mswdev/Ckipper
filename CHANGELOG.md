@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Slim down to accounts + Desktop
+
+Claude Code now covers what the Docker sandbox and worktree commands were for: auto mode gates risky actions on the host, and `claude --worktree` creates and cleans up worktrees. Ckipper is now a lightweight manager for Claude Code accounts and Claude Desktop instances.
+
+### Removed
+- The Docker sandbox: `docker/` (Dockerfile, entrypoint, egress firewall, project cleanup) and every flag that drove it (`--docker`, `--firewall`, `--ssh-forward`, …).
+- The four Docker-only safety hooks (`protect-claude-config`, `bash-guardrails`, `docker-context`, `notify-bell`), the settings template that installed them, and `ckipper account redeploy-hooks`. They already exited immediately outside Docker.
+- `ckipper worktree` / `wt` and `ckipper run`. Use `claude-<account> --worktree <name>`.
+- `ckipper config` and the `ckipper-config.zsh` file — every key configured the sandbox or worktrees.
+- `ckipper setup` (the wizard) and the bare-`ck` launcher menu. Bare `ck` now prints help.
+- Per-account `preferences` (`always_docker`, `always_firewall`, `ssh_forward`) and the `prefs` sync type / `preferences` bundle.
+- The Python tooling (`pytest`, `ruff`, `pyproject.toml`) — no Python code remains.
+
+### Changed
+- Install layout: `~/.ckipper/ckipper.zsh` + `~/.ckipper/lib/` (was `~/.ckipper/docker/`). `install.sh` rewrites the old `~/.zshrc` source line and deletes `~/.ckipper/docker/`, `~/.ckipper/hooks/` and `~/.ckipper/settings-template.json`.
+- `install.sh` no longer sets git's global `core.hooksPath` (it was there to stop a container from planting git hooks). An existing value is left alone.
+- `accounts.json` schema v3: older registries are upgraded in place (with a `.v<N>.bak.<ts>` backup) and lose the `preferences` block.
+- `ckipper doctor` checks the new install path and warns about leftover Docker-era files.
+- New accounts no longer get a template `settings.json` (it only held the hooks and a `_comment`).
+- Removed commands print a pointer to their replacement.
+
+### Added
+- Account groups: `ckipper account group <name> <group> [--master]`. Each group has a master; `ckipper account list` shows groups.
+- `account sync` refuses to cross groups (and refuses ungrouped accounts), so personal-only settings, memory dirs, plugins and marketplaces cannot leak into work accounts or overwrite work-only settings. The interactive target picker only offers the source's group.
+- `ckipper account add <name> --group <group>` seeds a fresh account from the group master after `/login`: every sync type plus installed plugins (`installed_plugins.json`, `known_marketplaces.json`, `cache/`, `marketplaces/`, paths rewritten). The first account in a new group becomes its master.
+- `ckipper doctor` "Sync groups" section: warns about ungrouped accounts, groups without a master, and members whose `env.CLAUDE_CODE_REMOTE_MEMORY_DIR` differs from their master's; fails when two groups share a memory dir.
+
+### Fixed
+- `account sync` treated `false` settings as missing, so keys like `verbose`, `attribution.sessionUrl`, `idleCompaction` and `switchModelsOnFlag` showed as "new" on every sync.
+- Sync's skills, agents/commands/output-styles, hooks and `sync undo` silently found nothing when run from a shell with `NO_BARE_GLOB_QUAL` (Claude Code's Bash tool sets it). `ckipper` now runs every subcommand under `emulate -L zsh`, and each globbing helper does too.
+- Skills sync no longer touches `skills/synced/`, which claude.ai manages per account.
+- Keychain handling trusted a stored `keychain_service` that could be wrong (the first account was recorded against the default `Claude Code-credentials` entry while Claude Code actually used a hashed one). Ckipper now derives the entry name from the config dir exactly as Claude Code does: `account add` checks for it instead of diffing Keychain snapshots, doctor checks it, `account list` shows it, and `account remove` deletes only that entry (never the default one). Registry v4 drops `keychain_service`.
+- `account rename` silently logged the account out and broke its plugins. It now rewrites the plugin metadata paths and tells you to `/login` again, naming the old Keychain entry.
+- The bare-`claude` guard refused `claude` even when `CLAUDE_CONFIG_DIR` was set, e.g. inside a `claude-<name>` session.
+- `install.sh` now regenerates `aliases.zsh` from the registry; before, launcher and guard fixes only reached an install after the next `account add/remove/rename`.
+- Doctor no longer suggests `rm -rf ~/.claude`; that dir belongs to bare `claude` and other tools.
+- Plugin path rewrites use a literal, portable replacement instead of `sed -i` with the path as a regex.
+- Sync piped whole JSON files through zsh's `echo`, which expands backslash escapes: any `\n` inside a string (every real `.claude.json` has some) made the write fail, and `\\t`-style text was silently rewritten. JSON and data rows now go through `print -r` / `printf`.
+- A statusline command containing the bare account dir (`cd ~/.claude-a/ && …`) made sync copy the whole source account into the destination, and `undo` then deleted the destination dir. The internal-script check now requires a real file inside the account, and rollback refuses empty, absolute or `..` manifest paths.
+- Sync wrote through destination symlinks (e.g. a `CLAUDE.md` linked to a dotfile), destroying the link target while the backup held only the link. The link is now replaced.
+- Rollback/undo restored a half-synced copy when one run created a file and then changed it again. The manifest now keeps the first entry per path.
+- Two syncs in the same second shared one backup dir; zero-change syncs left empty backups that `undo` consumed; unknown `--include` types (typos) reported success. All fixed.
+- `--include` / `--exclude` as the last argument hung the shell.
+- Re-syncing a changed hook duplicated its `settings.json` entry.
+- The `output-styles` type looked in `output_styles/` instead of Claude Code's `output-styles/`.
+- A failed `desktop add` deleted a data dir that already existed (with its chats). Account names starting with `desktop-` are now reserved, because `~/.claude-desktop-<name>` is a Desktop instance's data dir.
+
 ## [Unreleased] — CLI + onboarding overhaul
 
 ### Claude Desktop multi-instance support

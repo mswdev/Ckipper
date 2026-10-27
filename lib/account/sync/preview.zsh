@@ -143,9 +143,7 @@ _ckipper_account_sync_drill_down_show() {
     local display="${choice#*] }"
     local id; id=$(_ckipper_account_sync_drill_down_resolve_id "$items_file" "$type" "$display")
     local diff_fn; diff_fn=$(_ckipper_account_sync_strategy_fn "$type" diff)
-    local arg_a="${_CKIPPER_SYNC_CTX[src_dir]}" arg_b="${_CKIPPER_SYNC_CTX[dst_dir]}"
-    (( ${+_CKIPPER_SYNC_TYPE_USES_NAMES[$type]} )) && { arg_a="${_CKIPPER_SYNC_CTX[src_name]}"; arg_b="${_CKIPPER_SYNC_CTX[dst_name]}"; }
-    "$diff_fn" "$arg_a" "$arg_b" "$id"
+    "$diff_fn" "${_CKIPPER_SYNC_CTX[src_dir]}" "${_CKIPPER_SYNC_CTX[dst_dir]}" "$id"
 }
 
 # Recover the original id for a (type, display) pair by looking it up
@@ -159,5 +157,5 @@ _ckipper_account_sync_drill_down_resolve_id() {
     local resolved
     resolved=$(awk -F'\t' -v t="$type" -v d="$display" \
         '$1 == t && $3 == d { print $2; exit }' "$items_file")
-    echo "${resolved:-$display}"
+    print -r -- "${resolved:-$display}"
 }

@@ -261,53 +261,61 @@ run_in_zsh() {
     [[ "$output" == *"keep"* ]]
 }
 
-# ── Prefs strategy ───────────────────────────────────────────────────────
+# Regression: `getpath($p) // null` turned every `false` into null, so
+# settings like verbose=false showed as "new" on every sync.
+@test "settings_compare: unchanged when both sides are false" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"verbose":false,"attribution":{"sessionUrl":false}}' > "$src/settings.json"
+    echo '{"verbose":false,"attribution":{"sessionUrl":false}}' > "$dst/settings.json"
 
-setup_prefs_registry() {
-    cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":2,"default":"src","accounts":{
-    "src":{"config_dir":"$TMP_HOME/src","keychain_service":null,"registered_at":"t","preferences":{"always_docker":true,"always_firewall":false,"ssh_forward":true}},
-    "dst":{"config_dir":"$TMP_HOME/dst","keychain_service":null,"registered_at":"t","preferences":{"always_docker":false,"always_firewall":false,"ssh_forward":false}}
-}}
+    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' '[\"verbose\"]'; \
+        _ckipper_account_sync_settings_compare '$src' '$dst' '[\"attribution\",\"sessionUrl\"]'"
+
+    [ "${lines[0]}" = "unchanged" ]
+    [ "${lines[1]}" = "unchanged" ]
+}
+
+@test "settings_compare: overwrite when false on one side and true on the other" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"verbose":false}' > "$src/settings.json"
+    echo '{"verbose":true}' > "$dst/settings.json"
+
+    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' '[\"verbose\"]'"
+
+    [ "$output" = "overwrite" ]
+}
+
+@test "settings_compare: new when source is false and destination lacks the key" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"verbose":false}' > "$src/settings.json"
+    echo '{}' > "$dst/settings.json"
+
+    run_in_zsh "_ckipper_account_sync_settings_compare '$src' '$dst' '[\"verbose\"]'"
+
+    [ "$output" = "new" ]
+}
+
+# Regression: json_atomic_write piped the whole file through zsh's echo,
+# which expands backslash escapes — every "\n" inside a JSON string became a
+# raw newline (invalid JSON, sync refused) and "\\t" became a TAB.
+@test "mcp_apply keeps backslash escapes elsewhere in .claude.json intact" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst"
+    echo '{"mcpServers":{"github":{"command":"x"}}}' > "$src/.claude.json"
+    cat > "$dst/.claude.json" <<'JSON'
+{"projects":{"/p":{"note":"line1\nline2","path":"C:\\temp","rule":"Bash(printf 'a\\nb')"}}}
 JSON
-    chmod 600 "$CKIPPER_REGISTRY"
-}
+    local before; before=$(jq -c '.projects' "$dst/.claude.json")
 
-@test "prefs_enumerate lists the 3 schema keys" {
-    setup_prefs_registry
     run_in_zsh "
-        source \"$REPO_ROOT/lib/core/schema.zsh\"
-        _ckipper_account_sync_prefs_enumerate 'src' | cut -f1 | sort | tr '\n' ','"
-    [[ "$output" == *"always_docker,always_firewall,ssh_forward,"* ]]
-}
-
-@test "prefs_compare: new when destination has no override (default value)" {
-    setup_prefs_registry
-    run_in_zsh "
-        source \"$REPO_ROOT/lib/core/schema.zsh\"
-        source \"$REPO_ROOT/lib/core/config.zsh\"
-        _ckipper_account_sync_prefs_compare 'src' 'dst' always_docker"
-    [[ "$output" == *"overwrite"* ]]
-}
-
-@test "prefs_compare: unchanged when values match" {
-    setup_prefs_registry
-    run_in_zsh "
-        source \"$REPO_ROOT/lib/core/schema.zsh\"
-        source \"$REPO_ROOT/lib/core/config.zsh\"
-        _ckipper_account_sync_prefs_compare 'src' 'dst' always_firewall"
-    [[ "$output" == *"unchanged"* ]]
-}
-
-@test "prefs_apply writes the source value to the destination's registry entry" {
-    setup_prefs_registry
-    run_in_zsh "
-        source \"$REPO_ROOT/lib/core/schema.zsh\"
-        source \"$REPO_ROOT/lib/core/registry.zsh\"
-        source \"$REPO_ROOT/lib/core/config.zsh\"
-        backup_dir=\$(_ckipper_account_sync_backup_create '$TMP_HOME/dst' src)
+        backup_dir=\$(_ckipper_account_sync_backup_create '$dst' src)
         _ckipper_account_sync_manifest_init \"\$backup_dir\" src dst
-        _ckipper_account_sync_prefs_apply 'src' 'dst' always_docker \"\$backup_dir\"
-        jq '.accounts.dst.preferences.always_docker' '$CKIPPER_REGISTRY'"
-    [[ "$output" == *"true"* ]]
+        _ckipper_account_sync_mcp_apply '$src' '$dst' github \"\$backup_dir\""
+
+    [ "$status" -eq 0 ]
+    [ "$(jq -c '.projects' "$dst/.claude.json")" = "$before" ]
+    [ "$(jq -r '.mcpServers.github.command' "$dst/.claude.json")" = "x" ]
 }

@@ -96,3 +96,43 @@ run_in_zsh() {
     [[ "$output" == *"new content"* ]]
     [[ "$output" == *"old content"* ]]
 }
+
+# Regression: `*.md(N)` broke under NO_BARE_GLOB_QUAL (Claude Code's Bash tool).
+@test "agents_enumerate works when the caller set no_bare_glob_qual" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src/agents"
+    echo "x" > "$src/agents/reviewer.md"
+
+    run_in_zsh "setopt no_bare_glob_qual; _ckipper_account_sync_agents_enumerate '$src' | cut -f1"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "agents/reviewer.md" ]
+}
+
+# Regression: cp followed a destination symlink and overwrote its target
+# (e.g. a shared dotfile) while the backup held only the link.
+@test "files_flat_apply replaces a destination symlink instead of writing through it" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src" "$dst" "$TMP_HOME/dotfiles"
+    echo "from source" > "$src/CLAUDE.md"
+    echo "shared original" > "$TMP_HOME/dotfiles/CLAUDE.md"
+    ln -s "$TMP_HOME/dotfiles/CLAUDE.md" "$dst/CLAUDE.md"
+
+    run_in_zsh "bk=\$(_ckipper_account_sync_backup_create '$dst' src)
+        _ckipper_account_sync_claude-md_apply '$src' '$dst' CLAUDE.md \"\$bk\""
+
+    [ "$status" -eq 0 ]
+    [ "$(cat "$TMP_HOME/dotfiles/CLAUDE.md")" = "shared original" ]
+    [ ! -L "$dst/CLAUDE.md" ]
+    [ "$(cat "$dst/CLAUDE.md")" = "from source" ]
+}
+
+@test "output-styles_enumerate reads Claude Code's output-styles/ dir" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src/output-styles"
+    echo x > "$src/output-styles/terse.md"
+
+    run_in_zsh "_ckipper_account_sync_output-styles_enumerate '$src' | cut -f1"
+
+    [ "$output" = "output-styles/terse.md" ]
+}

@@ -6,8 +6,6 @@
 # plugin metadata has stale ~/.claude/ paths. The repair functions kept their
 # original names so their existing tests work unchanged.
 
-readonly _CKIPPER_DOCTOR_MIN_HOOK_FILES=4
-
 # Module-level counters shared across all doctor helpers.
 typeset -g _CKIPPER_DOCTOR_FAIL=0
 typeset -g _CKIPPER_DOCTOR_WARN=0
@@ -39,30 +37,39 @@ _ckipper_doctor_check() {
     printf '  %s %s\n' "$badge" "$msg"
 }
 
-# Check that all required ckipper tool files and hook files are deployed.
+# Check that the ckipper install is deployed and free of old-layout leftovers.
 #
 # Returns:
 #   0 always (results printed via _ckipper_doctor_check).
 _ckipper_doctor_tooling() {
     _core_style_header "Tooling"
     if [[ -d "$CKIPPER_DIR" ]]; then _ckipper_doctor_check PASS "$CKIPPER_DIR exists"; else _ckipper_doctor_check FAIL "$CKIPPER_DIR is missing — run install.sh"; fi
-    if [[ -f "$CKIPPER_DIR/docker/ckipper.zsh" ]]; then _ckipper_doctor_check PASS "ckipper.zsh deployed"; else _ckipper_doctor_check FAIL "ckipper.zsh missing in $CKIPPER_DIR/docker/"; fi
-    if [[ -f "$CKIPPER_DIR/docker/cleanup-projects.py" ]]; then _ckipper_doctor_check PASS "cleanup-projects.py deployed"; else _ckipper_doctor_check WARN "cleanup-projects.py missing — ckipper worktree rm cleanup will silently skip"; fi
-    if [[ -f "$CKIPPER_DIR/settings-template.json" ]]; then _ckipper_doctor_check PASS "settings-template.json deployed"; else _ckipper_doctor_check WARN "settings-template.json missing — ckipper account add will skip seeding settings.json"; fi
-    if [[ -d "$CKIPPER_DIR/hooks" ]] && (( $(ls -1 "$CKIPPER_DIR/hooks" 2>/dev/null | wc -l) >= _CKIPPER_DOCTOR_MIN_HOOK_FILES )); then
-        _ckipper_doctor_check PASS "hooks/ has ${_CKIPPER_DOCTOR_MIN_HOOK_FILES}+ files"
-    else
-        _ckipper_doctor_check WARN "hooks/ is missing or has fewer than $_CKIPPER_DOCTOR_MIN_HOOK_FILES hook files"
-    fi
-    _ckipper_doctor_check_stale_w_vars
-    _ckipper_doctor_check_config_keys
+    if [[ -f "$CKIPPER_DIR/ckipper.zsh" ]]; then _ckipper_doctor_check PASS "ckipper.zsh deployed"; else _ckipper_doctor_check FAIL "ckipper.zsh missing in $CKIPPER_DIR/ — run install.sh"; fi
+    _ckipper_doctor_check_legacy_install
     _ckipper_doctor_check_gum
 }
 
-# Check that gum (charmbracelet/gum) is on PATH. Gum is a hard prereq for the
-# setup wizard, sync wizard, and every interactive picker; without it ckipper
-# falls back to read-prompt mode but loses keybindings, multi-select, and the
-# spinner. Surface a missing install loudly so the user runs `brew install gum`.
+# Paths the old Docker-based install left under $CKIPPER_DIR. install.sh
+# removes them; doctor flags any that survived.
+readonly -a _CKIPPER_DOCTOR_LEGACY_PATHS=(docker hooks settings-template.json)
+
+# Warn about leftovers from the old Docker-based install layout.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_check_legacy_install() {
+    local -a leftovers=()
+    local rel
+    for rel in "${_CKIPPER_DOCTOR_LEGACY_PATHS[@]}"; do
+        [[ -e "$CKIPPER_DIR/$rel" ]] && leftovers+=("$CKIPPER_DIR/$rel")
+    done
+    (( ${#leftovers} == 0 )) && return 0
+    _ckipper_doctor_check WARN "old Docker-era files remain: ${leftovers[*]} — re-run install.sh to remove them"
+}
+
+# Check that gum (charmbracelet/gum) is on PATH. Gum drives the sync
+# wizard and every interactive picker; without it ckipper falls back to
+# read-prompt mode but loses keybindings and multi-select. Surface a missing
+# install loudly so the user runs `brew install gum`.
 #
 # Returns: 0 always (results printed via _ckipper_doctor_check).
 _ckipper_doctor_check_gum() {
@@ -70,53 +77,6 @@ _ckipper_doctor_check_gum() {
         _ckipper_doctor_check PASS "gum on PATH"
     else
         _ckipper_doctor_check FAIL "gum not on PATH — install via 'brew install gum'"
-    fi
-}
-
-# Detect pre-merge W_* variable assignments in ckipper-config.zsh.
-#
-# Pre-merge installs used W_PROJECTS_DIR / W_PORTS / W_EXTRA_VOLUMES /
-# W_EXTRA_ENV / W_WORKTREES_DIR. Post-merge ckipper.zsh only reads the
-# CKIPPER_* names, so any leftover W_* assignment is silently ignored — and
-# the user's customizations are lost. Surface this loudly.
-#
-# Returns: 0 always (results printed via _ckipper_doctor_check).
-_ckipper_doctor_check_stale_w_vars() {
-    local cfg="$CKIPPER_DIR/docker/ckipper-config.zsh"
-    [[ -f "$cfg" ]] || return 0
-    if grep -qE '^[[:space:]]*W_(PROJECTS_DIR|WORKTREES_DIR|PORTS|EXTRA_VOLUMES|EXTRA_ENV)[[:space:]]*=' "$cfg"; then
-        _ckipper_doctor_check FAIL "ckipper-config.zsh has stale W_* assignments — they're being ignored. Rename to CKIPPER_* (e.g. W_PORTS → CKIPPER_PORTS)."
-    fi
-}
-
-# Validate every CKIPPER_<KEY>= assignment in ckipper-config.zsh against the
-# config schema (lib/core/schema.zsh). Unknown keys produce a WARN — they
-# are likely typos that the source loader will silently set into a global
-# variable that nothing reads.
-#
-# Honors a small allowlist for legacy power-user keys that are documented in
-# the example file but intentionally absent from the schema (extra_volumes,
-# extra_env). They predate the schema and remain as raw zsh arrays.
-#
-# Returns: 0 always (results printed via _ckipper_doctor_check).
-_ckipper_doctor_check_config_keys() {
-    local file="${CKIPPER_DIR:-$HOME/.ckipper}/docker/ckipper-config.zsh"
-    [[ -f "$file" ]] || return 0
-    local -a unknown
-    local -a power_user_keys=(extra_volumes extra_env)
-    local line key lower
-    while IFS= read -r line; do
-        [[ "$line" =~ ^[[:space:]]*CKIPPER_([A-Z0-9_]+)= ]] || continue
-        key="${match[1]}"
-        lower="${key:l}"
-        (( ${+_CKIPPER_SCHEMA_TYPE[$lower]} )) && continue
-        (( ${power_user_keys[(I)$lower]} )) && continue
-        unknown+=("CKIPPER_$key")
-    done < "$file"
-    if (( ${#unknown[@]} > 0 )); then
-        _ckipper_doctor_check WARN "unknown keys in ckipper-config.zsh: ${unknown[*]}"
-    else
-        _ckipper_doctor_check PASS "ckipper-config.zsh keys all known"
     fi
 }
 
@@ -139,63 +99,11 @@ _ckipper_doctor_registry() {
     else _ckipper_doctor_check WARN "registry permissions $perms (expected 600)"; fi
     local default_acc; default_acc=$(jq -r '.default // ""' "$CKIPPER_REGISTRY")
     if [[ -z "$default_acc" ]]; then
-        _ckipper_doctor_check WARN "no default account set — ckipper worktree run will require --account"
+        _ckipper_doctor_check WARN "no default account set — fix with: ckipper account default <name>"
     elif jq -e --arg n "$default_acc" '.accounts[$n]' "$CKIPPER_REGISTRY" >/dev/null 2>&1; then
         _ckipper_doctor_check INFO "default account: $default_acc"
     else
         _ckipper_doctor_check FAIL "default account '$default_acc' is NOT in registry — fix with: ckipper account default <existing-account>"
-    fi
-    _ckipper_doctor_check_preferences
-}
-
-# Build a jq sub-expression that checks `.value.preferences` has every
-# required account-scope schema key. Returns "false" (a literal jq false)
-# when no account-scope keys exist — matches the previous hardcoded behavior.
-#
-# Reads: _CKIPPER_SCHEMA_TYPE, _CKIPPER_SCHEMA_SCOPE.
-# Returns: 0; emits the jq filter to stdout (e.g.
-#   `(.value.preferences | has("always_docker")) and ...`).
-_ckipper_doctor_required_prefs_filter() {
-    local key filter=""
-    for key in "${(@ko)_CKIPPER_SCHEMA_TYPE}"; do
-        [[ "${_CKIPPER_SCHEMA_SCOPE[$key]}" == "account" ]] || continue
-        [[ -n "$filter" ]] && filter+=" and "
-        filter+="(.value.preferences | has(\"$key\"))"
-    done
-    echo "${filter:-true}"
-}
-
-# Verify every registered account has the v2 `preferences` block with all
-# account-scoped schema keys present. Migration runs at registry-load, but a
-# user who hand-edits accounts.json between bumps can end up with a partial
-# block — surface it.
-#
-# Emits WARN (not FAIL) listing the offending accounts. Migration will fix
-# them on next registry-touch operation; this is a heads-up, not a halt.
-#
-# The list of required keys is derived from the schema at call time so
-# adding a new account-scope key in lib/core/schema.zsh updates this
-# check automatically.
-#
-# Returns: 0 always (results printed via _ckipper_doctor_check).
-_ckipper_doctor_check_preferences() {
-    [[ -f "$CKIPPER_REGISTRY" ]] || return 0
-    local required_filter
-    required_filter=$(_ckipper_doctor_required_prefs_filter)
-    local missing
-    missing=$(jq -r '
-        .accounts | to_entries[] |
-        select(
-            .value.preferences == null or
-            (.value.preferences | type) != "object" or
-            (('"$required_filter"') | not)
-        ) | .key
-    ' "$CKIPPER_REGISTRY" 2>/dev/null)
-    if [[ -n "$missing" ]]; then
-        local list; list=$(echo "$missing" | paste -sd "," -)
-        _ckipper_doctor_check WARN "accounts missing preferences block: $list"
-    else
-        _ckipper_doctor_check PASS "accounts.json v2 preferences blocks valid"
     fi
 }
 
@@ -280,8 +188,9 @@ _ckipper_account_rewrite_plugin_paths() {
     return 0
 }
 
-# Rewrite stale paths in a single plugin metadata file using sed (in-place).
-# Creates a timestamped backup before modifying the file.
+# Rewrite stale paths in a single plugin metadata file. Creates a
+# timestamped backup, then replaces every literal occurrence of the old
+# prefix (no regex: paths contain `.`) and swaps the result in atomically.
 #
 # Args:
 #   $1 — old prefix (must end with `/`)
@@ -289,18 +198,17 @@ _ckipper_account_rewrite_plugin_paths() {
 #   $3 — relative plugin file path (e.g. plugins/known_marketplaces.json)
 #
 # Returns:
-#   0 always (no-op if file absent or old prefix not found).
+#   0 on success or no-op (file absent or old prefix not found); 1 if the
+#   rewritten file could not be written.
 _ckipper_account_rewrite_single_plugin_file() {
     local old="$1" new="$2" rel_path="$3"
     local fp="$new$rel_path"
     [[ -f "$fp" ]] || return 0
-    grep -q -- "$old" "$fp" 2>/dev/null || return 0
+    grep -qF -- "$old" "$fp" 2>/dev/null || return 0
     cp "$fp" "$fp.pre-rewrite-backup-$(date +%s)"
-    if [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" == darwin* ]]; then
-        sed -i '' "s|$old|$new|g" "$fp"
-    else
-        sed -i "s|$old|$new|g" "$fp"
-    fi
+    local content; content=$(<"$fp")
+    local rewrite_tmpfile; rewrite_tmpfile=$(mktemp "$fp.XXXXXX")
+    print -r -- "${content//"$old"/$new}" > "$rewrite_tmpfile" && mv "$rewrite_tmpfile" "$fp"
 }
 
 # Detect the stale prefix in the plugin metadata files for the given account.
@@ -382,29 +290,30 @@ _ckipper_account_repair_plugins_apply() {
     echo "Done. Backups saved alongside each rewritten file (.pre-rewrite-backup-<ts>)."
 }
 
-# Check macOS Keychain entry presence for a single account.
+# Check that the Keychain entry Claude Code derives from the account's
+# config dir exists. A missing entry means the account is logged out (or
+# was never logged in). Skips off macOS.
 #
 # Args:
-#   $1 — keychain service string (may be empty)
+#   $1 — account config directory
 #   $2 — account name
 #
 # Returns:
-#   0 always (skips on non-darwin).
+#   0 always.
 _ckipper_doctor_account_keychain() {
-    local svc="$1" name="$2"
+    local dir="$1" name="$2"
     [[ "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]] && return 0
-    if [[ -z "$svc" ]]; then
-        _ckipper_doctor_check INFO "    keychain_service: null (account uses on-disk credentials)"
-    elif ! _core_keychain_validate "$svc"; then
-        _ckipper_doctor_check FAIL "    keychain_service has invalid shape: $svc"
-    elif security find-generic-password -s "$svc" >/dev/null 2>&1; then
-        _ckipper_doctor_check PASS "    keychain entry present: $svc"
+    local service; service=$(_core_keychain_service_for_dir "$dir")
+    if _core_keychain_entry_exists "$service"; then
+        _ckipper_doctor_check PASS "    keychain entry present: $service"
+    elif [[ -f "$dir/.credentials.json" ]]; then
+        _ckipper_doctor_check INFO "    no keychain entry; using on-disk credentials ($dir/.credentials.json)"
     else
-        _ckipper_doctor_check WARN "    keychain entry NOT FOUND: $svc — re-run /login with: claude-$name"
+        _ckipper_doctor_check WARN "    logged out (no keychain entry '$service') — run claude-$name, then /login"
     fi
 }
 
-# Check config directory, .claude.json, settings.json, hooks, and plugins for one account.
+# Check config directory, .claude.json, settings.json, and plugins for one account.
 #
 # Args:
 #   $1 — account name
@@ -416,7 +325,6 @@ _ckipper_doctor_account() {
     echo ""
     echo "  Account: $name"
     local dir; dir=$(jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY")
-    local svc; svc=$(jq -r --arg n "$name" '.accounts[$n].keychain_service // ""' "$CKIPPER_REGISTRY")
     if [[ -d "$dir" ]]; then _ckipper_doctor_check PASS "    dir exists: $dir"
     else _ckipper_doctor_check FAIL "    dir missing: $dir"; fi
     if [[ -f "$dir/.claude.json" ]]; then
@@ -428,9 +336,8 @@ _ckipper_doctor_account() {
         _ckipper_doctor_check WARN "    .claude.json missing in $dir"
     fi
     if [[ -f "$dir/settings.json" ]]; then _ckipper_doctor_check PASS "    settings.json present"; else _ckipper_doctor_check WARN "    settings.json missing"; fi
-    if [[ -d "$dir/hooks" ]]; then _ckipper_doctor_check PASS "    hooks/ deployed"; else _ckipper_doctor_check WARN "    hooks/ missing — run: ckipper account redeploy-hooks"; fi
     _ckipper_doctor_account_plugins "$name" "$dir"
-    _ckipper_doctor_account_keychain "$svc" "$name"
+    _ckipper_doctor_account_keychain "$dir" "$name"
 }
 
 # Iterate registry accounts and run per-account checks.
@@ -498,19 +405,29 @@ _ckipper_doctor_shell() {
     _ckipper_doctor_check_aliases_parse
     if grep -q 'ckipper/aliases.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources aliases.zsh"
     else _ckipper_doctor_check WARN "~/.zshrc does NOT source aliases.zsh — add: [[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh"; fi
-    if grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources ckipper.zsh"
-    else _ckipper_doctor_check FAIL "~/.zshrc does NOT source ckipper.zsh — re-run install.sh"; fi
+    if grep -q '\.ckipper/ckipper\.zsh' "$HOME/.zshrc" 2>/dev/null; then _ckipper_doctor_check PASS "~/.zshrc sources ckipper.zsh"
+    else _ckipper_doctor_check FAIL "~/.zshrc does NOT source ~/.ckipper/ckipper.zsh — re-run install.sh"; fi
     _ckipper_doctor_check_completion
     echo ""
-    _core_style_header "Stub files (cosmetic)"
+    _ckipper_doctor_unmanaged_claude_home
+}
+
+# Report the default ~/.claude/ dir and ~/.claude.json, which belong to bare
+# `claude` and to other tools (skill installers, IDE plugins, Claude Desktop),
+# not to any Ckipper account. INFO only: they are not Ckipper's to delete.
+#
+# Returns: 0 always (results printed via _ckipper_doctor_check).
+_ckipper_doctor_unmanaged_claude_home() {
+    echo ""
+    _core_style_header "Default Claude Code home (not managed by Ckipper)"
     if [[ -d "$HOME/.claude" ]]; then
-        local stub_count; stub_count=$(ls -1A "$HOME/.claude" 2>/dev/null | wc -l | tr -d ' ')
-        _ckipper_doctor_check WARN "~/.claude exists ($stub_count files) — Claude Code may have recreated it. Safe to: rm -rf ~/.claude"
+        _ckipper_doctor_check INFO "~/.claude exists — used by bare 'claude' and other tools; Ckipper accounts don't read it"
     else
-        _ckipper_doctor_check PASS "~/.claude (stub dir) is absent"
+        _ckipper_doctor_check PASS "~/.claude is absent"
     fi
-    if [[ -f "$HOME/.claude.json" ]]; then _ckipper_doctor_check WARN "~/.claude.json exists at home root — leftover from a pre-ckipper claude install."
-    else _ckipper_doctor_check PASS "~/.claude.json (home root) is absent"; fi
+    if [[ -f "$HOME/.claude.json" ]]; then
+        _ckipper_doctor_check INFO "~/.claude.json exists — belongs to bare 'claude'; Ckipper accounts don't read it"
+    fi
 }
 
 # Print the three-state summary line (FAIL / WARN-only / all-passed).
@@ -554,6 +471,7 @@ _ckipper_doctor() {
         return 0
     fi
     _ckipper_doctor_accounts
+    _ckipper_doctor_groups
     _ckipper_doctor_shell
     _ckipper_doctor_summary
 }

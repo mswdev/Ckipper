@@ -74,3 +74,16 @@ _ckipper_account_sync_json_status() {
     [[ "$s" == "$d" ]] && { echo "unchanged"; return 0; }
     echo "overwrite"
 }
+
+# Remove a destination path if it is a symlink, so the following copy
+# writes a regular file in the account dir. `cp` follows an existing
+# destination symlink, which would overwrite the link's target (often a
+# shared dotfile outside the account) while the backup only held the link.
+# Call AFTER backing the path up.
+#
+# Args: $1 — destination path.
+# Returns: 0 always.
+_ckipper_account_sync_drop_dst_symlink() {
+    [[ -L "$1" ]] && rm -f "$1"
+    return 0
+}

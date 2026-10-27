@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 # Top-level dispatcher tests for ckipper().
 #
-# Verifies that namespace routing (account, worktree, doctor) works, that the
-# acct/wt short forms are equivalent, that bare/help prints overview, that
-# unknown commands fuzzy-suggest, and that namespace subcommands are reachable
-# through the new dispatcher.
+# Verifies that namespace routing (account, desktop, doctor) works, that the
+# acct short form is equivalent, that bare/help prints overview, that unknown
+# commands fuzzy-suggest, that removed commands print a pointer to their
+# replacement, and that namespace subcommands are reachable.
 #
 # ckipper.zsh is zsh-only (uses read "?..." prompt syntax, setopt, etc.).
 # Bats runs under bash, so every test spawns a zsh subprocess via run_ckipper().
@@ -21,16 +21,12 @@ teardown() {
 
 # ── Top-level routing ────────────────────────────────────────────────
 
-@test "ckipper (bare) opens the launcher menu" {
-    # Bare `ck` opens the interactive launcher (Phase 5.2). With no stdin, the
-    # underlying choose prompt hits EOF (or gum errors out without a TTY) and
-    # the menu exits non-zero. We assert on the banner + tagline because they
-    # render before the prompt regardless of the gum / pure-zsh code path.
+@test "ckipper (bare) prints top-level help" {
     run_ckipper
 
-    [ "$status" -ne 0 ]
-    [[ "$output" =~ "Ckipper" ]]
-    [[ "$output" =~ "Multi-account" ]]
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "ckipper account <subcommand>" ]]
+    [[ "$output" =~ "ckipper desktop <subcommand>" ]]
 }
 
 @test "ckipper help prints top-level help" {
@@ -89,38 +85,37 @@ teardown() {
 }
 
 @test "ckipper account remove rejects unknown name" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
     run_ckipper account remove nobody
     [ "$status" -ne 0 ]
     [[ "$output" =~ "not registered" ]]
 }
 
-# ── Worktree namespace + alias ───────────────────────────────────────
+# ── Removed commands ─────────────────────────────────────────────────
 
-@test "ckipper worktree help prints worktree-namespace help" {
-    run_ckipper worktree help
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "ckipper worktree" ]]
-    [[ "$output" =~ "Short form" ]]
-}
+@test "ckipper worktree points at claude --worktree" {
+    run_ckipper worktree run myproj main
 
-@test "ckipper wt help is equivalent to ckipper worktree help" {
-    run_ckipper wt help
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "ckipper worktree" ]]
-}
-
-@test "ckipper worktree run --help prints run-specific help" {
-    run_ckipper worktree run --help
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "ckipper worktree run" ]]
-    [[ "$output" =~ "--docker" ]]
-}
-
-@test "ckipper wt run with no args prints help and exits 1" {
-    run_ckipper wt run
     [ "$status" -ne 0 ]
-    [[ "$output" =~ "ckipper worktree run" ]]
+    [[ "$output" =~ "'ckipper worktree' was removed" ]]
+    [[ "$output" =~ "--worktree" ]]
+}
+
+@test "ckipper run points at claude --worktree" {
+    run_ckipper run myproj main
+
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "'ckipper run' was removed" ]]
+}
+
+@test "ckipper config and setup print a removed hint" {
+    run_ckipper config list
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "'ckipper config' was removed" ]]
+
+    run_ckipper setup
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "'ckipper setup' was removed" ]]
 }
 
 # ── Doctor (top-level command, not a namespace) ──────────────────────
@@ -139,7 +134,7 @@ teardown() {
 }
 
 @test "ckipper doctor mentions registry in output" {
-    echo '{"version":1,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_REGISTRY"
     run_ckipper doctor
     [[ "$output" =~ [Rr]egistry ]]
 }

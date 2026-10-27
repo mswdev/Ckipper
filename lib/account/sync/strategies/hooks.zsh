@@ -1,10 +1,6 @@
 #!/usr/bin/env zsh
-# Strategy module for "hooks" sync type — USER-WRITTEN HOOKS ONLY.
-#
-# A hook script <src>/hooks/<file> is a sync candidate iff the filename
-# does NOT match a ckipper-managed install hook in $CKIPPER_DIR/hooks/.
-# This filter is computed at runtime so adding a new ckipper safety hook
-# automatically excludes it from sync.
+# Strategy module for "hooks" sync type — hook scripts the user wrote and
+# keeps in <dir>/hooks/.
 #
 # Each enumerated item is (script-file, paired-settings-entry). The apply
 # function does both:
@@ -13,38 +9,21 @@
 #      paired entry from <src>/settings.json, with command paths rewritten
 #      to point at the destination's hooks dir.
 
-# Build the install-managed allowlist as a newline-separated set of basenames.
-#
-# Returns: 0; prints one filename per line. Empty if install hooks dir
-#   doesn't exist.
-_ckipper_account_sync_hooks_install_allowlist() {
-    local install_dir="$CKIPPER_DIR/hooks"
-    [[ ! -d "$install_dir" ]] && return 0
-    local f
-    for f in "$install_dir"/*(N); do
-        [[ -f "$f" ]] || continue
-        echo "${f:t}"
-    done
-}
-
-# Enumerate user-written hooks in <src>/hooks/ — files NOT in the install
-# allowlist.
+# Enumerate the hook scripts in <src>/hooks/.
 #
 # Args: $1 — source account dir.
 # Returns: 0; prints "<relpath>\t<basename>" per item.
 _ckipper_account_sync_hooks_enumerate() {
+    # Reset to zsh defaults so the (N…) glob qualifiers below work even when
+    # the caller's shell has NO_BARE_GLOB_QUAL set (Claude Code's Bash tool does).
+    emulate -L zsh
     local src="$1"
     local hooks_dir="$src/hooks"
     [[ ! -d "$hooks_dir" ]] && return 0
-    local allowlist; allowlist=$(_ckipper_account_sync_hooks_install_allowlist)
-    local f base
+    local f
     for f in "$hooks_dir"/*(N); do
         [[ -f "$f" ]] || continue
-        base="${f:t}"
-        if [[ -n "$allowlist" ]] && echo "$allowlist" | grep -qx "$base"; then
-            continue
-        fi
-        echo "hooks/$base\t$base"
+        printf '%s\t%s\n' "hooks/${f:t}" "${f:t}"
     done
 }
 
@@ -98,9 +77,8 @@ _ckipper_account_sync_hooks_diff() {
 # restore settings.json and would leave dangling .hooks entries pointing
 # at scripts that have just been deleted/restored.
 #
-# Multiple hooks in one sync each append a settings.json entry; rollback
-# is idempotent so duplicate entries are harmless (each restore from the
-# same backup yields the same pre-sync state).
+# The manifest keeps only the first entry per path, so several hooks in one
+# sync record settings.json once, with the pre-sync operation.
 #
 # Args: $1 — src; $2 — dst; $3 — relpath; $4 — backup_dir.
 # Returns: 0 on success; non-zero on cp/jq/write failure.
@@ -110,6 +88,7 @@ _ckipper_account_sync_hooks_apply() {
     local settings_op="overwrite"; [[ -e "$dst/settings.json" ]] || settings_op="create"
     _ckipper_account_sync_backup_file "$backup_dir" "$dst/settings.json" "settings.json" || return 1
     _ckipper_account_sync_manifest_append "$backup_dir" "settings.json" "$settings_op" hooks "$rel"
+    _ckipper_account_sync_drop_dst_symlink "$dst/$rel"
     mkdir -p "$dst/${rel:h}"
     cp -a "$src/$rel" "$dst/$rel" || return 1
     chmod +x "$dst/$rel" 2>/dev/null
@@ -121,8 +100,10 @@ _ckipper_account_sync_hooks_apply() {
 #   1. Filtering src settings.hooks entries to those whose .command
 #      references "/<script_basename>" (the user hook being synced).
 #   2. Rewriting each .command path's src prefix → dst prefix.
-#   3. Appending the filtered+rewritten entries to dst's per-event arrays
-#      (creating events that didn't exist on dst).
+#   3. Dropping dst hook commands identical to the incoming ones (so a
+#      re-sync replaces instead of duplicating), then appending the
+#      filtered+rewritten entries to dst's per-event arrays (creating events
+#      that didn't exist on dst).
 #
 # Args: $1 — src; $2 — dst; $3 — script relpath (hooks/<basename>).
 # Returns: 0 on success; non-zero on jq/write failure.
@@ -140,8 +121,12 @@ _ckipper_account_sync_hooks_merge_settings() {
         .hooks //= {} |
         reduce ($src_hooks | to_entries[]) as $event (
             .;
-            .hooks[$event.key] //= [] |
-            .hooks[$event.key] += $event.value
+            [$event.value[].hooks[].command] as $incoming
+            | .hooks[$event.key] = (
+                (.hooks[$event.key] // [])
+                | map(.hooks |= map(select(.command as $c | $incoming | index([$c]) | not)))
+                | map(select(.hooks | length > 0))
+              ) + $event.value
         )
     ' "$dst_settings")
     _ckipper_account_sync_json_atomic_write "$dst_settings" "$merged"

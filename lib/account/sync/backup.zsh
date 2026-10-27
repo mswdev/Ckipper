@@ -18,23 +18,6 @@ readonly _CKIPPER_SYNC_BACKUP_FILE_PERMS=600
 readonly _CKIPPER_SYNC_MANIFEST_FILE=".ckipper-sync-manifest.json"
 readonly _CKIPPER_SYNC_MANIFEST_VERSION=1
 
-# Compute the LIVE absolute path for a manifest entry. Most types live
-# under <dst_dir>/<rel>; prefs operates on $CKIPPER_REGISTRY (which is
-# usually outside the destination account dir). Used by both apply_one
-# (op-derivation in engine.zsh) and rollback_one so the two agree on
-# what file is being touched.
-#
-# Args: $1 — type (may be empty for legacy callers); $2 — dst_dir;
-#       $3 — relpath from the manifest.
-# Returns: 0; prints absolute path.
-_ckipper_account_sync_live_path() {
-    local type="$1" dst_dir="$2" rel="$3"
-    case "$type" in
-        prefs) echo "$CKIPPER_REGISTRY" ;;
-        *) echo "$dst_dir/$rel" ;;
-    esac
-}
-
 # Compute the backup-dir path (does NOT create it). Pure function; no IO.
 #
 # Args: $1 — destination account dir; $2 — source account name.
@@ -45,18 +28,24 @@ _ckipper_account_sync_backup_dir_path() {
     echo "$dst_dir/$_CKIPPER_SYNC_BACKUP_SUBDIR/$ts-from-$source_name"
 }
 
-# Create the backup root dir for one sync invocation. Idempotent: a
-# concurrent caller picking the same timestamp will see the existing dir.
+# Create a fresh backup root dir for one sync invocation. Two syncs in the
+# same second get distinct dirs (`-2`, `-3`, …) so the second never
+# overwrites the first one's manifest.
 #
 # Args: $1 — destination account dir; $2 — source account name.
 # Returns: 0; prints the created path on stdout.
 _ckipper_account_sync_backup_create() {
     local dst_dir="$1" source_name="$2"
-    local backup_dir
-    backup_dir=$(_ckipper_account_sync_backup_dir_path "$dst_dir" "$source_name")
-    mkdir -p "$backup_dir"
+    local base_dir backup_dir suffix=1
+    base_dir=$(_ckipper_account_sync_backup_dir_path "$dst_dir" "$source_name")
+    backup_dir="$base_dir"
+    mkdir -p "${base_dir:h}"
+    until mkdir "$backup_dir" 2>/dev/null; do
+        (( suffix++ ))
+        backup_dir="$base_dir-$suffix"
+    done
     chmod "$_CKIPPER_SYNC_BACKUP_DIR_PERMS" "$backup_dir"
-    echo "$backup_dir"
+    print -r -- "$backup_dir"
 }
 
 # Copy a single file or directory from the destination into the backup
@@ -96,6 +85,9 @@ _ckipper_account_sync_manifest_init() {
 
 # Append one entry to the manifest. Items field is a comma-separated list
 # (the strategy decides what counts as an item — JSON keys, file paths, etc.).
+# The first entry for a path wins: its operation describes the pre-sync
+# state, so a later "overwrite" of a file this sync created is not recorded
+# (rollback must delete that file, not restore the half-synced copy).
 #
 # Args: $1 — backup_dir; $2 — relative path; $3 — operation (create|overwrite);
 #       $4 — type id; $5 — items (comma-separated, optional).
@@ -105,7 +97,7 @@ _ckipper_account_sync_manifest_append() {
     local manifest="$backup_dir/$_CKIPPER_SYNC_MANIFEST_FILE"
     local tmp; tmp=$(mktemp "$manifest.XXXXXX")
     if jq --arg p "$rel" --arg o "$op" --arg t "$type" --arg i "$items" \
-        '.files += [{path: $p, operation: $o, type: $t, items: ($i | split(",") | map(select(length > 0)))}]' \
+        'if any(.files[]; .path == $p) then . else .files += [{path: $p, operation: $o, type: $t, items: ($i | split(",") | map(select(length > 0)))}] end' \
         "$manifest" > "$tmp"; then
         mv "$tmp" "$manifest" && chmod "$_CKIPPER_SYNC_BACKUP_FILE_PERMS" "$manifest"
         return $?
@@ -121,6 +113,9 @@ _ckipper_account_sync_manifest_append() {
 # Args: $1 — destination account dir.
 # Returns: 0 always; prints absolute backup-dir paths, one per line.
 _ckipper_account_sync_manifest_list_backups() {
+    # Reset to zsh defaults so the (N…) glob qualifiers below work even when
+    # the caller's shell has NO_BARE_GLOB_QUAL set (Claude Code's Bash tool does).
+    emulate -L zsh
     local dst_dir="$1"
     local root="$dst_dir/$_CKIPPER_SYNC_BACKUP_SUBDIR"
     [[ ! -d "$root" ]] && return 0
@@ -134,9 +129,6 @@ _ckipper_account_sync_manifest_list_backups() {
 # - operation=create  → delete the file at the live path (the sync put it there)
 # - operation=overwrite → restore from <backup_dir>/<rel> via atomic rename
 #
-# The live path is normally <dst>/<rel>, but for type=prefs it's
-# $CKIPPER_REGISTRY. _ckipper_account_sync_live_path encapsulates that.
-#
 # Best-effort per-entry: a missing backup or a permission error is logged
 # (stderr) but does not stop subsequent entries from rolling back.
 #
@@ -148,22 +140,25 @@ _ckipper_account_sync_rollback_target() {
     local manifest="$backup_dir/$_CKIPPER_SYNC_MANIFEST_FILE"
     [[ ! -f "$manifest" ]] && return 0
     local rc=0
-    while IFS=$'\t' read -r op rel type; do
-        _ckipper_account_sync_rollback_one "$backup_dir" "$dst_dir" "$op" "$rel" "$type" || rc=1
-    done < <(jq -r '.files[] | "\(.operation)\t\(.path)\t\(.type // "")"' "$manifest")
+    while IFS=$'\t' read -r op rel; do
+        _ckipper_account_sync_rollback_one "$backup_dir" "$dst_dir" "$op" "$rel" || rc=1
+    done < <(jq -r '.files[] | "\(.operation)\t\(.path)"' "$manifest")
     return $rc
 }
 
 # Per-entry rollback helper. Kept separate so _rollback_target stays under
 # the 25-line cap and the per-entry logic is independently unit-testable.
 #
-# Args: $1 — backup_dir; $2 — dst_dir; $3 — operation; $4 — relative path;
-#       $5 — type (optional; routes prefs to $CKIPPER_REGISTRY instead of dst_dir).
+# Args: $1 — backup_dir; $2 — dst_dir; $3 — operation; $4 — relative path.
 # Returns: 0 on success; 1 on rm/mv failure.
 # Errors (stderr): "rollback failed: <rel> — <reason>"
 _ckipper_account_sync_rollback_one() {
-    local backup_dir="$1" dst_dir="$2" op="$3" rel="$4" type="${5:-}"
-    local live; live=$(_ckipper_account_sync_live_path "$type" "$dst_dir" "$rel")
+    local backup_dir="$1" dst_dir="$2" op="$3" rel="$4"
+    if [[ -z "$rel" || "$rel" == /* || "/$rel/" == *"/../"* ]]; then
+        echo "rollback failed: refusing unsafe manifest path '$rel'" >&2
+        return 1
+    fi
+    local live="$dst_dir/$rel"
     if [[ "$op" == "create" ]]; then
         rm -rf "$live" 2>/dev/null || {
             echo "rollback failed: $rel — could not remove created file" >&2

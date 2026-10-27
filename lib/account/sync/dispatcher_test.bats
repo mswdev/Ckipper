@@ -47,11 +47,11 @@ run_in_zsh() {
 
 @test "parse_args identifies --exclude with comma list" {
     run_in_zsh '
-        _ckipper_account_sync_parse_args personal work --include all --exclude prefs
+        _ckipper_account_sync_parse_args personal work --include all --exclude hooks
         echo "include=$_CKIPPER_SYNC_INCLUDE"
         echo "exclude=$_CKIPPER_SYNC_EXCLUDE"'
     [[ "$output" == *"include=all"* ]]
-    [[ "$output" == *"exclude=prefs"* ]]
+    [[ "$output" == *"exclude=hooks"* ]]
 }
 
 @test "parse_args identifies --force" {
@@ -79,9 +79,9 @@ run_in_zsh() {
 
 setup_two_accounts() {
     cat > "$CKIPPER_REGISTRY" <<JSON
-{"version":2,"default":"src","accounts":{
-    "src":{"config_dir":"$TMP_HOME/src","keychain_service":null,"registered_at":"t","preferences":{"always_docker":true,"always_firewall":false,"ssh_forward":true}},
-    "dst":{"config_dir":"$TMP_HOME/dst","keychain_service":null,"registered_at":"t","preferences":{"always_docker":false,"always_firewall":false,"ssh_forward":false}}
+{"version":4,"default":"src","groups":{"g":{"master":"src"}},"accounts":{
+    "src":{"config_dir":"$TMP_HOME/src","registered_at":"t","group":"g"},
+    "dst":{"config_dir":"$TMP_HOME/dst","registered_at":"t","group":"g"}
 }}
 JSON
     chmod 600 "$CKIPPER_REGISTRY"
@@ -232,4 +232,47 @@ run_full() {
         rm -f "$items"
         echo "ACTION=[$action]"'
     [[ "$output" == *"ACTION=[apply]"* ]]
+}
+
+# Regression: run from Claude Code's Bash tool (NO_BARE_GLOB_QUAL) or a shell
+# with KSH_ARRAYS, the skills type silently found nothing. The top-level
+# ckipper() now runs under `emulate -L zsh`.
+@test "ckipper account sync finds skills even when the caller set no_bare_glob_qual and ksh_arrays" {
+    setup_two_accounts
+    mkdir -p "$TMP_HOME/src/skills/humanizer"
+    echo "x" > "$TMP_HOME/src/skills/humanizer/SKILL.md"
+
+    run_full 'setopt no_bare_glob_qual ksh_arrays; ckipper account sync src dst --include skills --dry-run'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"humanizer"* ]]
+}
+
+@test "parse_args errors instead of hanging when --include has no value" {
+    run_in_zsh '_ckipper_account_sync_parse_args personal work --include; echo "rc=$?"'
+
+    [[ "$output" == *"Missing value for --include"* ]]
+    [[ "$output" == *"rc=1"* ]]
+}
+
+@test "ckipper account sync rejects an unknown type instead of reporting success" {
+    setup_two_accounts
+
+    run_full 'ckipper account sync src dst --include mpc --yes'
+
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown sync type: mpc"* ]]
+    [ ! -d "$TMP_HOME/dst/.ckipper-sync-backups" ]
+}
+
+# Regression: an applied sync with zero changes still created a backup,
+# which `sync undo` then consumed instead of the real one.
+@test "ckipper account sync with nothing to change creates no backup" {
+    setup_two_accounts
+    echo '{"mcpServers":{"github":{"command":"x"}}}' > "$TMP_HOME/dst/.claude.json"
+
+    run_full 'ckipper account sync src dst --include mcp --yes'
+
+    [ "$status" -eq 0 ]
+    [ ! -d "$TMP_HOME/dst/.ckipper-sync-backups" ]
 }

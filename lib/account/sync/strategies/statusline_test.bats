@@ -157,3 +157,39 @@ run_in_zsh() {
     [[ "$output" == *"GONE"* ]]
     [[ "$output" != *"STILL_THERE"* ]]
 }
+
+# Regression: a bare "$src/" token (e.g. `cd ~/.claude-a/ && ./sl.sh`) was
+# treated as the internal script, so apply copied the whole source account
+# into the destination and undo then rm -rf'd the destination.
+@test "statusline_internal_path ignores a token that is just the source dir" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src"
+    echo '{"statusLine":{"type":"command","command":"cd '"$src"'/ && ./sl.sh"}}' > "$src/settings.json"
+
+    run_in_zsh "_ckipper_account_sync_statusline_internal_path '$src'"
+
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "statusline_internal_path ignores paths that climb out with .." {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src" "$TMP_HOME/outside"
+    echo x > "$TMP_HOME/outside/sl.sh"
+    echo '{"statusLine":{"type":"command","command":"bash '"$src"'/../outside/sl.sh"}}' > "$src/settings.json"
+
+    run_in_zsh "_ckipper_account_sync_statusline_internal_path '$src'"
+
+    [ -z "$output" ]
+}
+
+@test "statusline_internal_path still finds a real script inside the source dir" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src"
+    echo x > "$src/statusline.sh"
+    echo '{"statusLine":{"type":"command","command":"bash '"$src"'/statusline.sh"}}' > "$src/settings.json"
+
+    run_in_zsh "_ckipper_account_sync_statusline_internal_path '$src'"
+
+    [ "$output" = "$src/statusline.sh" ]
+}

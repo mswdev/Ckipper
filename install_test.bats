@@ -10,181 +10,144 @@ teardown() {
     teardown_isolated_env
 }
 
-@test "install.sh fresh install creates ~/.ckipper/docker/ tree with lib/" {
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+# Run install.sh against the isolated $TMP_HOME.
+run_install() {
+    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" run "$REPO_ROOT/install.sh"
+}
+
+@test "install.sh fresh install deploys ckipper.zsh and lib/ under ~/.ckipper" {
+    run_install
 
     [ "$status" -eq 0 ]
-    [ -d "$TMP_HOME/.ckipper/docker/lib/core" ]
-    [ -d "$TMP_HOME/.ckipper/docker/lib/account" ]
-    [ -d "$TMP_HOME/.ckipper/docker/lib/worktree" ]
-    [ -f "$TMP_HOME/.ckipper/docker/ckipper.zsh" ]
-    [ -f "$TMP_HOME/.ckipper/docker/ckipper-config.zsh" ]
+    [ -f "$TMP_HOME/.ckipper/ckipper.zsh" ]
+    [ -d "$TMP_HOME/.ckipper/lib/core" ]
+    [ -d "$TMP_HOME/.ckipper/lib/account" ]
+    [ -d "$TMP_HOME/.ckipper/lib/desktop" ]
+    [ ! -e "$TMP_HOME/.ckipper/docker" ]
 }
 
 @test "install.sh excludes test files from deployed lib/" {
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+    run_install
 
     [ "$status" -eq 0 ]
-    run find "$TMP_HOME/.ckipper/docker/lib" \( -name '*_test.*' -o -name '__pycache__' \)
+    run find "$TMP_HOME/.ckipper/lib" -name '*_test.*'
     [ -z "$output" ]
 }
 
-@test "install.sh re-run preserves customised ckipper-config.zsh" {
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" run "$REPO_ROOT/install.sh"
-    [ "$status" -eq 0 ]
-    echo 'CUSTOM_VALUE="preserve_me"' >> "$TMP_HOME/.ckipper/docker/ckipper-config.zsh"
+@test "install.sh leaves accounts.json and desktop.json alone" {
+    echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_DIR/accounts.json"
+    echo '{"version":1,"instances":{}}' > "$CKIPPER_DIR/desktop.json"
 
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+    run_install
 
     [ "$status" -eq 0 ]
-    grep -q 'CUSTOM_VALUE="preserve_me"' "$TMP_HOME/.ckipper/docker/ckipper-config.zsh"
+    [ "$(cat "$CKIPPER_DIR/accounts.json")" = '{"version":4,"default":null,"accounts":{}}' ]
+    [ "$(cat "$CKIPPER_DIR/desktop.json")" = '{"version":1,"instances":{}}' ]
 }
 
-@test "install.sh deletes stale w-function.zsh from a pre-merge install" {
-    mkdir -p "$TMP_HOME/.ckipper/docker"
-    echo "# stale w-function" > "$TMP_HOME/.ckipper/docker/w-function.zsh"
+# Regression: aliases.zsh was only rewritten on account add/remove/rename,
+# so guard and launcher fixes never reached an existing install.
+@test "install.sh regenerates aliases.zsh from the registry with the new guard" {
+    printf '{"version":4,"default":"dev","accounts":{"dev":{"config_dir":"%s/.claude-dev"}}}' "$TMP_HOME" > "$CKIPPER_DIR/accounts.json"
+    echo '# stale aliases from an older ckipper' > "$CKIPPER_DIR/aliases.zsh"
 
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+    run_install
 
     [ "$status" -eq 0 ]
-    [ ! -f "$TMP_HOME/.ckipper/docker/w-function.zsh" ]
+    [[ "$output" == *"Regenerated"* ]]
+    ! grep -q 'stale aliases' "$CKIPPER_DIR/aliases.zsh"
+    grep -q '^claude-dev()' "$CKIPPER_DIR/aliases.zsh"
+    grep -qF -- '-z "$CLAUDE_CONFIG_DIR"' "$CKIPPER_DIR/aliases.zsh"
 }
 
-@test "install.sh deletes stale _w completion file from a pre-merge install" {
-    mkdir -p "$HOME/.zsh/completions"
-    echo "# stale _w" > "$HOME/.zsh/completions/_w"
-
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+@test "install.sh does not create aliases.zsh when there is no registry" {
+    run_install
 
     [ "$status" -eq 0 ]
-    [ ! -f "$TMP_HOME/.zsh/completions/_w" ]
+    [ ! -e "$CKIPPER_DIR/aliases.zsh" ]
 }
 
-@test "install.sh migrates pre-merge w-config.zsh into ckipper-config.zsh" {
-    mkdir -p "$TMP_HOME/.ckipper/docker"
-    cat > "$TMP_HOME/.ckipper/docker/w-config.zsh" << 'EOF'
-# pre-merge user config
-CUSTOM_VALUE="from_old_config"
-EOF
+@test "install.sh removes the old Docker-era files" {
+    mkdir -p "$CKIPPER_DIR/docker/lib" "$CKIPPER_DIR/hooks"
+    echo '# old' > "$CKIPPER_DIR/docker/ckipper.zsh"
+    echo '# old' > "$CKIPPER_DIR/hooks/bash-guardrails.sh"
+    echo '{}' > "$CKIPPER_DIR/settings-template.json"
 
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+    run_install
 
     [ "$status" -eq 0 ]
-    [ ! -f "$TMP_HOME/.ckipper/docker/w-config.zsh" ]
-    [ -f "$TMP_HOME/.ckipper/docker/ckipper-config.zsh" ]
-    grep -q 'CUSTOM_VALUE="from_old_config"' "$TMP_HOME/.ckipper/docker/ckipper-config.zsh"
+    [ ! -e "$CKIPPER_DIR/docker" ]
+    [ ! -e "$CKIPPER_DIR/hooks" ]
+    [ ! -e "$CKIPPER_DIR/settings-template.json" ]
 }
 
-@test "install.sh renames W_* assignments to CKIPPER_* during migration" {
-    mkdir -p "$TMP_HOME/.ckipper/docker"
-    cat > "$TMP_HOME/.ckipper/docker/w-config.zsh" << 'EOF'
-# pre-merge user config — every customizable variable
-W_PROJECTS_DIR="$HOME/myrepos"
-W_WORKTREES_DIR="$HOME/myworktrees"
-W_PORTS=(3000 8080 9090 12345)
-W_EXTRA_VOLUMES=("/data:/data:ro")
-W_EXTRA_ENV=("CUSTOM_KEY=v")
-# Comment with W_PORTS in it should NOT be rewritten.
-EOF
+@test "install.sh appends a source line when ~/.zshrc has none" {
+    echo '# Some user config' > "$HOME/.zshrc"
 
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+    run_install
 
     [ "$status" -eq 0 ]
-    local cfg="$TMP_HOME/.ckipper/docker/ckipper-config.zsh"
-    grep -q '^CKIPPER_PROJECTS_DIR=' "$cfg"
-    grep -q '^CKIPPER_WORKTREES_DIR=' "$cfg"
-    grep -q '^CKIPPER_PORTS=(3000 8080 9090 12345)' "$cfg"
-    grep -q '^CKIPPER_EXTRA_VOLUMES=' "$cfg"
-    grep -q '^CKIPPER_EXTRA_ENV=' "$cfg"
-    # Comment lines must not be rewritten — preserve original W_PORTS reference.
-    grep -q '# Comment with W_PORTS in it' "$cfg"
-    # No leftover W_* assignments (excluding the comment).
-    ! grep -qE '^[[:space:]]*W_(PROJECTS_DIR|WORKTREES_DIR|PORTS|EXTRA_VOLUMES|EXTRA_ENV)=' "$cfg"
-
-    # Functional check: post-install ckipper.zsh sees the renamed variables.
-    run zsh -c "source '$REPO_ROOT/ckipper.zsh'; print -r -- \"\${CKIPPER_PORTS[*]}\""
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "3000 8080 9090 12345" ]]
+    grep -qF 'source "$HOME/.ckipper/ckipper.zsh"' "$HOME/.zshrc"
+    grep -q '# Some user config' "$HOME/.zshrc"
 }
 
-@test "install.sh rewrites pre-merge ~/.zshrc source line with trailing comment" {
+@test "install.sh rewrites the old docker/ckipper.zsh source line in place" {
     cat > "$HOME/.zshrc" << 'EOF'
 # Some user config
+source "$HOME/.ckipper/docker/ckipper.zsh"
+[[ -f ~/.ckipper/aliases.zsh ]] && source ~/.ckipper/aliases.zsh
+EOF
+
+    run_install
+
+    [ "$status" -eq 0 ]
+    [ "$(sed -n 2p "$HOME/.zshrc")" = 'source "$HOME/.ckipper/ckipper.zsh"' ]
+    ! grep -q 'docker/ckipper\.zsh' "$HOME/.zshrc"
+    grep -q 'ckipper/aliases.zsh' "$HOME/.zshrc"
+}
+
+@test "install.sh rewrites a pre-merge w-function.zsh line with a trailing comment" {
+    cat > "$HOME/.zshrc" << 'EOF'
 source "$HOME/.ckipper/docker/w-function.zsh" # ckipper bootstrap
 EOF
 
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+    run_install
 
     [ "$status" -eq 0 ]
-    grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc"
-    ! grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc"
+    grep -qF 'source "$HOME/.ckipper/ckipper.zsh"' "$HOME/.zshrc"
+    ! grep -q 'w-function\.zsh' "$HOME/.zshrc"
 }
 
-@test "install.sh creates timestamped backup, does not clobber on second run" {
-    cat > "$HOME/.zshrc" << 'EOF'
-source "$HOME/.ckipper/docker/w-function.zsh"
-EOF
-
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+@test "install.sh is idempotent: second run keeps one source line and the first backup" {
+    echo 'source "$HOME/.ckipper/docker/ckipper.zsh"' > "$HOME/.zshrc"
+    run_install
     [ "$status" -eq 0 ]
-
     local first_backup
     first_backup=$(ls "$HOME"/.zshrc.ckipper-bak.* 2>/dev/null | head -1)
     [ -n "$first_backup" ]
-    grep -q 'ckipper/docker/w-function\.zsh' "$first_backup"
 
-    # Second install run on already-rewritten zshrc — must not clobber backup.
-    sleep 1
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+    run_install
+
     [ "$status" -eq 0 ]
-    [ -f "$first_backup" ]
-    grep -q 'ckipper/docker/w-function\.zsh' "$first_backup"
+    [ "$(grep -cF 'source "$HOME/.ckipper/ckipper.zsh"' "$HOME/.zshrc")" -eq 1 ]
+    grep -q 'docker/ckipper\.zsh' "$first_backup"
 }
 
-@test "install.sh rewrites pre-merge ~/.zshrc source line to ckipper.zsh" {
-    cat > "$HOME/.zshrc" << 'EOF'
-# Some user config
-source "$HOME/.ckipper/docker/w-function.zsh"
-EOF
-
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
+@test "install.sh leaves the user's git core.hooksPath alone" {
+    run_install
 
     [ "$status" -eq 0 ]
-    grep -q 'ckipper/docker/ckipper\.zsh' "$HOME/.zshrc"
-    ! grep -q 'ckipper/docker/w-function\.zsh' "$HOME/.zshrc"
-}
-
-@test "install.sh skips wizard and prints manual hint in non-interactive shell" {
-    # bats's `run` invokes install.sh with stdin/stdout disconnected from a tty,
-    # which trips the `[[ -t 0 && -t 1 ]]` guard. The non-interactive branch must
-    # complete the install AND print the manual `ckipper setup` hint.
-    HOME="$TMP_HOME" CKIPPER_DIR="$TMP_HOME/.ckipper" \
-        run "$REPO_ROOT/install.sh"
-
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Non-interactive"* ]]
-    [[ "$output" == *"ckipper setup"* ]]
+    run git config --global --get core.hooksPath
+    [ -z "$output" ]
 }
 
 @test "install.sh fails fast when gum is missing" {
-    # Build a PATH where docker/jq/git/security exist as no-op stubs but gum
-    # does NOT — coreutils (/usr/bin, /bin) stay reachable so install.sh's
-    # pre-check shell plumbing (dirname, pwd, uname) still works.
-    # install.sh must exit non-zero with "gum" mentioned in the output.
+    # Build a PATH where jq/security exist as no-op stubs but gum does NOT —
+    # coreutils (/usr/bin, /bin) stay reachable so install.sh's pre-check
+    # shell plumbing (dirname, pwd, uname) still works.
     local fake_path="$BATS_TEST_TMPDIR/fake_bin"
     mkdir -p "$fake_path"
-    for cmd in docker jq git security; do
+    for cmd in jq security; do
         printf '#!/bin/sh\nexit 0\n' > "$fake_path/$cmd"
         chmod +x "$fake_path/$cmd"
     done

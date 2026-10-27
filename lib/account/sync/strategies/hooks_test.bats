@@ -5,12 +5,6 @@ load "${BATS_TEST_DIRNAME}/../../../../tests/lib/test-helper.bash"
 
 setup() {
     setup_isolated_env
-    # Simulate ckipper install hook set so the allowlist filter has data.
-    mkdir -p "$CKIPPER_DIR/hooks"
-    touch "$CKIPPER_DIR/hooks/bash-guardrails.sh"
-    touch "$CKIPPER_DIR/hooks/protect-claude-config.sh"
-    touch "$CKIPPER_DIR/hooks/docker-context.sh"
-    touch "$CKIPPER_DIR/hooks/notify-bell.sh"
 }
 teardown() { teardown_isolated_env; }
 
@@ -22,25 +16,23 @@ run_in_zsh() {
                 source \"$REPO_ROOT/lib/account/sync/strategies/hooks.zsh\"; $*"
 }
 
-@test "hooks_enumerate skips ckipper safety hooks (filename allowlist)" {
+@test "hooks_enumerate lists every script in the source hooks dir" {
     local src="$TMP_HOME/src"
     mkdir -p "$src/hooks"
-    # Two safety hooks (mirroring install dir) — should be filtered.
-    echo "x" > "$src/hooks/bash-guardrails.sh"
-    echo "x" > "$src/hooks/notify-bell.sh"
-    # One user hook — should appear.
     echo "x" > "$src/hooks/lint-on-save.sh"
-    run_in_zsh "_ckipper_account_sync_hooks_enumerate '$src' | cut -f1"
-    [[ "$output" == *"hooks/lint-on-save.sh"* ]]
-    [[ "$output" != *"bash-guardrails.sh"* ]]
-    [[ "$output" != *"notify-bell.sh"* ]]
+    echo "x" > "$src/hooks/format.sh"
+
+    run_in_zsh "_ckipper_account_sync_hooks_enumerate '$src' | cut -f1 | sort | tr '\n' ','"
+
+    [[ "$output" == *"hooks/format.sh,hooks/lint-on-save.sh,"* ]]
 }
 
-@test "hooks_enumerate emits empty when no user hooks present" {
+@test "hooks_enumerate emits nothing when the hooks dir is empty" {
     local src="$TMP_HOME/src"
     mkdir -p "$src/hooks"
-    echo "x" > "$src/hooks/bash-guardrails.sh"
+
     run_in_zsh "_ckipper_account_sync_hooks_enumerate '$src' | wc -l | tr -d ' '"
+
     [[ "$output" == *"0"* ]]
 }
 
@@ -143,4 +135,32 @@ JSON
     [[ "$output" == *"SCRIPT_GONE"* ]]
     [[ "$output" == *"this"* ]]
     [[ "$output" == *"CLEAN"* ]]
+}
+
+# Regression: `*(N)` broke under NO_BARE_GLOB_QUAL (Claude Code's Bash tool).
+@test "hooks_enumerate works when the caller set no_bare_glob_qual" {
+    local src="$TMP_HOME/src"
+    mkdir -p "$src/hooks"
+    echo "x" > "$src/hooks/lint.sh"
+
+    run_in_zsh "setopt no_bare_glob_qual; _ckipper_account_sync_hooks_enumerate '$src' | cut -f1"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "hooks/lint.sh" ]
+}
+
+# Regression: re-syncing a changed hook appended a second identical entry,
+# so the hook ran twice (and once more per re-sync).
+@test "hooks_merge_settings replaces an existing entry for the same command instead of duplicating it" {
+    local src="$TMP_HOME/src" dst="$TMP_HOME/dst"
+    mkdir -p "$src/hooks" "$dst/hooks"
+    echo x > "$src/hooks/lint.sh"
+    echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash '"$src"'/hooks/lint.sh"}]}]}}' > "$src/settings.json"
+    echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash '"$dst"'/hooks/lint.sh"}]},{"matcher":"Edit","hooks":[{"type":"command","command":"other"}]}]}}' > "$dst/settings.json"
+
+    run_in_zsh "_ckipper_account_sync_hooks_merge_settings '$src' '$dst' hooks/lint.sh"
+
+    [ "$status" -eq 0 ]
+    [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | contains("lint.sh"))] | length' "$dst/settings.json")" = "1" ]
+    [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command == "other")] | length' "$dst/settings.json")" = "1" ]
 }

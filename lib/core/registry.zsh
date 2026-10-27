@@ -222,123 +222,79 @@ _core_registry_init_at() {
     [[ -f "$registry_file" ]] && chmod "$_CORE_REGISTRY_FILE_PERMS" "$registry_file"
 }
 
-# Build a JSON object of every account-scope schema key with its default
-# value, suitable for embedding in a jq filter via `--argjson p "$(...)"`.
-# Used by both the v1→v2 migration and the account-add finalize step so the
-# two callers cannot drift from the schema.
-#
-# Reads: _CKIPPER_SCHEMA_TYPE, _CKIPPER_SCHEMA_DEFAULT, _CKIPPER_SCHEMA_SCOPE
-#   (lib/core/schema.zsh — must be sourced before this is called).
-#
-# Limitations: only handles bool, int, string, and path types. The current
-# schema has no account-scope `int_array` keys; if one is added, extend the
-# case below to render the comma-separated default as a JSON array.
-#
-# Returns: 0; emits a valid JSON object string to stdout (e.g.
-#   `{"always_docker":false,"always_firewall":false,"ssh_forward":true}`).
-_core_registry_account_defaults_json() {
-    local key entries=""
-    for key in "${(@ko)_CKIPPER_SCHEMA_TYPE}"; do
-        [[ "${_CKIPPER_SCHEMA_SCOPE[$key]}" == "account" ]] || continue
-        local val="${_CKIPPER_SCHEMA_DEFAULT[$key]}"
-        local type="${_CKIPPER_SCHEMA_TYPE[$key]}"
-        case "$type" in
-            bool | int) entries+="\"$key\":$val," ;;
-            *) entries+="\"$key\":\"$val\"," ;;
-        esac
-    done
-    echo "{${entries%,}}"
-}
+# jq filter that upgrades any older accounts registry to the current shape.
+# Idempotent: running it on a current registry changes nothing, so every
+# older version goes through the same filter. A release that changes the
+# shape extends this filter and bumps CKIPPER_REGISTRY_VERSION.
+#   v2 added a per-account `preferences` block (Docker sandbox flags).
+#   v3 drops `preferences` again: the Docker sandbox is gone.
+#   v4 drops `keychain_service`: Claude Code derives the entry name from the
+#      config dir (see lib/core/keychain.zsh), and stored values could be stale.
+readonly _CORE_REGISTRY_UPGRADE_FILTER='
+    .version = $v
+    | .accounts |= map_values(del(.preferences, .keychain_service))
+'
 
-# Auto-migrate the default v1 registry ($CKIPPER_REGISTRY) to v2 in place.
-# See _core_registry_migrate_v1_to_v2_at for the parametrized form.
+# Upgrade the default registry ($CKIPPER_REGISTRY) to the current version in
+# place. Backs the file up first and refuses to migrate without a backup.
 #
-# Returns:
-#   0 on successful migration; 1 if backup write or jq update failed.
-#
-# Errors (stderr):
-#   "Error: failed to write migration backup..." — when cp to the .v1.bak path fails.
-_core_registry_migrate_v1_to_v2() {
-    _core_registry_migrate_v1_to_v2_at "$CKIPPER_REGISTRY"
-}
-
-# Auto-migrate a v1 registry file to v2 in place. Backs up the v1 file
-# (refuses to migrate without a backup), then rewrites it with .version=2 and
-# a per-account .preferences block. Existing preferences win over defaults so
-# partial-v2 fixtures keep their values.
-#
-# Args:
-#   $1 — registry file path.
-#
-# Returns:
-#   0 on successful migration; 1 if backup write or jq update failed.
-#
-# Errors (stderr):
-#   "Error: failed to write migration backup..." — when cp to the .v1.bak path fails.
-_core_registry_migrate_v1_to_v2_at() {
-    local registry_file="$1"
-    local backup="${registry_file}.v1.bak.$(date -u +%Y%m%dT%H%M%SZ)"
-    if ! cp "$registry_file" "$backup" 2>/dev/null; then
+# Args: $1 — the version currently on disk (used in the backup file name).
+# Returns: 0 on success; 1 if the backup or the jq rewrite failed.
+# Errors (stderr): "Error: failed to write migration backup <path>" — when
+#   the backup copy fails.
+_core_registry_migrate() {
+    local from_version="$1"
+    local backup="${CKIPPER_REGISTRY}.v${from_version}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    if ! cp "$CKIPPER_REGISTRY" "$backup" 2>/dev/null; then
         echo "Error: failed to write migration backup $backup" >&2
         return 1
     fi
-    local defaults
-    defaults=$(_core_registry_account_defaults_json)
-    _core_registry_update_at "$registry_file" '
-        .version = 2
-        | .accounts = (
-            .accounts | with_entries(
-                .value.preferences = ($defaults + (.value.preferences // {}))
-            )
-        )
-    ' --argjson defaults "$defaults"
+    _core_registry_update "$_CORE_REGISTRY_UPGRADE_FILTER" --argjson v "$CKIPPER_REGISTRY_VERSION"
 }
 
 # Refuse to operate on the default registry ($CKIPPER_REGISTRY) when its
-# version is unsupported or its schema is corrupt. Wraps the parametrized
-# version check with the accounts.json-specific schema assertion (.accounts
-# must be a JSON object). See _core_registry_check_version_at for a
-# version-only check that does not enforce the accounts schema (used for
-# alternate registries with different shapes).
+# schema is corrupt or its version is unsupported. Older versions are
+# upgraded in place (with a backup) first. See _core_registry_check_version_at
+# for the version-only check used by registries with other shapes
+# (e.g. desktop.json), which never migrates.
 #
 # Returns:
-#   0 if registry is absent or valid; 1 on version mismatch, migration failure,
-#   or corrupt schema.
+#   0 if registry is absent or valid; 1 on corrupt schema, migration failure,
+#   or an unsupported (newer) version.
 #
 # Errors (stderr):
-#   "Migrating <basename> v1 → v2..." — informational notice during auto-migration.
+#   "Migrating accounts.json v<n> → v<m>..." — notice during auto-migration.
 #   "Error: registry version..." — on version mismatch.
 #   "Error: ... is corrupt..." — on bad schema.
 _core_registry_check_version() {
-    _core_registry_check_version_at "$CKIPPER_REGISTRY" || return 1
     [[ ! -f "$CKIPPER_REGISTRY" ]] && return 0
     _core_registry_assert_accounts_object || return 1
+    local cur
+    cur=$(jq -r '.version // 0' "$CKIPPER_REGISTRY" 2>/dev/null)
+    if [[ "$cur" =~ ^[1-9][0-9]*$ ]] && (( cur < CKIPPER_REGISTRY_VERSION )); then
+        echo "Migrating ${CKIPPER_REGISTRY:t} v$cur → v$CKIPPER_REGISTRY_VERSION..." >&2
+        _core_registry_migrate "$cur" || return 1
+    fi
+    _core_registry_check_version_at "$CKIPPER_REGISTRY"
 }
 
-# Refuse to operate on a registry file whose version we don't understand.
-# Auto-migrates a v1 registry to v2 (with backup) before checking the version.
-# Does NOT enforce the accounts.json-specific schema shape — alternate
-# registries (e.g. desktop.json) have different top-level keys. The default
-# registry wrapper _core_registry_check_version layers that assertion on top.
+# Refuse to operate on a registry file whose version is not exactly
+# $CKIPPER_REGISTRY_VERSION. Never migrates and does NOT enforce the
+# accounts.json-specific schema shape — alternate registries (e.g.
+# desktop.json) have different top-level keys and call this with
+# CKIPPER_REGISTRY_VERSION scoped to their own version.
 #
 # Args:
 #   $1 — registry file path.
 #
 # Returns:
-#   0 if registry is absent or valid; 1 on version mismatch or migration failure.
+#   0 if registry is absent or valid; 1 on version mismatch.
 #
 # Errors (stderr):
-#   "Migrating <basename> v1 → v2..." — informational notice during auto-migration.
 #   "Error: registry version..." — on version mismatch.
 _core_registry_check_version_at() {
     local registry_file="$1"
     [[ ! -f "$registry_file" ]] && return 0
-    local cur
-    cur=$(jq -r '.version // 0' "$registry_file" 2>/dev/null)
-    if [[ "$cur" == "1" ]] && (( CKIPPER_REGISTRY_VERSION >= 2 )); then
-        echo "Migrating ${registry_file:t} v1 → v2..." >&2
-        _core_registry_migrate_v1_to_v2_at "$registry_file" || return 1
-    fi
     local v
     v=$(jq -r '.version // 0' "$registry_file" 2>/dev/null)
     if (( v != CKIPPER_REGISTRY_VERSION )); then
@@ -385,13 +341,4 @@ _core_account_dir() {
         return 1
     fi
     jq -r --arg n "$name" '.accounts[$n].config_dir' "$CKIPPER_REGISTRY"
-}
-
-# Read the entire registry JSON to stdout. Used by both ckipper subcommands
-# and (later) by lib/w/ to satisfy the no-sibling-cross-imports rule.
-#
-# Returns:
-#   0 on success; non-zero if registry file is missing.
-_core_registry_read() {
-    cat "$CKIPPER_REGISTRY"
 }

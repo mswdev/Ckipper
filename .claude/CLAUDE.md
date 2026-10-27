@@ -2,7 +2,7 @@
 
 See @README.md for project overview.
 
-> **Product:** Ckipper — multi-account Claude Code manager with Docker isolation.
+> **Product:** Ckipper — lightweight multi-account manager for Claude Code and Claude Desktop.
 > **Repo:** Single-package zsh project. Top-level layout in §1.
 
 ## Quick Reference
@@ -29,31 +29,28 @@ See @README.md for project overview.
 
 Ckipper is a zsh-based wrapper for the [Claude Code CLI](https://claude.ai/cli) that provides:
 
-- **Multi-account isolation** — separate `~/.claude-<account>/` config dirs per registered account, with macOS Keychain integration for credentials.
-- **Worktree-aware launchers** — `w <project> <branch>` creates a git worktree, syncs settings, and either runs Claude Code locally or launches it inside a hardened Docker container.
-- **Per-account aliases** — auto-generated `<account>` shell functions (e.g., `personal`, `work`) that route to the correct config dir.
-- **Safety hooks** — Claude Code hooks (`bash-guardrails.sh`, `protect-claude-config.sh`) that block destructive commands and protect Ckipper-owned config files from accidental modification.
-- **Docker sandbox** — Dockerfile + entrypoint that isolate Claude Code with an egress firewall, credential injection via tmpfs, and pre-installed MCP server tooling.
+- **Multi-account isolation** — separate `~/.claude-<account>/` config dirs per registered account. Claude Code keeps each config dir's login under its own macOS Keychain entry.
+- **Per-account launchers** — auto-generated `claude-<account>` (and bare `<account>`) shell functions that set `CLAUDE_CONFIG_DIR`, plus a guard that stops bare `claude` from logging into the unmanaged `~/.claude/`.
+- **Groups + sync** — accounts belong to groups with a master; `ckipper account sync` copies MCP servers, settings, skills, agents, commands, hooks and more between accounts of the same group, with backups and undo, and `account add --group` seeds a new account from the master.
+- **Claude Desktop instances** — generated `.app` wrappers that run the system Claude.app against isolated user-data dirs.
+- **Doctor** — `ckipper doctor` checks the registry, each account, Keychain entries, shell setup and Desktop instances.
+
+Worktrees and sandboxing are left to Claude Code itself (`claude --worktree`, auto mode).
 
 **Top-level layout:**
 
 ```
 ckipper.zsh                  # ckipper CLI entry (sourced from .zshrc)
-lib/core/                    # shared primitives (registry, keychain, config, prompt, style)
-lib/account/                 # ckipper account subcommands (feature dir)
-lib/worktree/                # ckipper worktree subcommands (feature dir)
-lib/config/                  # ckipper config get/set/unset/list/edit (feature dir)
-lib/setup/                   # ckipper setup wizard (orchestration: delegates to features)
-lib/run/                     # ckipper run shortcut for `worktree run` (orchestration)
-lib/launcher/                # bare `ck` interactive menu (orchestration)
-hooks/                       # Claude Code safety hooks
-docker/                      # Dockerfile + entrypoint + firewall + cleanup
-tests/                       # bats + pytest tests
+lib/core/                    # shared primitives (registry, keychain, prompt, style, fuzzy)
+lib/account/                 # ckipper account subcommands + doctor (feature dir)
+lib/account/sync/            # ckipper account sync engine and strategies
+lib/desktop/                 # ckipper desktop subcommands (feature dir)
+tests/                       # bats test helpers and stubs
 install.sh                   # one-shot installer (copies to ~/.ckipper/)
 .claude/                     # rules + project Claude config
 ```
 
-`lib/` has two layers (per `.claude/rules/shell-conventions.md`): feature dirs own subcommand functionality and MUST NOT call into each other; orchestration dirs delegate to feature dirs' public entry points.
+`lib/` feature dirs (per `.claude/rules/shell-conventions.md`) own subcommand functionality and MUST NOT call into each other; shared code lives in `lib/core/`.
 
 ## 2. Core Engineering Philosophy
 

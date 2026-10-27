@@ -27,20 +27,24 @@ _ckipper_account_cleanup_dir() {
     printf "  rm -rf %q\n" "$dir"
 }
 
-# Prompt the user to delete the account's macOS Keychain entry, and remove
-# it on confirmation. No-op when the service is empty or the host is not
-# darwin (Keychain is macOS-only). On confirmation, surfaces a Failed line
-# (with manual retry command) when the underlying `security` call fails.
+# Prompt the user to delete the macOS Keychain entry Claude Code keeps for
+# the account's config dir, and delete it on confirmation. The entry name is
+# derived from the dir path (see lib/core/keychain.zsh), so it always belongs
+# to this account. Never touches the default "Claude Code-credentials" entry,
+# which belongs to bare `claude` (~/.claude), not to a registered account.
+# No-op off macOS or when the entry does not exist.
 #
 # Args:
 #   $1 — account name (used in the friendly log line on success)
-#   $2 — Keychain service name (e.g. "Claude Code-credentials-<hex>")
+#   $2 — absolute path to the account's config directory
 #
 # Returns: 0 always.
 _ckipper_account_cleanup_keychain() {
-    local name="$1" service="$2"
-    [[ -z "$service" || "${_CKIPPER_TEST_OSTYPE:-$OSTYPE}" != darwin* ]] && return 0
-    if ! _core_prompt_confirm "Delete Keychain entry '$service'?"; then
+    local name="$1" dir="$2"
+    local service; service=$(_core_keychain_service_for_dir "$dir")
+    [[ "$service" == "$_CORE_KEYCHAIN_SERVICE_PREFIX" ]] && return 0
+    _core_keychain_entry_exists "$service" || return 0
+    if ! _core_prompt_confirm "Delete Keychain entry '$service' (the login for '$name')?"; then
         echo "Kept Keychain entry for '$name'. To remove it manually:"
         printf "  security delete-generic-password -s %q\n" "$service"
         return 0

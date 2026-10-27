@@ -44,18 +44,31 @@ _ckipper_account_sync_accumulate_positional() {
     _CKIPPER_SYNC_TARGETS+=("$1")
 }
 
+# Fail with a message unless the flag in $1 is followed by a value. Without
+# this, `--include` as the last argument made `shift 2` fail forever.
+#
+# Args: $1 — the flag; $2 — its value (absent when missing).
+# Returns: 0 if a value is present; 1 otherwise.
+# Errors (stderr): "Missing value for <flag>"
+_ckipper_account_sync_require_value() {
+    (( $# >= 2 )) && return 0
+    echo "Missing value for $1" >&2
+    return 1
+}
+
 # Parse `ckipper account sync` arguments into module-level _SYNC_* vars.
 # Positional: <from> [<to>...]. Flags: --include/--exclude/--dry-run/--yes/--force.
 #
 # Args: $@ — raw argv after `ckipper account sync` is stripped.
-# Returns: 0 on success; 1 on unknown flag; 2 if --help printed.
-# Errors (stderr): "Unknown flag: <flag>" — when an unrecognized --foo appears.
+# Returns: 0 on success; 1 on unknown flag or missing flag value; 2 if --help printed.
+# Errors (stderr): "Unknown flag: <flag>" — when an unrecognized --foo appears;
+#   "Missing value for <flag>" — when --include/--exclude is last.
 _ckipper_account_sync_parse_args() {
     _ckipper_account_sync_reset_args
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --include) _CKIPPER_SYNC_INCLUDE="$2"; shift 2 ;;
-            --exclude) _CKIPPER_SYNC_EXCLUDE="$2"; shift 2 ;;
+            --include) _ckipper_account_sync_require_value "$@" || return 1; _CKIPPER_SYNC_INCLUDE="$2"; shift 2 ;;
+            --exclude) _ckipper_account_sync_require_value "$@" || return 1; _CKIPPER_SYNC_EXCLUDE="$2"; shift 2 ;;
             --dry-run) _CKIPPER_SYNC_DRY_RUN="true"; shift ;;
             --yes)     _CKIPPER_SYNC_YES="true";     shift ;;
             --force)   _CKIPPER_SYNC_FORCE="true";   shift ;;
@@ -103,11 +116,28 @@ _ckipper_account_sync_run() {
     _ckipper_account_sync_validate_accounts || return 1
     local -a types
     types=( ${(f)"$(_ckipper_account_sync_resolve_types)"} )
-    if (( ${#types} == 0 )); then
+    _ckipper_account_sync_check_types "${types[@]}" || return 1
+    _ckipper_account_sync_run_targets types
+}
+
+# Reject an empty or unknown type list before anything runs. Unknown tokens
+# (typos like "mpc") used to call a nonexistent strategy function, report
+# success, and leave an empty backup behind.
+#
+# Args: $@ — resolved type ids.
+# Returns: 0 if non-empty and every id is known; 1 otherwise.
+# Errors (stderr): "Unknown sync type: <id>. Known types: …"
+_ckipper_account_sync_check_types() {
+    if (( $# == 0 )); then
         _ckipper_account_sync_empty_select_hint "sync types"
         return 1
     fi
-    _ckipper_account_sync_run_targets types
+    local type
+    for type in "$@"; do
+        _ckipper_account_sync_is_known_type "$type" && continue
+        echo "Unknown sync type: $type. Known types: ${(ok)_CKIPPER_SYNC_TYPE_LABEL}" >&2
+        return 1
+    done
 }
 
 # Print a friendly hint when a multi-select picker returns nothing.
@@ -143,14 +173,18 @@ _ckipper_account_sync_run_targets() {
     return $rc
 }
 
-# Validate that source + every target are registered accounts.
+# Validate that source + every target are registered accounts in the same
+# group. Refuses the whole run before anything is written.
 #
-# Returns: 0 if all registered; 1 if any unknown (error printed by _core_account_dir).
+# Returns: 0 if all registered and grouped together; 1 otherwise (errors
+#   printed by _core_account_dir / _ckipper_account_assert_same_group).
 _ckipper_account_sync_validate_accounts() {
     _core_account_dir "$_CKIPPER_SYNC_FROM" >/dev/null || return 1
     local t
     for t in "${_CKIPPER_SYNC_TARGETS[@]}"; do
         _core_account_dir "$t" >/dev/null || return 1
+        [[ "$t" == "$_CKIPPER_SYNC_FROM" ]] && continue
+        _ckipper_account_assert_same_group "$_CKIPPER_SYNC_FROM" "$t" || return 1
     done
 }
 
@@ -182,12 +216,22 @@ _ckipper_account_sync_run_one_target() {
         _ckipper_account_sync_assert_dst_idle "$dst_dir" "$_CKIPPER_SYNC_FORCE" || return 1
     fi
     _ckipper_account_sync_prepare_target_artifacts "$target" "$src_dir" "$dst_dir" "$@"
-    local action="apply"
-    if [[ "$_CKIPPER_SYNC_DRY_RUN" != "true" && "$_CKIPPER_SYNC_YES" != "true" ]]; then
-        action=$(_ckipper_account_sync_preview_prompt)
-    fi
-    [[ "$_CKIPPER_SYNC_DRY_RUN" == "true" ]] && action="dry-run"
+    local action; action=$(_ckipper_account_sync_choose_action)
     _ckipper_account_sync_finalize "$action"
+}
+
+# Decide what to do with the prepared change set: "dry-run", "nothing"
+# (zero changes — skip the prompt and do not create an empty backup that
+# `sync undo` would later consume), "apply" (--yes), or the user's choice.
+#
+# Returns: 0; prints the action token.
+_ckipper_account_sync_choose_action() {
+    [[ "$_CKIPPER_SYNC_DRY_RUN" == "true" ]] && { echo "dry-run"; return 0; }
+    local total
+    read -r total _ <<< "$(_ckipper_account_sync_count_changes < "${_CKIPPER_SYNC_CTX[changeset]}")"
+    (( total == 0 )) && { echo "nothing"; return 0; }
+    [[ "$_CKIPPER_SYNC_YES" == "true" ]] && { echo "apply"; return 0; }
+    _ckipper_account_sync_preview_prompt
 }
 
 # Initialize per-target context and build the diff/summary artifacts.
@@ -281,15 +325,16 @@ _ckipper_account_sync_finalize() {
 _ckipper_account_sync_help_text() {
     _core_help_render "ckipper account sync [<from>] [<to>...] [options]" \
         "" \
-        "Sync state between registered Claude accounts. Empty positionals drop" \
-        "into interactive pickers (gum-driven)." \
+        "Sync state between registered Claude accounts in the same group (see" \
+        "\`ckipper account group\`). Empty positionals drop into interactive" \
+        "pickers (gum-driven)." \
         "" \
         "Options:" \
         "  --include <types>    Comma-separated types or named bundle:" \
-        "                         all | customizations | claude-config | preferences" \
+        "                         all | customizations | claude-config" \
         "                         Type tokens: mcp, settings, claude-md, agents," \
         "                         commands, output-styles, skills, statusline," \
-        "                         hooks, prefs" \
+        "                         hooks" \
         "  --exclude <types>    Subtract from --include." \
         "  --dry-run            Print summary, exit (no prompt, no writes)." \
         "  --yes                Skip the confirm prompt; apply directly." \

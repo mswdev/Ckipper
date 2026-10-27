@@ -18,28 +18,18 @@ typeset -gA _CKIPPER_SYNC_TYPE_LABEL=(
     [skills]="Skills"
     [statusline]="Status line"
     [hooks]="User hooks"
-    [prefs]="Account preferences"
 )
 
 # Implementation kind. Drives which strategy module each type's functions
 # live in. Allowed values: "structured" (JSON-key merges), "files-flat"
 # (flat .md files), "files-dir" (per-directory items), "special" (custom
-# logic — statusline split-detection, hooks install-allowlist filter).
+# logic — statusline split-detection, hooks settings-entry pairing).
 typeset -gA _CKIPPER_SYNC_TYPE_KIND=(
-    [mcp]=structured  [settings]=structured  [prefs]=structured
+    [mcp]=structured  [settings]=structured
     [claude-md]=files-flat  [agents]=files-flat
     [commands]=files-flat   [output-styles]=files-flat
     [skills]=files-dir
     [statusline]=special  [hooks]=special
-)
-
-# Types whose strategy functions take account NAMES (not dirs) as their
-# first two positional args. Currently only `prefs`, which operates on the
-# registry (CKIPPER_REGISTRY) keyed by account name. Engine and preview
-# consult this set to pick the right (a, b) pair when invoking strategy
-# functions; without it they would have to hard-code "prefs" semantics.
-typeset -gA _CKIPPER_SYNC_TYPE_USES_NAMES=(
-    [prefs]=1
 )
 
 # Space-separated list of bundles the type belongs to. Bundles are aliases
@@ -54,11 +44,10 @@ typeset -gA _CKIPPER_SYNC_TYPE_BUNDLES=(
     [skills]="all customizations"
     [statusline]="all customizations"
     [hooks]="all customizations claude-config"
-    [prefs]="all preferences"
 )
 
 # Known bundle aliases. Asserted disjoint from type ids by registry_test.
-typeset -gra _CKIPPER_SYNC_BUNDLE_ALIASES=(all customizations claude-config preferences)
+typeset -gra _CKIPPER_SYNC_BUNDLE_ALIASES=(all customizations claude-config)
 
 # Return 0 if $1 is a known sync type id; 1 otherwise.
 #
