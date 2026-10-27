@@ -43,7 +43,7 @@ source ~/.zshrc
 ckipper account add personal
 ```
 
-`install.sh` copies `ckipper.zsh` and `lib/` into `~/.ckipper/` and adds `source "$HOME/.ckipper/ckipper.zsh"` to your `.zshrc`. Re-run it after every `git pull`.
+`install.sh` copies `ckipper.zsh` and `lib/` into `~/.ckipper/`, regenerates `~/.ckipper/aliases.zsh` from your registry, and adds `source "$HOME/.ckipper/ckipper.zsh"` to your `.zshrc`. Re-run it after every `git pull`.
 
 To get the per-account launchers, also add this line to `.zshrc` (the installer prints it if it's missing):
 

@@ -3,8 +3,9 @@
 # (default ~/.ckipper), removes files left by the old Docker-based layout,
 # and makes ~/.zshrc source the installed ckipper.zsh.
 #
-# Safe to re-run: accounts.json, desktop.json, and aliases.zsh are never
-# touched.
+# Safe to re-run: accounts.json and desktop.json are never touched;
+# aliases.zsh is regenerated from accounts.json so launcher and guard fixes
+# reach existing installs.
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -75,6 +76,18 @@ update_zshrc() {
     echo "  Added ckipper source line to ~/.zshrc"
 }
 
+# Regenerate aliases.zsh from the registry with the freshly installed code.
+# It is otherwise only rewritten on account add/remove/rename, so changes to
+# the claude-<name> launchers or the bare-claude guard would never land.
+regenerate_aliases() {
+    [[ -f "$CKIPPER_DIR/accounts.json" ]] || return 0
+    if CKIPPER_DIR="$CKIPPER_DIR" zsh -c 'source "$CKIPPER_DIR/ckipper.zsh" && _ckipper_account_regenerate_aliases' >/dev/null; then
+        echo "  Regenerated $CKIPPER_DIR/aliases.zsh"
+        return 0
+    fi
+    echo "  WARNING: could not regenerate $CKIPPER_DIR/aliases.zsh — run 'ckipper account list' and re-run install.sh." >&2
+}
+
 # Print the aliases.zsh source line when ~/.zshrc does not have it yet.
 print_aliases_hint() {
     grep -q 'ckipper/aliases.zsh' "$ZSHRC" 2>/dev/null && return 0
@@ -88,6 +101,7 @@ check_prerequisites
 echo "Copying ckipper.zsh and lib/ to $CKIPPER_DIR/..."
 deploy_files
 remove_legacy_paths
+regenerate_aliases
 update_zshrc
 print_aliases_hint
 echo ""

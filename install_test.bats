@@ -34,17 +34,37 @@ run_install() {
     [ -z "$output" ]
 }
 
-@test "install.sh leaves accounts.json, desktop.json and aliases.zsh alone" {
+@test "install.sh leaves accounts.json and desktop.json alone" {
     echo '{"version":4,"default":null,"accounts":{}}' > "$CKIPPER_DIR/accounts.json"
     echo '{"version":1,"instances":{}}' > "$CKIPPER_DIR/desktop.json"
-    echo '# generated' > "$CKIPPER_DIR/aliases.zsh"
 
     run_install
 
     [ "$status" -eq 0 ]
-    grep -q '"version":4' "$CKIPPER_DIR/accounts.json"
-    grep -q '"instances"' "$CKIPPER_DIR/desktop.json"
-    grep -q '# generated' "$CKIPPER_DIR/aliases.zsh"
+    [ "$(cat "$CKIPPER_DIR/accounts.json")" = '{"version":4,"default":null,"accounts":{}}' ]
+    [ "$(cat "$CKIPPER_DIR/desktop.json")" = '{"version":1,"instances":{}}' ]
+}
+
+# Regression: aliases.zsh was only rewritten on account add/remove/rename,
+# so guard and launcher fixes never reached an existing install.
+@test "install.sh regenerates aliases.zsh from the registry with the new guard" {
+    printf '{"version":4,"default":"dev","accounts":{"dev":{"config_dir":"%s/.claude-dev"}}}' "$TMP_HOME" > "$CKIPPER_DIR/accounts.json"
+    echo '# stale aliases from an older ckipper' > "$CKIPPER_DIR/aliases.zsh"
+
+    run_install
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Regenerated"* ]]
+    ! grep -q 'stale aliases' "$CKIPPER_DIR/aliases.zsh"
+    grep -q '^claude-dev()' "$CKIPPER_DIR/aliases.zsh"
+    grep -qF -- '-z "$CLAUDE_CONFIG_DIR"' "$CKIPPER_DIR/aliases.zsh"
+}
+
+@test "install.sh does not create aliases.zsh when there is no registry" {
+    run_install
+
+    [ "$status" -eq 0 ]
+    [ ! -e "$CKIPPER_DIR/aliases.zsh" ]
 }
 
 @test "install.sh removes the old Docker-era files" {
